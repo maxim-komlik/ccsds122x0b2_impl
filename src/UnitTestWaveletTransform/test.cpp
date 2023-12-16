@@ -1,4 +1,4 @@
-#include "pch.h"
+#include "gtest/gtest.h"
 #include "../WaveletTransform/DWT.tpp"
 #include "../WaveletTransform/dwtcore.tpp"
 #include <random>
