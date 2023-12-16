@@ -1,0 +1,181 @@
+JPEG2000 does not use integer trasform 9/7, it uses 5/3 instead.
+
+Add references to open-source implementations
+
+TODO: compute vector stride using sizeof(T)
+
+TODO: add generic strong_assign
+
+TODO: ensure image dimension requirements are satisfied (width > 17, curent implementation does not work
+correctly when width <= 64)
+
+TODO: Different post-processing for integer and fp: scaling and rounding respectively
+
+TODO: Encoding manager is necessary, it is a class that stores all possible template implementations of 
+wavelet transform and bit plane coders
+
+
+Finally got it!!!!
+Well, there is a gaggle that contains of 16 blocks. Each block has a set of words computed. Starting 
+length of all words is well-known (It is defined in table). At every stage a block might have some words 
+of length 2, 3, or 4, but throughout the process of decoding all particular lengths for every word are 
+known. Another block in the same gaggle may have the same words of different lengths. But anyway, there
+are only 3 word length options are available. The gaggle parameters define one coding option for every 
+word length for all words of that length for all blocks within the gaggle, that is, supposing that b1 has
+transH word 4-bit len and types[C] word 3-bit length, and b2 has transH word 3-bit len and types[C] word 
+4-bit length, the same coding option for transH and types[C] 4-bit words must be used, as well as the same
+coding option for types[C] and transH 3-bit words must be used. So 4 bits for coding option specification 
+will be used totally, assuming there is no words of len 2 in the gaggle.
+Each word that is computed over a block is 4-bit lenght at most (and probably is 4-bit at the start). It 
+seems that grandchild generation was further partitioned into subgroups to match this pattern for them as 
+well. So in fact the sequence of words coded is known, but 3-bit words are coded in place with 3-bit 
+entropy code as needed, it may be followed by 4-bit word that is coded in-place with 4-bit entropy encoding
+and so on. The words of different length are interleaved.
+
+For each block need to know:
+ BitDepthAC_Block
+
+In a segment:
+ BitDepthDC  
+ q (for DC)
+
+types[Y]: for x in Y
+if x is of type 0:
+	0 if positive (nonnegative)
+	1 if negative
+if x is of type 1:
+	depends on value (1 in both cases for negative and positive if |x|=2^n)
+
+signs[Y]: for x in Y
+if x is of type 0 or 1:
+	0 if positive (nonnegative)
+	1 if negative
+
+tword[L]: for a in L
+if x is of type 0:
+	0
+if x is of type 1:
+	1
+
+
+Steps to prepare for bitplane encoding:
+1) pack bitmap contents into blocks
+2) build segments
+3) compute BitDepthDc and BitDepthAc
+4) compute quantized DC coeffs for each segment
+5) compute quantized DC diffs
+6) map quantized DC diffs
+* write to blocks non-quantized part of DC
+
+Segment Pre-coder receives packed bitmap buffers computed by ForwardWaveletTransformer; the lines in these 
+buffers are alligned, and necessary allignment offsets are allocated at both beginning and ending of the 
+line (among not used part of allignment unit at the end of the data). Length of the image line and segment 
+size are indpendent values, therefore there may be data of any number of segment in a line of DC coefficients 
+(keepeing in mind a limitation that minimal size of the segment is set to 16 blocks). Therefore several 
+scenarios are possible when analyzing mutual layout of the bitmap row and set of DC coeffeicients for 
+the same segment:
+! - segment boundary
+| - row boundary
+_ - data values
+. - auxilary memory space (e.g. for allignment)
+1) segment is alligned properly, the whole segment resides in the row:
+...|!____________!______________|........|_____  //
+...|_______!______________!_____|....
+           ^ alligned memory address
+
+2) segment is not alligned properly, the whole segment resides in the row:
+...|_____!_____________!________|....
+         ^ not alligned memory address
+
+3) segment is alligned properly, segment resides in several rows:
+...|____________________!_______|........|__________!____  //
+                        ^ alligned memory address
+...|____________________!_______|........|___//___|........|____!____  //
+                        ^ alligned memory address. Segment resides in 2 or more rows
+						
+3) segment not alligned properly, segment resides in several rows:
+...|____________________!_______|........|__________!____  //
+                        ^ not alligned memory address
+...|____________________!_______|........|___//___|........|____!____  //
+                        ^ not alligned memory address. Segment resides in 2 or more rows
+
+Requirements:
+	To compute bit depth:		not necessarily alligned, auxilary data is zeroed (including beginning and 
+ending of the first and the last allign units), not necessarily continuous. (Here is an option to overwrite 
+the data of the next or the previous segments temporarily and revert the changes after operation)
+	To compute DC diff values:	
+We need segment DC data to be alligned, continuous and consequtive to be processed properly with 
+vectorization applied.
+We may pack blocks first and then free unnecessary bitmap buffers (all except DC); then process DC 
+coefficients. This way we can compute BitDepthAc first over segment block by block first, and then use 
+the result value to process DC coefficients, possibly getting rid of unnecessary (already processed) data.
+
+
+
+Transfomer class has extension buffers for every (x3) level vertical pass. The buffers contain full-width
+input data rows for different levels, the buffer varies in length according to level input row len. Totally 
+6 buffers needed, each buffer is half-len of input data row. Buffers are overwriten on the fly according to 
+current transform frame position.
+
+General call for image tranform performs image boundary extension. Subsequent transform level calls need to 
+extend boundaries on demand near the source image boundaries, however, extension is performed on partially 
+transformed data, therefore it cannot be performed before level-1 call.
+Transform level calls are not aware of current frame position, so special signaling scheme should be 
+introduced to leverage on-demand extension.
+Can be implemented as 2 boolean flags: for begining and for ending.
+
+Vertical pass calls are aware of current frame position.
+Vertical pass procedure always extends high boundary (begining). Low boundary (ending) extension is required 
+once the bottom of the image is reached.
+Can be implemented as a boolean flag for image bottom boundary.
+
+// DONE
+Create core DWT template structure that defines different DWT types for floating-point and integral data
+Image extension depends on image data type.
+
+// Image decoder should take into accound possibly different channel depth and generate sufficient data 
+// buffer
+// Supply an iterator for DWT transformer to fetch computed cofficients in an order defined by block
+
+// DONE NOTE: corrections for the first element of low-pass data are applied separately, otherwise we 
+// would need to calculate some elements several times and even numbers of elements every time in total.
+// TODO notes:
+// transform uses only integer arithmetic, no fp operations
+// is it worthy to increase data density so that coefficients are fetched linearly one by one?
+
+// increase density:
+// x2 memory units len for original data
+// x1 memory units for lowpass data
+// x1 memory units for highpass data
+// x1 memory units for temporal data of lowpass computation
+
+// Memory transitions can be performed in the begining of the CPU piplene, though should not affect 
+// performance.
+
+// lowpass and highpass sources can be allocated at a dst location and then reused
+// temporal storage for lowpass needed.
+
+// lowpass required for mirroring if boundary is near (if mirroring is necessary, otherwise no additional 
+// operations)
+// Transform can be invoked before mirroring corrections are applied for highpass data. That is:
+// it is possible to replace a single possibly affected output coefficient (in the begining). All that is
+// needed is to write correct output coefficients starting from [1] and further (and this is easy to make)
+// Mirroring for end bound should be applied after all computations are done.
+// Mirroring for lowpass data is applied to source data, so it should be provided befor any computation.
+
+// allighment:
+// should be provided before transformation is applied. Affects source data and output buffer allocation 
+// only. Should account for mirroring (source data for low-pass and single placeholder for highpass). 
+
+// Two-level call: memory operational + transform itself. All memory-related stuff and corrections are
+// performed at memory level.
+// Density increase is incapsulated in transform level. 
+
+// Transform level call definition has input parameters: src, hdst, ldst, len.
+// src points to the first data member that requires corresponding output coefficient computation, 
+// this buffer should have valid boundary extension on the left (negative indexes will be used)
+
+// When extending vertically by copying the last row, it's ok to perform 1d horizontal DWT pass before
+// and then copy transformed data, results are identical.
+// To extend horizontally modify source image with response to allignment boundaries before applying 
+// transform.

@@ -1,0 +1,55 @@
+﻿<?xml version="1.0" encoding="utf-8"?>
+<Project ToolsVersion="4.0" xmlns="http://schemas.microsoft.com/developer/msbuild/2003">
+  <ImportGroup Label="PropertySheets" />
+  <PropertyGroup Label="UserMacros">
+    <RepositoryRoot>$(SolutionDir)..\..</RepositoryRoot>
+    <RepositoryOutput>$(RepositoryRoot)\build\out</RepositoryOutput>
+    <RepositorySources>$(RepositoryRoot)\src</RepositorySources>
+    <RepositoryRootDir>$(SolutionDir)..\..\</RepositoryRootDir>
+    <RepositoryOutputDir>$(RepositoryRootDir)build\out\</RepositoryOutputDir>
+    <RepositoryIntDir>$(RepositoryOutputDir)obj\</RepositoryIntDir>
+    <RepositorySourceDir>$(RepositoryRootDir)src\</RepositorySourceDir>
+  </PropertyGroup>
+  <!--<RepositoryRoot>$(SolutionDir)../../</RepositoryRoot>
+    <RepositoryOutput>$(RepositoryRoot)/build/out/</RepositoryOutput>
+    <RepositorySources>$(RepositoryRoot)/src/</RepositorySources>-->
+  <PropertyGroup>
+    <OutDir>$(RepositoryOutputDir)$(ProjectName)\$(Platform)\$(Configuration)\</OutDir>
+    <IncludePath>$(ProjectDir);$(IncludePath)</IncludePath>
+    <IntDir>$(RepositoryIntDir)$(Platform)\$(Configuration)\</IntDir>
+  </PropertyGroup>
+  <ItemDefinitionGroup>
+    <ClCompile>
+      <LanguageStandard>stdcpp20</LanguageStandard>
+    </ClCompile>
+  </ItemDefinitionGroup>
+  <ItemDefinitionGroup>
+    <ClCompile>
+      <LanguageStandard_C>stdc17</LanguageStandard_C>
+      <PrecompiledHeaderFile>pch.h</PrecompiledHeaderFile>
+    </ClCompile>
+  </ItemDefinitionGroup>
+  <ItemGroup>
+    <BuildMacro Include="RepositoryRoot">
+      <Value>$(RepositoryRoot)</Value>
+    </BuildMacro>
+    <BuildMacro Include="RepositoryOutput">
+      <Value>$(RepositoryOutput)</Value>
+    </BuildMacro>
+    <BuildMacro Include="RepositorySources">
+      <Value>$(RepositorySources)</Value>
+    </BuildMacro>
+    <BuildMacro Include="RepositoryRootDir">
+      <Value>$(RepositoryRootDir)</Value>
+    </BuildMacro>
+    <BuildMacro Include="RepositoryOutputDir">
+      <Value>$(RepositoryOutputDir)</Value>
+    </BuildMacro>
+    <BuildMacro Include="RepositoryIntDir">
+      <Value>$(RepositoryIntDir)</Value>
+    </BuildMacro>
+    <BuildMacro Include="RepositorySourceDir">
+      <Value>$(RepositorySourceDir)</Value>
+    </BuildMacro>
+  </ItemGroup>
+</Project>

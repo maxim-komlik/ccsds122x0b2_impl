@@ -1,0 +1,149 @@
+﻿<?xml version="1.0" encoding="utf-8"?>
+<Project ToolsVersion="4.0" xmlns="http://schemas.microsoft.com/developer/msbuild/2003">
+  <ItemGroup>
+    <Filter Include="common">
+      <UniqueIdentifier>{877ecc96-6223-4d71-a400-8bfa159794b4}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="common\Header Files">
+      <UniqueIdentifier>{8b8e9ef9-dcdf-455c-becd-dc1d6e571020}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="common\Source Files">
+      <UniqueIdentifier>{0802e53a-b1f5-4f71-b2a4-e39462d96ba6}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="EntropyCoding">
+      <UniqueIdentifier>{f6cc20ba-e55c-4cc3-9982-ef06d3d1647d}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="WaveletTransform">
+      <UniqueIdentifier>{8b5833a9-308c-4a2a-a325-2ed6b1604528}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="common\librarian">
+      <UniqueIdentifier>{1dff017c-2a24-4931-9d77-2b21c108dba8}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="common\librarian\Source Files">
+      <UniqueIdentifier>{4FC737F1-C7A5-4376-A066-2A32D752A2FF}</UniqueIdentifier>
+      <Extensions>cpp;c;cc;cxx;c++;cppm;ixx;def;odl;idl;hpj;bat;asm;asmx</Extensions>
+    </Filter>
+    <Filter Include="common\librarian\Header Files">
+      <UniqueIdentifier>{93995380-89BD-4b04-88EB-625FBE52EBFB}</UniqueIdentifier>
+      <Extensions>h;hh;hpp;hxx;h++;hm;inl;inc;ipp;xsd</Extensions>
+    </Filter>
+    <Filter Include="common\librarian\Resource Files">
+      <UniqueIdentifier>{67DA6AB6-F800-4c08-8B7A-83BB121AAD01}</UniqueIdentifier>
+      <Extensions>rc;ico;cur;bmp;dlg;rc2;rct;bin;rgs;gif;jpg;jpeg;jpe;resx;tiff;tif;png;wav;mfcribbon-ms</Extensions>
+    </Filter>
+    <Filter Include="EntropyCoding\Header Files">
+      <UniqueIdentifier>{b31fc1d2-5b8e-4a81-a3f3-a08566470b96}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="EntropyCoding\Source Files">
+      <UniqueIdentifier>{544593c9-d8ba-4f89-b576-d4a06020c1d7}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="WaveletTransform\Header Files">
+      <UniqueIdentifier>{545c8414-39ce-4576-8f37-be9dc36ec5d5}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="WaveletTransform\Source Files">
+      <UniqueIdentifier>{19c6e003-5f14-4675-9830-a22d4d283db0}</UniqueIdentifier>
+    </Filter>
+  </ItemGroup>
+  <ItemGroup>
+    <ClInclude Include="framework.h">
+      <Filter>common\librarian\Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="pch.h">
+      <Filter>common\librarian\Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="..\..\..\src\EntropyCoding\entropy_utils.h">
+      <Filter>EntropyCoding\Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="..\..\..\src\EntropyCoding\EntropyTypes.h">
+      <Filter>EntropyCoding\Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="..\..\..\src\EntropyCoding\isymbolstream.h">
+      <Filter>EntropyCoding\Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="..\..\..\src\EntropyCoding\osymbolstream.h">
+      <Filter>EntropyCoding\Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="..\..\..\src\EntropyCoding\symbol_utils.h">
+      <Filter>EntropyCoding\Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="..\..\..\src\EntropyCoding\symbolstream.h">
+      <Filter>EntropyCoding\Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="..\..\..\src\EntropyCoding\symbolstream_base.h">
+      <Filter>EntropyCoding\Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="..\..\..\src\common\utils.h">
+      <Filter>common\librarian\Header Files</Filter>
+    </ClInclude>
+  </ItemGroup>
+  <ItemGroup>
+    <ClCompile Include="core.cpp">
+      <Filter>common\librarian\Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="pch.cpp">
+      <Filter>common\librarian\Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="..\..\..\src\WaveletTransform\WaveletTransform.cpp">
+      <Filter>common\librarian\Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="..\..\..\src\EntropyCoding\isymbolstream.cpp">
+      <Filter>EntropyCoding\Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="..\..\..\src\EntropyCoding\osymbolstream.cpp">
+      <Filter>EntropyCoding\Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="..\..\..\src\EntropyCoding\symbolstream.cpp">
+      <Filter>EntropyCoding\Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="..\..\..\src\EntropyCoding\symbolstream_base.cpp">
+      <Filter>EntropyCoding\Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="..\..\..\src\EntropyCoding\EntropyCoding.cpp">
+      <Filter>common\librarian\Source Files</Filter>
+    </ClCompile>
+  </ItemGroup>
+  <ItemGroup>
+    <None Include="..\..\..\src\WaveletTransform\bitmap.tpp">
+      <Filter>WaveletTransform\Source Files</Filter>
+    </None>
+    <None Include="..\..\..\src\WaveletTransform\DWT.tpp">
+      <Filter>WaveletTransform\Source Files</Filter>
+    </None>
+    <None Include="..\..\..\src\WaveletTransform\dwtcore.tpp">
+      <Filter>WaveletTransform\Source Files</Filter>
+    </None>
+    <None Include="..\..\..\src\EntropyCoding\EndianCoder.tpp">
+      <Filter>EntropyCoding\Source Files</Filter>
+    </None>
+    <None Include="..\..\..\src\EntropyCoding\EntropyCode.tpp">
+      <Filter>EntropyCoding\Source Files</Filter>
+    </None>
+    <None Include="..\..\..\src\EntropyCoding\EntropyDecoder.tpp">
+      <Filter>EntropyCoding\Source Files</Filter>
+    </None>
+    <None Include="..\..\..\src\EntropyCoding\EntropyEncoder.tpp">
+      <Filter>EntropyCoding\Source Files</Filter>
+    </None>
+    <None Include="..\..\..\src\EntropyCoding\ibitwrapper.tpp">
+      <Filter>EntropyCoding\Source Files</Filter>
+    </None>
+    <None Include="..\..\..\src\EntropyCoding\obitwrapper.tpp">
+      <Filter>EntropyCoding\Source Files</Filter>
+    </None>
+    <None Include="..\..\..\src\EntropyCoding\SymbolCode.tpp">
+      <Filter>EntropyCoding\Source Files</Filter>
+    </None>
+    <None Include="..\..\..\src\EntropyCoding\SymbolDecoder.tpp">
+      <Filter>EntropyCoding\Source Files</Filter>
+    </None>
+    <None Include="..\..\..\src\EntropyCoding\SymbolEncoder.tpp">
+      <Filter>EntropyCoding\Source Files</Filter>
+    </None>
+    <None Include="..\..\..\src\WaveletTransform\SegmentPreCoder.tpp">
+      <Filter>WaveletTransform\Source Files</Filter>
+    </None>
+    <None Include="..\..\..\src\WaveletTransform\alligned_vector.tpp">
+      <Filter>WaveletTransform\Source Files</Filter>
+    </None>
+  </ItemGroup>
+</Project>
