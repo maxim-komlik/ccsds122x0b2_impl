@@ -210,7 +210,8 @@ void ForwardWaveletTransformer<T, allignment>::transform(const bitmap<T>& source
 			this->core.corrhfwd(source_row.ptr(), hbuffer[j].ptr(), lbuffer[j].ptr());
 			this->core.corrlfwd(source_row.ptr(), hbuffer[j].ptr(), lbuffer[j].ptr());
 		}
-		// debug block
+
+		// debug block, inverse op
 		{
 			bitmap<T> dstbuffer(source_meta.width, allignment, 32);
 			for (size_t j = 0; j < allignment; ++j) {

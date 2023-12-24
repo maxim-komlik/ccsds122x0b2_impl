@@ -243,6 +243,9 @@ TEST(segments, PrecoderRound) {
 
 	size_t out_row_offset = 0;
 	for (auto& block: decoded) {
+		// for (ptrdiff_t i = 0; i < block.size(); ++i) {
+		// 	block[i] = block[i].transpose();
+		// }
 		img_meta meta = block[0].getImgMeta();
 		img_pos fragment_props { 0 };
 		fragment_props.width = meta.width;

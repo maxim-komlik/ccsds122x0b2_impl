@@ -171,14 +171,20 @@ std::vector<segment<T>> SegmentPreCoder<T, allignment>::apply() {
 		// alligned_vector<T> diff(output[i].size);
 		output[i].quantizedDc = alligned_vector<T>(output[i].size);
 		T* diffData = *(output[i].quantizedDc);
-		mask = ~(-1 << (output[i].bdepthDc - output[i].q - 1));
+		// mask = ~(-1 << (output[i].bdepthDc - output[i].q - 1));
+		mask = ~(-1 << (output[i].bdepthDc - output[i].q));
 		T bound = mask + 1;
 		for (size_t ii = 0; ii < output[i].size; ii += allignment) {
 			for (size_t jj = 0; jj < allignment; ++jj) {
-				diffData[ii + jj] = segmentDc[ii + jj + 1];
-				T feta = (diffData[ii + jj] ^ (~(diffData[ii + jj] >> ((sizeof(T) << 3) - 1)))) & mask;
-				// T feta = bound - (diffData[ii + jj] ^ (diffData[ii + jj] >> ((sizeof(T) << 3) - 1)));
-				diffData[ii + jj] -= segmentDc[ii + jj];
+				// see 4.3.2.4
+				// see comments for transformation below after the function body
+				// diffData[ii + jj] = segmentDc[ii + jj + 1];
+				// T theta = (diffData[ii + jj] ^ (~(diffData[ii + jj] >> ((sizeof(T) << 3) - 1)))) & mask;
+				// // T theta = bound - (diffData[ii + jj] ^ (diffData[ii + jj] >> ((sizeof(T) << 3) - 1)));
+				// diffData[ii + jj] -= segmentDc[ii + jj];
+
+				diffData[ii + jj] = segmentDc[ii + jj + 1] - segmentDc[ii + jj];
+				T theta = (segmentDc[ii + jj] ^ (~(segmentDc[ii + jj] >> ((sizeof(T) << 3) - 1)))) & mask;
 
 				// effectively codes sign bit in the least significant bit
 				// allows applying xor by extended sign value
@@ -186,9 +192,10 @@ std::vector<segment<T>> SegmentPreCoder<T, allignment>::apply() {
 				// base = n >> 1
 				// value = base ^ signext(sign)
 				T sign = diffData[ii + jj] >> ((sizeof(T) << 3) - 1);
-				diffData[ii + jj] = std::abs(diffData[ii + jj]);
-				T rel = (feta - diffData[ii + jj]) >> ((sizeof(T) << 3) - 1);
-				diffData[ii + jj] += feta & rel;
+				diffData[ii + jj] = diffData[ii + jj] ^ sign;
+				// this implements strict less than
+				T rel = (theta - diffData[ii + jj]) >> ((sizeof(T) << 3) - 1);
+				diffData[ii + jj] += theta & rel;
 				diffData[ii + jj] += diffData[ii + jj] & (~rel);
 				diffData[ii + jj] -= sign;
 			}
@@ -196,24 +203,23 @@ std::vector<segment<T>> SegmentPreCoder<T, allignment>::apply() {
 
 		// debug block, reverse op
 		{
-			T rbound = this->segments[i].bdepthDc - this->segments[i].q;
-			rbound = ((-1) << rbound) ^ ((-1) << (rbound - 1));
-
-			for (ptrdiff_t j = 0; j < output[i].size; ++j) {
-				T feta = rbound - (this->segments[i].quantizedDc[j - 1] ^ (this->segments[i].quantizedDc[j - 1] >> ((sizeof(T) << 3) - 1)));
-				T predicate = this->segments[i].quantizedDc[j] - feta;
-				T signmask = this->segments[i].quantizedDc[j] >> ((sizeof(T) << 3) - 1);
-				T val = this->segments[i].quantizedDc[j];
+			diffData[-1] = output[i].referenceSample;
+			mask = ~(-1 << (output[i].bdepthDc - output[i].q));
+			for (ptrdiff_t j = 0; j < output[i].size - 1; ++j) {
+				T signmask = segmentDc[j] >> ((sizeof(T) << 3) - 1);
+				T theta = (segmentDc[j] ^ (~signmask)) & mask;
+				T predicate = diffData[j] - theta;
+				T val = diffData[j];
 				T diff = ((-(val & 0x01)) ^ (val >> 1));
-				if (predicate > feta) {
+				if (predicate > theta) {
 					diff = -(predicate ^ signmask) + signmask;
 				}
 
-				T restoredDcCoeff = this->segments[i].quantizedDc[j - 1] + diff;
-				if (restoredDcCoeff != segmentDc[j]) {
+				T restoredDcCoeff = segmentDc[j] + diff;
+				if (restoredDcCoeff != segmentDc[j + 1]) {
 					throw "NEQ!";
 				}
-				// (this->segments[i].data[j].content[0] | restoredDcCoeff << this->segments[i].q);
+				// (output[i].data[j].content[0] | restoredDcCoeff << output[i].q);
 			}
 		}
 
@@ -222,6 +228,82 @@ std::vector<segment<T>> SegmentPreCoder<T, allignment>::apply() {
 
 	return output;
 }
+
+// As per paragraph 4.3.2.4, p. 4-20
+// delta[m]' = c[m] - c[m-1]
+// 
+// rules:
+// delta[m] = 2*delta[m]'				: 0 <= delta[m]' <= theta			(1)
+// delta[m] = 2*abs(delta[m]') - 1		: -theta <= delta[m]' < 0			(2)
+// delta[m] = theta + abs(delta[m]')	otherwise							(3)
+// 
+// 
+// Obviously, 
+// abs(delta[m]') == delta[m]' : delta[m]' >= 0
+// (-theta <= delta[m]' <= 0)  <=>  (0 <= abs(delta[m]') <= theta)		: delta[m]' < 0
+// 
+// 
+// Let's define signext(t) as the following:
+// {
+//		t >> (bitsize(t) - 1)
+// }
+// (that effectively extends sign bit throughout all the mantiss; note that 
+// signext(t) == -1			: t < 0
+// signext(t) == 0			: t >= 0)
+// 
+// 
+// Let's define signxor(t) as the following:
+// {
+//		(signext(t) ^ t)  
+// <=>	(t >> (bitsize(t) - 1)) ^ t
+// 
+//		in C++ syntax:
+// <=>	(t >> ((sizeof(t) << 3) - 1)) ^ t
+// }
+//
+// Note that
+// abs(t) == signxor(t) - signext(t)
+// abs(t) == signxor(t)		: t >= 0
+// abs(t) == signxor(t) + 1	: t < 0
+// 
+// 
+// Note that in the original rules defined in 4.3.2.4, both rules (1) and (2) produce the same result value
+// when (delta[m]' == theta). This can be used to decrease the high range boundary by 1 for equation (1).
+// However, results of (2) and (3) are different when (abs(delta[m]') == theta), equation (3) is not 
+// applicable.
+// 
+// 
+// Rewruting equtaion (2) using signxor instead of abs:
+// delta[m] = 2*abs(delta[m]') - 1		: -theta <= delta[m]' <= 0
+//	<=>
+// delta[m] = 2*signxor(delta[m]') + 1	: {(0 < (signxor(delta[m]') - signext(delta[m]')) <= theta); (delta[m]' < 0)} 
+//  <=>
+// delta[m] = 2*signxor(delta[m]') - signext(delta[m]') 	: {(0 < (signxor(delta[m]') + 1) <= theta); (delta[m]' < 0)} 
+// 
+// Taking into accaount that delta[m]' and theta are integers, we can transform righ-hand part of unequation
+// to strict less than (<), subtracting 1 from the middle part.
+// delta[m] = 2*signxor(delta[m]') - signext(delta[m]') 	: {(0 < signxor(delta[m]') < theta); (delta[m]' < 0)} 
+// 
+// 
+// For equation (1) transform is straight-forward, just to use another notation:
+// delta[m] = 2*delta[m]'				: 0 <= delta[m]' <= theta
+//  <=>
+// delta[m] = 2*abs(delta[m]')				: {(0 <= abs(delta[m]') <= theta), (delta[m]' >= 0)}
+//  <=>
+// delta[m] = 2*(signxor(delta[m]') - signext(delta[m]'))	
+//			: {(0 <= (signxor(delta[m]') - signext(delta[m]')) <= theta), (delta[m]' >= 0)}
+//  <=> (signext(delta[m]') == 0 : delta[m]' >= 0)
+// delta[m] = 2*signxor(delta[m]') - signext(delta[m]')	: {(0 <= signxor(delta[m]') <= theta), (delta[m]' >= 0)}
+//  <=> (reducing unequality range as explained above)
+// delta[m] = 2*signxor(delta[m]') - signext(delta[m]')	: {(0 <= signxor(delta[m]') < theta), (delta[m]' >= 0)}
+// 
+// 
+// Rewriting rules defined in 4.3.2.4 using signxor instead of abs finally results in:
+// delta[m] = 2*signxor(delta[m]') - signext(delta[m]')			0 <= signxor(delta[m]') < theta
+// delta[m] = theta + signxor(delta[m]') - signext(delta[m]'	otherwise
+// 
+//
+
 
 template <typename T, size_t allignment>
 size_t SegmentPreCoder<T, allignment>::bdepth(T* src, size_t length) {
@@ -289,20 +371,34 @@ template <typename T, size_t allignment>
 SegmentPostDecoder<T, allignment>::output_t SegmentPostDecoder<T, allignment>::apply(size_t image_width) {
 	for (ptrdiff_t i = 0; i < this->segments.size(); ++i) {
 		// reference sample:
-		this->segments[i].data[0].content[0] |= this->segments[i].quantizedDc[0] << this->segments[i].q;
-		T bound = this->segments[i].bdepthDc - this->segments[i].q;
-		bound = ((-1) << bound) ^ ((-1) << (bound - 1));
-		for (ptrdiff_t j = 1; j < this->segments[i].size; ++j) {
-			T feta = bound - (this->segments[i].quantizedDc[j - 1] ^ (this->segments[i].quantizedDc[j - 1] >> ((sizeof(T) << 3) - 1)));
-			T predicate = this->segments[i].quantizedDc[j] - feta;
-			T signmask = this->segments[i].quantizedDc[j] >> ((sizeof(T) << 3) - 1);
-			T val = this->segments[i].quantizedDc[j];
+		this->segments[i].data[0].content[0] |= this->segments[i].referenceSample << this->segments[i].q;
+		T* diffData = *(this->segments[i].quantizedDc);
+		diffData[-1] = this->segments[i].referenceSample;
+		// T bound = this->segments[i].bdepthDc - this->segments[i].q;
+		// bound = ((-1) << bound) ^ ((-1) << (bound - 1));
+
+		T mask = ~(-1 << (this->segments[i].bdepthDc - this->segments[i].q));
+		for (ptrdiff_t j = 0; j < this->segments[i].size - 1; ++j) {
+			// T theta = bound - (this->segments[i].quantizedDc[j - 1] ^ (this->segments[i].quantizedDc[j - 1] >> ((sizeof(T) << 3) - 1)));
+			// T predicate = this->segments[i].quantizedDc[j] - theta;
+			// T signmask = this->segments[i].quantizedDc[j] >> ((sizeof(T) << 3) - 1);
+			// T val = this->segments[i].quantizedDc[j];
+			// T diff = ((-(val & 0x01)) ^ (val >> 1));
+			// if (predicate > theta) {
+			// 	diff = -(predicate ^ signmask) + signmask;
+			// }
+
+			T signmask = diffData[j - 1] >> ((sizeof(T) << 3) - 1);
+			T theta = (diffData[j - 1] ^ (~signmask)) & mask;
+			T predicate = diffData[j] - theta;
+			T val = diffData[j];
 			T diff = ((-(val & 0x01)) ^ (val >> 1));
-			if (predicate > feta) {
+			if (predicate > theta) {
 				diff = -(predicate ^ signmask) + signmask;
 			}
-			this->segments[i].quantizedDc[j] = this->segments[i].quantizedDc[j - 1] + diff;
-			this->segments[i].data[j].content[0] |= this->segments[i].quantizedDc[j] << this->segments[i].q;
+
+			diffData[j] = diffData[j - 1] + diff;
+			this->segments[i].data[j + 1].content[0] |= diffData[j] << this->segments[i].q;
 		}
 	}
 
@@ -536,7 +632,7 @@ SegmentPostDecoder<T, allignment>::output_t SegmentPostDecoder<T, allignment>::u
 				base_col_i = 0;
 			}
 
-			size_t buffer_linear_index = base_col_i * ll3_meta.width + base_row_i;
+			size_t buffer_linear_index = base_row_i * ll3_meta.width + base_col_i;
 			// check if multiple segments fit one buffer (j is 0 on segment start 
 			// and buffers may not be empty)
 			ptrdiff_t segment_bound = j + 
@@ -581,19 +677,27 @@ SegmentPostDecoder<T, allignment>::output_t SegmentPostDecoder<T, allignment>::u
 					}
 				}
 
-				++base_row_i;
-				base_col_i += (base_row_i >= ll3_meta.width);
-				base_row_i &= ((base_row_i >= ll3_meta.width) - 1);
+				++base_col_i;
+				base_row_i += (base_col_i >= ll3_meta.width);
+				base_col_i &= (base_col_i >= ll3_meta.width) - 1;
 			}
 		}
 	}
-	base_col_i += (base_row_i > 0);
+	base_row_i += (base_col_i > 0);
 	for (ptrdiff_t level = 0; level < 3; ++level) {
 		for (ptrdiff_t level_offset = (level > 0); level_offset < 4; ++level_offset) {
 			ptrdiff_t buffer_index = 3 * level + level_offset;
-			buffers_collection.back()[buffer_index].shrink(base_col_i << level);
+			buffers_collection.back()[buffer_index].shrink(base_row_i << level);
 		}
 	}
 
 	return buffers_collection;
 }
+
+// draft implementation of further bit plane coding of DC coefficients and AC depths
+
+template <typename T>
+size_t kHeuristic(alligned_vector<T> quantizedDcs) {
+
+}
+
