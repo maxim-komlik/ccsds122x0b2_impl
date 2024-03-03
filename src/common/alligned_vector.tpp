@@ -1,3 +1,5 @@
+#pragma once
+
 #include <algorithm>
 
 template <typename T, size_t allignment = 16>
@@ -26,8 +28,10 @@ public:
 
 	void fill(size_t length, T* origin);
 	void resize(size_t length);
+	size_t size() const noexcept;
 	// T operator[](size_t index) const;
 	T& operator[](size_t index) const;
+	// TODO: refactor operator in favor of member ptr() or data() function
 	T* operator*() const;
 private:
 	void __reallocate();
@@ -170,6 +174,11 @@ namespace std {
 	void swap(alligned_vector<T, allignment>& first, alligned_vector<T, allignment>& second) noexcept {
 		swap(first, second);
 	}
+}
+
+template <typename T, size_t allignment>
+size_t alligned_vector<T, allignment>::size() const noexcept {
+	return this->m_length;
 }
 
 template <typename T, size_t allignment>

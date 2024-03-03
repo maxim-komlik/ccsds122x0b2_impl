@@ -81,7 +81,7 @@ TEST(entropy, EncoderSmoke) {
 		0b0010'1100'0100'0000'0000'0000'0000'0000
 	};
 
-	std::cout << "Encoded count: " << encodedCount << std::endl;
+	// std::cout << "Encoded count: " << encodedCount << std::endl;
 	size_t index = 0;
 	obuffer_t temp;
 	my_ostream.read((stream_t::char_type*)&temp, sizeof(temp) / sizeof(stream_t::char_type));
@@ -147,7 +147,7 @@ TEST(entropy, DecoderSmoke) {
 		}
 	}
 
-	std::cout << "Decoded count: " << decodedCount << std::endl;
+	// std::cout << "Decoded count: " << decodedCount << std::endl;
 	for (size_t i = 0; i < sizeof(expected) / sizeof(*expected); ++i) {
 		// std::cout << std::hex << actual[i] << " : " << expected[i] << std::endl;
 		EXPECT_EQ(actual[i], expected[i]);

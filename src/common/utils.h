@@ -2,6 +2,8 @@
 
 #include <functional>
 
+// loop unroll staff
+
 enum UnrollFoldType {
 	left,
 	right
@@ -74,15 +76,98 @@ struct _unroll_wrapper<true, UT> {
 template <bool B = false, UnrollFoldType UT = left>
 using unroll = _unroll_wrapper<B, UT>;
 
+// common type wrappers and helpers
 
-// template <typename T>
-// inline T altitude(T val) {
-// 	constexpr size_t bitsize = (sizeof(T) << 3) - 1;
-// 	return (val ^ (val >> bitsize)) - (val >> bitsize);
-// }
-// 
-// template <typename T>
-// inline T relu(T val) {
-// 	constexpr size_t bitsize = (sizeof(T) << 3) - 1;
-// 	return val & (~(val >> bitsize));
-// }
+template <size_t size_bytes>
+struct _sufficient_integral;
+
+template <>
+struct _sufficient_integral<2> {
+	typedef int_fast16_t type;
+};
+
+template <>
+struct _sufficient_integral<4> {
+	typedef int_fast32_t type;
+};
+
+template <>
+struct _sufficient_integral<8> {
+	typedef int_fast64_t type;
+};
+
+template <typename T>
+using sufficient_integral = _sufficient_integral<sizeof(T)>;
+
+
+template <typename T>
+class Finalizer {
+private:
+	friend T;
+	~Finalizer() = default;
+};
+
+// general util functions
+
+// Copy-swap for strong exception safety
+template <typename T>
+T& strong_assign(T& dst, T src) {
+	using std::swap;
+	swap(dst, src);
+	return dst;
+}
+
+// Vectorizable alternative for abs
+template <typename T>
+inline T magnitude(T val) {
+	constexpr size_t bitsize = (sizeof(T) << 3) - 1;
+	return (val ^ (val >> bitsize)) - (val >> bitsize);
+}
+
+template <typename T>
+inline T signxor(T val) {
+	constexpr size_t bitsize = (sizeof(T) << 3) - 1;
+	return (val ^ (val >> bitsize));
+}
+
+// TODO: apply signed constraint (uses sign extension)
+// Currently fixed via make_unsigned, therefore input
+// value is limited to ((1 << (sizeof(T) << 3) - 1) - 1)
+// in unsigned representation (not valid for negative ints)
+template <typename T>
+inline T relu(std::make_signed_t<T> val) {
+	constexpr size_t bitsize = (sizeof(T) << 3) - 1;
+	return val & (~(val >> bitsize));
+}
+
+// Requires src to be large enough to handle *length* elements 
+// + rest of allignment unit at the end. Otherwise blame yourself.
+template <typename T, size_t allignment>
+size_t bdepthv(T* src, size_t length) {
+	T buffer[allignment] = { 0 };
+
+	for (size_t i = 0; i < length; i += allignment) {
+		for (size_t j = 0; j < allignment; ++j) {
+			// TODO: check handling negative power-of-two
+			// call below is actually abs
+			buffer[j] |= magnitude<T>(src[i + j]);
+		}
+	}
+
+	for (size_t i = allignment >> 1; i > 0; i >>= 1) {
+		for (size_t j = 0; j < i; ++j) {
+			buffer[j] |= buffer[i + j];
+		}
+	}
+
+	size_t depth = sizeof(*buffer) << 3;
+	size_t i = ((size_t)-1) << (depth - 1);
+	while (!(i & buffer[0])) {
+		i >>= 1;
+		--depth;
+	}
+
+	// size_t depth = ((sizeof(i) << 3) - 1);
+	// for (size_t i = ((-1) << depth); !(i & buffer); i >>= 1, --depth) { }
+	return depth;
+}

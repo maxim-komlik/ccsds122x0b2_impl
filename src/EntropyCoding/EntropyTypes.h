@@ -24,20 +24,6 @@ struct _variadic_code_item {
 typedef _variadic_code_item SymbolEncoding;
 typedef _variadic_code_item shift_params;
 
-template <typename T>
-class Finalizer {
-private:
-	friend T;
-	~Finalizer() = default;
-};
-
-template <typename T, typename retT, typename... argT> 
-class Callable {
-  friend T;
-protected:
-	retT callback(argT... args) const = delete;
-};
-
 template <typename int_type>
 struct char_type;
 

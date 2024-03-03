@@ -1,6 +1,7 @@
 JPEG2000 does not use integer trasform 9/7, it uses 5/3 instead.
-
 Add references to open-source implementations
+
+TODO: reverse operation for BPE:DC encoding
 
 TODO: compute vector stride using sizeof(T)
 
@@ -20,7 +21,7 @@ Well, there is a gaggle that contains of 16 blocks. Each block has a set of word
 length of all words is well-known (It is defined in table). At every stage a block might have some words 
 of length 2, 3, or 4, but throughout the process of decoding all particular lengths for every word are 
 known. Another block in the same gaggle may have the same words of different lengths. But anyway, there
-are only 3 word length options are available. The gaggle parameters define one coding option for every 
+are only 3 word length options available. The gaggle parameters define one coding option for every 
 word length for all words of that length for all blocks within the gaggle, that is, supposing that b1 has
 transH word 4-bit len and types[C] word 3-bit length, and b2 has transH word 3-bit len and types[C] word 
 4-bit length, the same coding option for transH and types[C] 4-bit words must be used, as well as the same

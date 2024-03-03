@@ -30,7 +30,6 @@ class EntropyDecoder {
 
 public:
 	EntropyDecoder(istream_t& istream): m_istream(istream), bitbuffer(fetchCallback) {}
-	// check if needed to explicitly define destructor (destructor call on reference)
 	~EntropyDecoder() = default;
 
 	EntropyDecoder(EntropyDecoder& other) = delete;

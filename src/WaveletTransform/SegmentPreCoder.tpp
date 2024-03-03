@@ -1,40 +1,12 @@
+#pragma once
+
+// TODO: refactor include paths
+#include "core_types.h"
+#include "utils.h"
 #include "bitmap.tpp"
-#include "alligned_vector.tpp"
 
 #include <array>
 #include <vector>
-
-//template <typename T>
-//union block {
-//	T content[64];
-//};
-
-template <typename T>
-struct segment {
-	size_t size;
-	size_t bdepthDc;
-	size_t bdepthAc;
-	size_t q;
-
-	T referenceSample;
-	alligned_vector<T> quantizedDc;
-	alligned_vector<T> plainDc;
-
-	std::vector<typename block<T>> data;
-};
-
-template <typename T>
-inline T altitude(T val) {
-	constexpr size_t bitsize = (sizeof(T) << 3) - 1;
-	return (val ^ (val >> bitsize)) - (val >> bitsize);
-}
-
-// TODO: apply signed constrain (uses sign extension)
-template <typename T>
-inline T relu(T val) {
-	constexpr size_t bitsize = (sizeof(T) << 3) - 1;
-	return val & (~(val >> bitsize));
-}
 
 template <typename T, size_t allignment = 16>
 class SegmentPreCoder {
@@ -49,10 +21,25 @@ public:
 	std::vector<segment<T>> apply();
 private:
 	std::vector<segment<T>> pack();
-	std::size_t bdepth(T* src, size_t length);
 	// let here compiler do necessary type conversion to avoid unsigned underflow
 	inline size_t segmentQ(ptrdiff_t bdepthDc, ptrdiff_t bdepthAc) noexcept;
 };
+
+template <typename T, size_t allignment = 16>
+class SegmentPostDecoder {
+	std::vector<typename segment<T>> segments;
+
+	static const size_t c_families_count = 3;
+public:
+	typedef std::vector<typename std::array<typename bitmap<T>, 10>> output_t;
+
+	SegmentPostDecoder(std::vector<segment<T>> input);
+	output_t apply(size_t image_width);
+private:
+	output_t unpack(size_t image_width);
+};
+
+// SegmentPreCoder class template implementation
 
 template <typename T, size_t allignment>
 SegmentPreCoder<T, allignment>::SegmentPreCoder(std::array<typename bitmap<T>, 10> input) : buffers(input) {}
@@ -134,7 +121,7 @@ std::vector<segment<T>> SegmentPreCoder<T, allignment>::pack() {
 template<typename T, size_t allignment>
 std::vector<segment<T>> SegmentPreCoder<T, allignment>::apply() {
 	// TODO:
-	// AC values: sign bit + mgnitude (see p. 4-3)
+	// AC values: sign bit + magnitude (see p. 4-3)
 	// perform scaling of the input depending on its type (ceiling or shifting)
 	std::vector<segment<T>> output = this->pack();
 	for (size_t i = 1; i < this->buffers.size(); ++i) {
@@ -143,8 +130,9 @@ std::vector<segment<T>> SegmentPreCoder<T, allignment>::apply() {
 	}
 
 	for (size_t i = 0; i < output.size(); ++i) {
-		//hard casting - potentially need to fix
-		output[i].bdepthAc = this->bdepth((T*)output[i].data.data(), output[i].size * this->c_block_item_count);
+		// dc coefficients are not assigned to block[0] in pack function, hence bdepth below 
+		// is effective for ac only
+		output[i].bdepthAc = bdepthv<T, allignment>(output[i].data.data()->content, output[i].size * this->c_block_item_count);
 	}
 
 	size_t dc_index = 0;
@@ -153,7 +141,7 @@ std::vector<segment<T>> SegmentPreCoder<T, allignment>::apply() {
 		output[i].plainDc = alligned_vector<T>(output[i].size);
 		T* segmentDc = *(output[i].plainDc);
 		this->buffers[0].linear(segmentDc, output[i].size, dc_index);
-		output[i].bdepthDc = this->bdepth(segmentDc, output[i].size);
+		output[i].bdepthDc = bdepthv<T, allignment>(segmentDc, output[i].size);
 		output[i].q = this->segmentQ(output[i].bdepthDc, output[i].bdepthAc);
 
 		T mask = ~(-1 << output[i].q);
@@ -168,21 +156,14 @@ std::vector<segment<T>> SegmentPreCoder<T, allignment>::apply() {
 		}
 		output[i].referenceSample = segmentDc[0];
 
-		// alligned_vector<T> diff(output[i].size);
 		output[i].quantizedDc = alligned_vector<T>(output[i].size);
 		T* diffData = *(output[i].quantizedDc);
-		// mask = ~(-1 << (output[i].bdepthDc - output[i].q - 1));
 		mask = ~(-1 << (output[i].bdepthDc - output[i].q));
 		T bound = mask + 1;
 		for (size_t ii = 0; ii < output[i].size; ii += allignment) {
 			for (size_t jj = 0; jj < allignment; ++jj) {
 				// see 4.3.2.4
 				// see comments for transformation below after the function body
-				// diffData[ii + jj] = segmentDc[ii + jj + 1];
-				// T theta = (diffData[ii + jj] ^ (~(diffData[ii + jj] >> ((sizeof(T) << 3) - 1)))) & mask;
-				// // T theta = bound - (diffData[ii + jj] ^ (diffData[ii + jj] >> ((sizeof(T) << 3) - 1)));
-				// diffData[ii + jj] -= segmentDc[ii + jj];
-
 				diffData[ii + jj] = segmentDc[ii + jj + 1] - segmentDc[ii + jj];
 				T theta = (segmentDc[ii + jj] ^ (~(segmentDc[ii + jj] >> ((sizeof(T) << 3) - 1)))) & mask;
 
@@ -201,6 +182,9 @@ std::vector<segment<T>> SegmentPreCoder<T, allignment>::apply() {
 			}
 		}
 
+		// TODO: implement constexpr if to enable the block below in 
+		// debug builds only
+		// 
 		// debug block, reverse op
 		{
 			diffData[-1] = output[i].referenceSample;
@@ -219,7 +203,6 @@ std::vector<segment<T>> SegmentPreCoder<T, allignment>::apply() {
 				if (restoredDcCoeff != segmentDc[j + 1]) {
 					throw "NEQ!";
 				}
-				// (output[i].data[j].content[0] | restoredDcCoeff << output[i].q);
 			}
 		}
 
@@ -302,36 +285,6 @@ std::vector<segment<T>> SegmentPreCoder<T, allignment>::apply() {
 // delta[m] = 2*signxor(delta[m]') - signext(delta[m]')			0 <= signxor(delta[m]') < theta
 // delta[m] = theta + signxor(delta[m]') - signext(delta[m]'	otherwise
 // 
-//
-
-
-template <typename T, size_t allignment>
-size_t SegmentPreCoder<T, allignment>::bdepth(T* src, size_t length) {
-	T buffer[allignment] = { 0 };
-
-	for (size_t i = 0; i < length; i += allignment) {
-		for (size_t j = 0; j < allignment; ++j) {
-			buffer[j] |= altitude<T>(src[i + j]);
-		}
-	}
-
-	for (size_t i = allignment >> 1; i > 0; i >>= 1) {
-		for (size_t j = 0; j < i; ++j) {
-			buffer[j] |= buffer[i + j];
-		}
-	}
-	
-	size_t depth = sizeof(*buffer) << 3;
-	size_t i = ((size_t) -1) << (depth - 1);
-	while (!(i & buffer[0])) {
-		i >>= 1;
-		--depth;
-	}
-
-	// size_t depth = ((sizeof(i) << 3) - 1);
-	// for (size_t i = ((-1) << depth); !(i & buffer); i >>= 1, --depth) { }
-	return depth;
-}
 
 template <typename T, size_t allignment>
 size_t SegmentPreCoder<T, allignment>::segmentQ(ptrdiff_t bdepthDc, ptrdiff_t bdepthAc) noexcept {
@@ -348,21 +301,7 @@ size_t SegmentPreCoder<T, allignment>::segmentQ(ptrdiff_t bdepthDc, ptrdiff_t bd
 	return std::max<decltype(bdepthAc)>(bdepthAc, 3);
 }
 
-
-template <typename T, size_t allignment = 16>
-class SegmentPostDecoder {
-	std::vector<typename segment<T>> segments;
-
-	static const size_t c_families_count = 3;
-public:
-	typedef std::vector<typename std::array<typename bitmap<T>, 10>> output_t;
-
-	SegmentPostDecoder(std::vector<segment<T>> input);
-	output_t apply(size_t image_width);
-private:
-	output_t unpack(size_t image_width);
-	output_t unpack_impl(size_t image_width);
-};
+// SegmentPostDecoder class template implementation
 
 template <typename T, size_t allignment>
 SegmentPostDecoder<T, allignment>::SegmentPostDecoder(std::vector<segment<T>> input): segments(input) {}
@@ -403,150 +342,11 @@ SegmentPostDecoder<T, allignment>::output_t SegmentPostDecoder<T, allignment>::a
 	}
 
 	// do unpack here
-	return this->unpack_impl(image_width);
+	return this->unpack(image_width);
 }
 
 template <typename T, size_t allignment>
 SegmentPostDecoder<T, allignment>::output_t SegmentPostDecoder<T, allignment>::unpack(size_t image_width) {
-	// // only image width is known at this stage.
-	// // define vector of bimap arrays instead.
-	// std::array<typename bitmap<T>, 10> buffers; // TODO: initialization tactics
-	// size_t image_width; // TODO: input parameter
-
-	output_t buffers_collection;
-	// TODO: needs proper image dimension checks to comply with requirements
-	// (but checks may be performed on a previous stage)
-	img_meta base_meta = [](size_t _image_width) noexcept -> img_meta {
-			constexpr size_t height_limit = 0x01 << 11;
-			constexpr size_t length_limit = 0x01 << 28;
-			img_meta target {};
-			target.width = _image_width;
-			if (_image_width < height_limit) {
-				target.height = _image_width;
-			} else {
-				size_t length = _image_width * _image_width;
-				if (length < length_limit) {
-					target.height = height_limit;
-				} else {
-					target.height = length_limit;
-				}
-			}
-			target.length = target.width * target.height;
-			return target;
-		}(image_width);
-
-	auto init_buffers_f = 
-		[](size_t width, size_t height) {
-			std::array<bitmap<T>, 10> buffers;
-			constexpr size_t c_level_count = 3;
-			constexpr size_t buffer_iter_step = 3;
-			for (size_t i = 0; i < c_level_count; ++i) {
-				width /= 2;
-				height /= 2;
-				for (ptrdiff_t j = 0; j < buffer_iter_step; ++j) {
-					buffers[buffers.size() - (i + 1) * buffer_iter_step + j].resize(width, height);
-				}
-			}
-			buffers[0].resize(width, height);
-			return buffers;
-		};
-	buffers_collection.emplace_back(init_buffers_f(base_meta.width, base_meta.height));
-	// TODO: refactor and decide how to handle dimensions
-	// cast to LL3
-	img_meta ll3_meta = base_meta;
-	ll3_meta.width /= 8;
-	ll3_meta.height /= 8;
-	ll3_meta.length = ll3_meta.width * ll3_meta.height;
-
-	// TODO: may need an offset if segments are processed concurrently.
-	// inherently requires bitmap image offset since segments are not alligned
-	// per image boundaries. But offset is applicable to the first buffer row 
-	// only and is (img.width - 1) at most.
-	size_t total_segment_index = 0; 
-	constexpr ptrdiff_t overlap_rows = 16;
-	ptrdiff_t total_row_offset = 0; 
-	for (ptrdiff_t i = 0; i < this->segments.size(); ++i) {
-		for (ptrdiff_t j = 0; j < this->segments[i].size; ++j) {
-			ptrdiff_t base_row_i = total_segment_index / ll3_meta.width;
-			// instead of modulo, values are positive
-			ptrdiff_t base_col_i = total_segment_index - (ll3_meta.width * base_row_i);
-			ptrdiff_t l = 0;
-			ptrdiff_t disp[3] = { 0 };
-
-			// compact implimentation, lacks memory locality, but should benefit from well predictable 
-			// and uniform branching
-			// section 4.1, p.27
-			// this magic needs some clarification:
-			// Coefficients populates the bitmap group by group, starting from DC at index 0
-			// groups are: (DC), (Pi), (Ci), (Gi); handled left to right. 
-			// level variable represents the current group.
-			// Binary representation of item index inside of a block 
-			// correlates with item position indicies in the bitmap
-			// when trated by bit pairs. Item index inside of a block 
-			// is treated according to the current group (therefore 
-			// number of displacemet coefficients coputed from the 
-			// index increases from 0 up to 3). Relu function is 
-			// necessary to make implementation work for both DC group
-			// consisting of a cingle item at index 0 and Parents 
-			// group with items at indicies [1...3].
-			// Implementation can be generlized for 3+ level DWT 
-			for (ptrdiff_t bound_i = 0; bound_i <= 6; bound_i += 2) {
-				ptrdiff_t bound = 1ll << bound_i;
-				ptrdiff_t level = bound_i >> 1;
-				for (; l < bound; ++l) {
-					ptrdiff_t mask = (0b11 << bound_i) >> 2;
-					for (ptrdiff_t k = 0; mask > 0; ++k, mask >>= 2) {
-						disp[k] = (l & mask) >> ((level - k - 1) << 1);
-					}
-					buffers_collection.back()[3 * relu(level - 1) + disp[0]]
-						[(base_row_i << relu(level - 1)) +
-							((disp[1] >> 1) * relu(level - 1)) +
-							((disp[2] >> 1) * relu(level - 2))]
-						[(base_col_i << relu(level - 1)) +
-							((disp[1] & 0x01) * relu(level - 1)) +
-							((disp[2] & 0x01) * relu(level - 2))]
-						= this->segments[i].data[j].content[l];
-				}
-			}
-
-			++total_segment_index;
-			// create new buffer if needed
-			// Copy coeffs from previous buffer set to the new one
-			// so that data overlaps, permitting concurrent processing 
-			// of output buffers by several DWT simultaneously. This 
-			// allows to merge DWT output.
-			if (total_segment_index >= ll3_meta.length) {
-				auto src = buffers_collection.back(); // TODO: may be invalidated, bogous
-				buffers_collection.emplace_back(init_buffers_f(base_meta.width, base_meta.height));
-				total_row_offset += ll3_meta.height - overlap_rows;
-				auto dst = buffers_collection.back();
-				for (ptrdiff_t level = 0; level < 3; ++level) {
-					ptrdiff_t level_overlap = overlap_rows << level;
-					ptrdiff_t src_overlap_offset = (ll3_meta.height - overlap_rows) << level;
-					for (ptrdiff_t level_offset = (level > 0); level_offset < 4; ++level_offset) {
-						for (ptrdiff_t row_i = 0; row_i < level_overlap; ++row_i) {
-							ptrdiff_t buffer_index = 3 * level + level_offset;
-							dst[buffer_index][row_i].assign(src[buffer_index][src_overlap_offset + row_i]);
-						}
-					}
-				}
-			}
-		}
-	}
-
-	size_t last_height = ((total_segment_index * 64) / base_meta.width) - total_row_offset;
-	for (ptrdiff_t level = 0; level < 3; ++level) {
-		for (ptrdiff_t level_offset = (level > 0); level_offset < 4; ++level_offset) {
-			ptrdiff_t buffer_index = 3 * level + level_offset;
-			buffers_collection.back()[buffer_index].shrink(last_height >> (3 - level));
-		}
-	}
-	return buffers_collection;
-}
-
-
-template <typename T, size_t allignment>
-SegmentPostDecoder<T, allignment>::output_t SegmentPostDecoder<T, allignment>::unpack_impl(size_t image_width) {
 	constexpr size_t min_img_width = 17;
 	constexpr size_t img_granularity = 16;
 	image_width = std::max(image_width, min_img_width);
@@ -652,7 +452,7 @@ SegmentPostDecoder<T, allignment>::output_t SegmentPostDecoder<T, allignment>::u
 				// correlates with item position indicies in the bitmap
 				// when treated by bit pairs. Item index inside of a block 
 				// is treated according to the current group (therefore 
-				// number of displacemet coefficients coputed from the 
+				// number of displacemet coefficients computed from the 
 				// index increases from 0 up to 3). Relu function is 
 				// necessary to make implementation work for both DC group
 				// consisting of a single item at index 0 and Parents 
@@ -693,11 +493,3 @@ SegmentPostDecoder<T, allignment>::output_t SegmentPostDecoder<T, allignment>::u
 
 	return buffers_collection;
 }
-
-// draft implementation of further bit plane coding of DC coefficients and AC depths
-
-template <typename T>
-size_t kHeuristic(alligned_vector<T> quantizedDcs) {
-
-}
-

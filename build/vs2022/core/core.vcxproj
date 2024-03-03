@@ -53,6 +53,7 @@
       <SDLCheck>true</SDLCheck>
       <PreprocessorDefinitions>_DEBUG;_LIB;%(PreprocessorDefinitions)</PreprocessorDefinitions>
       <ConformanceMode>true</ConformanceMode>
+      <AdditionalIncludeDirectories>$(RepositorySourceDir)common;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
     </ClCompile>
     <Link>
       <SubSystem>
@@ -78,6 +79,7 @@
     </Link>
   </ItemDefinitionGroup>
   <ItemGroup>
+    <ClInclude Include="..\..\..\src\common\core_types.h" />
     <ClInclude Include="..\..\..\src\common\utils.h" />
     <ClInclude Include="..\..\..\src\EntropyCoding\EntropyTypes.h" />
     <ClInclude Include="..\..\..\src\EntropyCoding\entropy_utils.h" />
@@ -86,23 +88,17 @@
     <ClInclude Include="..\..\..\src\EntropyCoding\symbolstream.h" />
     <ClInclude Include="..\..\..\src\EntropyCoding\symbolstream_base.h" />
     <ClInclude Include="..\..\..\src\EntropyCoding\symbol_utils.h" />
-    <ClInclude Include="framework.h" />
-    <ClInclude Include="pch.h" />
   </ItemGroup>
   <ItemGroup>
-    <ClCompile Include="..\..\..\src\EntropyCoding\EntropyCoding.cpp" />
     <ClCompile Include="..\..\..\src\EntropyCoding\isymbolstream.cpp" />
     <ClCompile Include="..\..\..\src\EntropyCoding\osymbolstream.cpp" />
     <ClCompile Include="..\..\..\src\EntropyCoding\symbolstream.cpp" />
     <ClCompile Include="..\..\..\src\EntropyCoding\symbolstream_base.cpp" />
-    <ClCompile Include="..\..\..\src\WaveletTransform\WaveletTransform.cpp" />
     <ClCompile Include="core.cpp" />
-    <ClCompile Include="pch.cpp">
-      <PrecompiledHeader Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">Create</PrecompiledHeader>
-      <PrecompiledHeader Condition="'$(Configuration)|$(Platform)'=='Release|x64'">Create</PrecompiledHeader>
-    </ClCompile>
   </ItemGroup>
   <ItemGroup>
+    <None Include="..\..\..\src\common\alligned_vector.tpp" />
+    <None Include="..\..\..\src\EntropyCoding\BitPlaneEncoder.tpp" />
     <None Include="..\..\..\src\EntropyCoding\EndianCoder.tpp" />
     <None Include="..\..\..\src\EntropyCoding\EntropyCode.tpp" />
     <None Include="..\..\..\src\EntropyCoding\EntropyDecoder.tpp" />
@@ -112,7 +108,6 @@
     <None Include="..\..\..\src\EntropyCoding\SymbolCode.tpp" />
     <None Include="..\..\..\src\EntropyCoding\SymbolDecoder.tpp" />
     <None Include="..\..\..\src\EntropyCoding\SymbolEncoder.tpp" />
-    <None Include="..\..\..\src\WaveletTransform\alligned_vector.tpp" />
     <None Include="..\..\..\src\WaveletTransform\bitmap.tpp" />
     <None Include="..\..\..\src\WaveletTransform\DWT.tpp" />
     <None Include="..\..\..\src\WaveletTransform\dwtcore.tpp" />

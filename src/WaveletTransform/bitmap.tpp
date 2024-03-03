@@ -20,19 +20,12 @@ class bitmap_row {
 	T* const row_start;
 	size_t row_width;
 public:
-	// TODO: this may break language built-in mechanisms
-	// // Warning!
-	// // Move only, but copy assignemnt is used for an aggregate operation
 	bitmap_row(bitmap_row&& other) = default;
 	bitmap_row& operator=(bitmap_row&& other) = default;
 
-	bitmap_row(const bitmap_row&) = delete;
-	bitmap_row& operator=(const bitmap_row& other) = delete;;
-	// // inaccurate assign operator, vectorizable
-	// bitmap_row& operator=(const bitmap_row& other);
-	// // Fill assignement
-	// bitmap_row& operator=(T other);
-
+	// TODO: check if needed to declare copy members as deleted
+	// bitmap_row(const bitmap_row&) = delete;
+	// bitmap_row& operator=(const bitmap_row& other) = delete;
 
 	// inaccurate content assignment, vectorizable
 	bitmap_row& assign(const bitmap_row& source);
@@ -82,6 +75,13 @@ public:
 private:
 	void __reallocate();
 };
+
+template <typename T, size_t allignment>
+void overlapBitmaps(const bitmap<T, allignment>& src, bitmap<T, allignment>& dst,
+	size_t overlap_height);
+
+// Implementatios section
+// bitmap class template implementation
 
 template <typename T, size_t allignment>
 bitmap<T, allignment>::~bitmap() {
@@ -383,6 +383,8 @@ void bitmap<T, allignment>::linear(T* dst, size_t length, size_t linear_index) c
 		tdst[i] = 0;
 	}
 }
+
+// bitmap_row class template implementation
 
 template <typename T, size_t allignment>
 bitmap_row<T> bitmap<T, allignment>::operator[](size_t index) const {

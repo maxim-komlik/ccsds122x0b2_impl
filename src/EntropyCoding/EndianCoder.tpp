@@ -1,5 +1,9 @@
 #pragma once
 
+// TODO: This functionality is ptrovided by the standard library since C++23
+// See std::byteswap
+// THerefore should be removed.
+
 #include <type_traits>
 
 enum EndianOption {
@@ -7,8 +11,10 @@ enum EndianOption {
 	Big
 };
 
+// TODO: this design may need refactoring. Current implementation is an 
+// artifact left after the old template specialization impelementation.
 template <typename T>
-struct EndianCoder /*<Little, Big, T>*/ {
+struct EndianCoder {
 	typedef typename std::make_unsigned<T>::type uT;
 	typedef typename std::make_signed<T>::type sT;
 	static T apply(T word) {

@@ -45,12 +45,6 @@
     </Filter>
   </ItemGroup>
   <ItemGroup>
-    <ClInclude Include="framework.h">
-      <Filter>common\librarian\Header Files</Filter>
-    </ClInclude>
-    <ClInclude Include="pch.h">
-      <Filter>common\librarian\Header Files</Filter>
-    </ClInclude>
     <ClInclude Include="..\..\..\src\EntropyCoding\entropy_utils.h">
       <Filter>EntropyCoding\Header Files</Filter>
     </ClInclude>
@@ -75,15 +69,12 @@
     <ClInclude Include="..\..\..\src\common\utils.h">
       <Filter>common\librarian\Header Files</Filter>
     </ClInclude>
+    <ClInclude Include="..\..\..\src\common\core_types.h">
+      <Filter>common\librarian\Header Files</Filter>
+    </ClInclude>
   </ItemGroup>
   <ItemGroup>
     <ClCompile Include="core.cpp">
-      <Filter>common\librarian\Source Files</Filter>
-    </ClCompile>
-    <ClCompile Include="pch.cpp">
-      <Filter>common\librarian\Source Files</Filter>
-    </ClCompile>
-    <ClCompile Include="..\..\..\src\WaveletTransform\WaveletTransform.cpp">
       <Filter>common\librarian\Source Files</Filter>
     </ClCompile>
     <ClCompile Include="..\..\..\src\EntropyCoding\isymbolstream.cpp">
@@ -97,9 +88,6 @@
     </ClCompile>
     <ClCompile Include="..\..\..\src\EntropyCoding\symbolstream_base.cpp">
       <Filter>EntropyCoding\Source Files</Filter>
-    </ClCompile>
-    <ClCompile Include="..\..\..\src\EntropyCoding\EntropyCoding.cpp">
-      <Filter>common\librarian\Source Files</Filter>
     </ClCompile>
   </ItemGroup>
   <ItemGroup>
@@ -142,8 +130,11 @@
     <None Include="..\..\..\src\WaveletTransform\SegmentPreCoder.tpp">
       <Filter>WaveletTransform\Source Files</Filter>
     </None>
-    <None Include="..\..\..\src\WaveletTransform\alligned_vector.tpp">
-      <Filter>WaveletTransform\Source Files</Filter>
+    <None Include="..\..\..\src\EntropyCoding\BitPlaneEncoder.tpp">
+      <Filter>EntropyCoding\Source Files</Filter>
+    </None>
+    <None Include="..\..\..\src\common\alligned_vector.tpp">
+      <Filter>common\librarian\Header Files</Filter>
     </None>
   </ItemGroup>
 </Project>

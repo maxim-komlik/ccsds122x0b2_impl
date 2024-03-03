@@ -1,10 +1,5 @@
 #pragma once
 
-#include <algorithm>
-#include <vector>
-#include <valarray>
-#include "bitmap.tpp"
-
 namespace forward {
 	template <typename T = double>
 	constexpr T h[] = {
@@ -43,36 +38,11 @@ namespace inverse {
 	};
 }
 
-template <size_t size_bytes>
-struct _sufficient_integral;
-
-template <>
-struct _sufficient_integral<2> {
-	typedef int_fast16_t type;
-};
-
-template <>
-struct _sufficient_integral<4> {
-	typedef int_fast32_t type;
-};
-
-template <>
-struct _sufficient_integral<8> {
-	typedef int_fast64_t type;
-};
-
-template <typename T>
-using sufficient_integral = _sufficient_integral<sizeof(T)>;
-
+#include "./../common/core_types.h"
 #include "bitmap.tpp"
 #include "dwtcore.tpp"
 #include <array>
 #include <vector>
-
-template <typename T>
-union block {
-	T content[64];
-};
 
 struct img_pos {
 	size_t x;
@@ -113,7 +83,8 @@ public:
 	// Image entry point moves transform frame accross the whole image
 	// Manages additional buffers that depends on input image properties.
 	std::vector<block<T>> apply(bitmap<T>& source);
-
+	
+	// TODO: below is debug stuff, refactor
 	auto _getBuffers() {
 		return this->buffers;
 	}
@@ -125,6 +96,70 @@ private:
 	void ext(bitmap<T>& source, bitmap<T>& hdst, bitmap<T>& ldst, size_t i);
 };
 
+template <typename T, size_t allignment = 16>
+class BackwardWaveletTransformer {
+	std::array<typename bitmap<T>, 18> buffers;
+	std::array<img_meta, 3> current_frames;
+	dwtcore<T> core;
+
+	std::array<bitmap<T>, 6> v_extension_buffers;
+
+	img_meta m_src_meta;
+	img_pos m_frame_pos;
+
+	static const size_t c_h_allignment = 8;
+	static const size_t c_v_allignment = 8;
+	static const size_t c_level_count = 3;
+
+	static const size_t c_families_count = 3;
+	static const size_t c_LL3_offset = 8;
+
+public:
+	BackwardWaveletTransformer(img_pos frame_properties);
+
+	// TODO: takes source image as input only
+	// Image entry point moves transform frame accross the whole image
+	// Manages additional buffers that depends on input image properties.
+	bitmap<T> apply(const std::vector<block<T>>& input);
+	bitmap<T> apply();
+
+	auto _getBuffers() {
+		return this->buffers;
+	}
+
+	// TODO: below is debug stuff, refactor
+	void _setBuffers(decltype(buffers)& __buffers) {
+		// Set all necessary planes from input blocks
+		for (size_t i = 8; i < this->buffers.size(); ++i) {
+			this->buffers[i] = __buffers[i].transpose();
+		}
+
+		constexpr size_t verify_index = 8;
+		img_meta temp = this->buffers[verify_index].getImgMeta();
+		for (size_t i = 0; i < temp.height; ++i) {
+			for (size_t j = 0; j < temp.width; ++j) {
+				if (this->buffers[verify_index][i][j] != __buffers[verify_index][j][i]) {
+					throw "NEQ!";
+				}
+			}
+		}
+	}
+
+	void _setPayloadBuffers(std::array<typename bitmap<T>, 10>& __buffers) {
+		// Set all necessary planes from input blocks
+		for (size_t i = 0; i < __buffers.size(); ++i) {
+			if (this->c_LL3_offset + i >= this->buffers.size())
+				throw "OOB!";
+			this->buffers[this->c_LL3_offset + i] = __buffers[i].transpose();
+		}
+	}
+
+private:
+	void transform(const bitmap<T>& hsrc, const bitmap<T>& lsrc, bitmap<T>& dst);
+	void unpack(const std::vector<block<T>>& input);
+};
+
+// ForwardWaveletTransformer class template implementation
 
 template <typename T, size_t allignment>
 ForwardWaveletTransformer<T, allignment>::ForwardWaveletTransformer(img_pos frame_properties) {
@@ -211,6 +246,9 @@ void ForwardWaveletTransformer<T, allignment>::transform(const bitmap<T>& source
 			this->core.corrlfwd(source_row.ptr(), hbuffer[j].ptr(), lbuffer[j].ptr());
 		}
 
+		// TODO: implement constexpr if to enable the block below in 
+		// debug builds only
+		// 
 		// debug block, inverse op
 		{
 			bitmap<T> dstbuffer(source_meta.width, allignment, 32);
@@ -331,93 +369,8 @@ void ForwardWaveletTransformer<T, allignment>::ext(bitmap<T>& source, bitmap<T>&
 	}
 }
 
-template <typename T, size_t allignment = 16>
-class BackwardWaveletTransformer {
-	std::array<typename bitmap<T>, 18> buffers;
-	std::array<img_meta, 3> current_frames;
-	dwtcore<T> core;
 
-	std::array<bitmap<T>, 6> v_extension_buffers;
-
-	img_meta m_src_meta;
-	img_pos m_frame_pos;
-
-	static const size_t c_h_allignment = 8;
-	static const size_t c_v_allignment = 8;
-	static const size_t c_level_count = 3;
-
-	static const size_t c_families_count = 3;
-	static const size_t c_LL3_offset = 8;
-
-public:
-	BackwardWaveletTransformer(img_pos frame_properties);
-
-	// TODO: takes source image as input only
-	// Image entry point moves transform frame accross the whole image
-	// Manages additional buffers that depends on input image properties.
-	bitmap<T> apply(const std::vector<block<T>>& input);
-	bitmap<T> apply();
-
-	auto _getBuffers() {
-		return this->buffers;
-	}
-
-	void _setBuffers(decltype(buffers)& __buffers) {
-		// this->buffers[2] = __buffers[2].transpose();
-		// this->buffers[15] = __buffers[15].transpose();
-		// this->buffers[16] = __buffers[16].transpose();
-		// this->buffers[17] = __buffers[17].transpose();
-		// 
-		// this->buffers[0] = __buffers[0].transpose();
-		// this->buffers[1] = __buffers[1].transpose();
-
-		// this->buffers[8] = __buffers[8].transpose();
-		// this->buffers[9] = __buffers[9].transpose();
-		// this->buffers[10] = __buffers[10].transpose();
-		// this->buffers[11] = __buffers[11].transpose();
-
-		// Set all necessary planes from input blocks
-		for (size_t i = 8; i < this->buffers.size(); ++i) {
-			this->buffers[i] = __buffers[i].transpose();
-		}
-
-		constexpr size_t verify_index = 8;
-		img_meta temp = this->buffers[verify_index].getImgMeta();
-		for (size_t i = 0; i < temp.height; ++i) {
-			for (size_t j = 0; j < temp.width; ++j) {
-				if (this->buffers[verify_index][i][j] != __buffers[verify_index][j][i]) {
-					throw "NEQ!";
-				}
-			}
-		}
-	}
-
-	void _setPayloadBuffers(std::array<typename bitmap<T>, 10>& __buffers) {
-		// this->buffers[2] = __buffers[2].transpose();
-		// this->buffers[15] = __buffers[15].transpose();
-		// this->buffers[16] = __buffers[16].transpose();
-		// this->buffers[17] = __buffers[17].transpose();
-		// 
-		// this->buffers[0] = __buffers[0].transpose();
-		// this->buffers[1] = __buffers[1].transpose();
-
-		// this->buffers[8] = __buffers[8].transpose();
-		// this->buffers[9] = __buffers[9].transpose();
-		// this->buffers[10] = __buffers[10].transpose();
-		// this->buffers[11] = __buffers[11].transpose();
-
-		// Set all necessary planes from input blocks
-		for (size_t i = 0; i < __buffers.size(); ++i) {
-			if (this->c_LL3_offset + i >= this->buffers.size())
-				throw "OOB!";
-			this->buffers[this->c_LL3_offset + i] = __buffers[i].transpose();
-		}
-	}
-
-private:
-	void transform(const bitmap<T>& hsrc, const bitmap<T>& lsrc, bitmap<T>& dst);
-	void unpack(const std::vector<block<T>>& input);
-};
+// BackwardWaveletTransformer class template implementation
 
 template <typename T, size_t allignment>
 BackwardWaveletTransformer<T, allignment>::BackwardWaveletTransformer(img_pos frame_properties) {
@@ -451,7 +404,6 @@ bitmap<T> BackwardWaveletTransformer<T, allignment>::apply(const std::vector<blo
 	this->unpack(input);
 	size_t width = this->buffers[0].getImgMeta().height;
 	size_t height = this->buffers[0].getImgMeta().width * 2;
-	// TODO: fix rvalue reference
 	bitmap<T> dst(width, height);
 
 	bitmap<T>* dst_collection[this->c_level_count];
@@ -473,7 +425,6 @@ bitmap<T> BackwardWaveletTransformer<T, allignment>::apply(const std::vector<blo
 		// blocking op
 		this->transform(hout, lout, *(dst_collection[level]));
 	}
-	// TODO: fix rvalue reference, so object is moved and not copied
 	return dst.transpose();
 }
 
@@ -509,7 +460,6 @@ bitmap<T> BackwardWaveletTransformer<T, allignment>::apply() {
 
 template <typename T, size_t allignment>
 void BackwardWaveletTransformer<T, allignment>::transform(const bitmap<T>& hsrc, const bitmap<T>& lsrc, bitmap<T>& dst) {
-	// Change this->m_src_meta to source.getImgMeta();
 	img_meta source_meta = hsrc.getImgMeta();
 	size_t buffer_width = source_meta.width * 2;
 	bitmap<T> dstbuffer(buffer_width, allignment, 32);
