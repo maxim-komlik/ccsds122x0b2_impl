@@ -38,10 +38,12 @@
   </ImportGroup>
   <ImportGroup Label="PropertySheets" Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">
     <Import Project="$(UserRootDir)\Microsoft.Cpp.$(Platform).user.props" Condition="exists('$(UserRootDir)\Microsoft.Cpp.$(Platform).user.props')" Label="LocalAppDataPlatform" />
+    <Import Project="..\src.props" />
     <Import Project="..\CCSDS122x0b2.props" />
   </ImportGroup>
   <ImportGroup Label="PropertySheets" Condition="'$(Configuration)|$(Platform)'=='Release|x64'">
     <Import Project="$(UserRootDir)\Microsoft.Cpp.$(Platform).user.props" Condition="exists('$(UserRootDir)\Microsoft.Cpp.$(Platform).user.props')" Label="LocalAppDataPlatform" />
+    <Import Project="..\src.props" />
     <Import Project="..\CCSDS122x0b2.props" />
   </ImportGroup>
   <PropertyGroup Label="UserMacros" />
@@ -103,11 +105,13 @@
     <None Include="..\..\..\src\EntropyCoding\EntropyCode.tpp" />
     <None Include="..\..\..\src\EntropyCoding\EntropyDecoder.tpp" />
     <None Include="..\..\..\src\EntropyCoding\EntropyEncoder.tpp" />
+    <None Include="..\..\..\src\EntropyCoding\entropy_code.tpp" />
     <None Include="..\..\..\src\EntropyCoding\ibitwrapper.tpp" />
     <None Include="..\..\..\src\EntropyCoding\obitwrapper.tpp" />
     <None Include="..\..\..\src\EntropyCoding\SymbolCode.tpp" />
     <None Include="..\..\..\src\EntropyCoding\SymbolDecoder.tpp" />
     <None Include="..\..\..\src\EntropyCoding\SymbolEncoder.tpp" />
+    <None Include="..\..\..\src\EntropyCoding\symbol_code.tpp" />
     <None Include="..\..\..\src\WaveletTransform\bitmap.tpp" />
     <None Include="..\..\..\src\WaveletTransform\DWT.tpp" />
     <None Include="..\..\..\src\WaveletTransform\dwtcore.tpp" />

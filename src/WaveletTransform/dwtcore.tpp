@@ -40,7 +40,7 @@ struct _dwtcore_i {
 		T* p_hdst = hdst + h_prepipeline_boundary;
 		T const * p_lsrc = hdst;
 		T* p_ldst = ldst;
-		size_t p_count = count - vector_step;	// TODO: ensure allignment, likely need relu for correctness
+		size_t p_count = count - vector_step;	// TODO: ensure alignment, likely need relu for correctness
 
 		// run pipeline
 		for (size_t i = 0; i < p_count; i += vector_step) {
@@ -100,7 +100,7 @@ struct _dwtcore_i {
 		T const * p_lsrc = hsrc + l_prepipeline_boundary;
 		T const * p_lacc = lsrc + l_prepipeline_boundary;
 		T* p_ldst = dst + l_prepipeline_boundary + vector_step;
-		size_t p_count = ((count - 1) & (~(vector_step - 1))) - vector_step;	// TODO: verify allignment
+		size_t p_count = ((count - 1) & (~(vector_step - 1))) - vector_step;	// TODO: verify alignment
 
 		// run pipeline
 		size_t i = 0, k = 0;

@@ -24,6 +24,27 @@ struct _variadic_code_item {
 typedef _variadic_code_item SymbolEncoding;
 typedef _variadic_code_item shift_params;
 
+// TODO: PRIORITY change underlying type from std::byte to smth else, like unsigned char.
+using bpe_variadic_length_word = std::tuple<std::byte, std::byte>;
+
+template <typename T = size_t>
+struct _vlw_t {
+	using type = T;
+
+	T length;
+	T value;
+
+	template <typename D>
+	operator _vlw_t<D>() {
+		return _vlw_t<D>{ (D)(this->length), (D)(this->value) };
+	};
+};
+
+using dense_vlw_t = _vlw_t<uint8_t>;
+
+using vlw_t = _vlw_t<size_t>;
+
+
 template <typename int_type>
 struct char_type;
 

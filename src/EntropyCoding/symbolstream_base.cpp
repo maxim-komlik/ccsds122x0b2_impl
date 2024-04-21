@@ -10,3 +10,7 @@ size_t symbolstream_base::capacity() const {
 const symbolstream_base::buffer_t* const symbolstream_base::data() const {
 	return this->content.data();
 }
+
+void symbolstream_base::reset() {
+	this->content.clear();
+}

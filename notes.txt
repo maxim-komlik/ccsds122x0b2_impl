@@ -1,6 +1,12 @@
 JPEG2000 does not use integer trasform 9/7, it uses 5/3 instead.
 Add references to open-source implementations
 
+TODO: add std::assume_alligned to functions that get pointers to alligned memory (e.g. vectorized)
+
+TODO: incapsulate memory allocation/alignment staff as allocator, get rid of template alignment parameter
+
+TODO: port code with vectorization on pointers on C (because restrict keyword is needed)
+
 TODO: reverse operation for BPE:DC encoding
 
 TODO: compute vector stride using sizeof(T)
@@ -69,8 +75,8 @@ Steps to prepare for bitplane encoding:
 * write to blocks non-quantized part of DC
 
 Segment Pre-coder receives packed bitmap buffers computed by ForwardWaveletTransformer; the lines in these 
-buffers are alligned, and necessary allignment offsets are allocated at both beginning and ending of the 
-line (among not used part of allignment unit at the end of the data). Length of the image line and segment 
+buffers are alligned, and necessary alignment offsets are allocated at both beginning and ending of the 
+line (among not used part of alignment unit at the end of the data). Length of the image line and segment 
 size are indpendent values, therefore there may be data of any number of segment in a line of DC coefficients 
 (keepeing in mind a limitation that minimal size of the segment is set to 16 blocks). Therefore several 
 scenarios are possible when analyzing mutual layout of the bitmap row and set of DC coeffeicients for 
@@ -78,7 +84,7 @@ the same segment:
 ! - segment boundary
 | - row boundary
 _ - data values
-. - auxilary memory space (e.g. for allignment)
+. - auxilary memory space (e.g. for alignment)
 1) segment is alligned properly, the whole segment resides in the row:
 ...|!____________!______________|........|_____  //
 ...|_______!______________!_____|....
@@ -178,5 +184,5 @@ Image extension depends on image data type.
 
 // When extending vertically by copying the last row, it's ok to perform 1d horizontal DWT pass before
 // and then copy transformed data, results are identical.
-// To extend horizontally modify source image with response to allignment boundaries before applying 
+// To extend horizontally modify source image with response to alignment boundaries before applying 
 // transform.

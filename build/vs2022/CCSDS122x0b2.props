@@ -4,11 +4,9 @@
   <PropertyGroup Label="UserMacros">
     <RepositoryRoot>$(SolutionDir)..\..</RepositoryRoot>
     <RepositoryOutput>$(RepositoryRoot)\build\out</RepositoryOutput>
-    <RepositorySources>$(RepositoryRoot)\src</RepositorySources>
     <RepositoryRootDir>$(SolutionDir)..\..\</RepositoryRootDir>
     <RepositoryOutputDir>$(RepositoryRootDir)build\out\</RepositoryOutputDir>
     <RepositoryIntDir>$(RepositoryOutputDir)obj\</RepositoryIntDir>
-    <RepositorySourceDir>$(RepositoryRootDir)src\</RepositorySourceDir>
   </PropertyGroup>
   <!--<RepositoryRoot>$(SolutionDir)../../</RepositoryRoot>
     <RepositoryOutput>$(RepositoryRoot)/build/out/</RepositoryOutput>
@@ -27,6 +25,7 @@
     <ClCompile>
       <LanguageStandard_C>stdc17</LanguageStandard_C>
       <PrecompiledHeaderFile>pch.h</PrecompiledHeaderFile>
+      <AdditionalIncludeDirectories>%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
     </ClCompile>
   </ItemDefinitionGroup>
   <ItemGroup>
@@ -36,9 +35,6 @@
     <BuildMacro Include="RepositoryOutput">
       <Value>$(RepositoryOutput)</Value>
     </BuildMacro>
-    <BuildMacro Include="RepositorySources">
-      <Value>$(RepositorySources)</Value>
-    </BuildMacro>
     <BuildMacro Include="RepositoryRootDir">
       <Value>$(RepositoryRootDir)</Value>
     </BuildMacro>
@@ -47,9 +43,6 @@
     </BuildMacro>
     <BuildMacro Include="RepositoryIntDir">
       <Value>$(RepositoryIntDir)</Value>
-    </BuildMacro>
-    <BuildMacro Include="RepositorySourceDir">
-      <Value>$(RepositorySourceDir)</Value>
     </BuildMacro>
   </ItemGroup>
 </Project>

@@ -18,5 +18,6 @@ protected:
 public:
 	size_t capacity() const;
 	const buffer_t* const data() const;
+	void reset();
 };
 

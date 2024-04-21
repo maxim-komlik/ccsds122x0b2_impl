@@ -1,0 +1,38 @@
+<?xml version="1.0" encoding="utf-8"?>
+<Project ToolsVersion="4.0" xmlns="http://schemas.microsoft.com/developer/msbuild/2003">
+  <ImportGroup Label="PropertySheets" />
+  <PropertyGroup Label="UserMacros">
+    <RepositoryRoot>$(SolutionDir)..\..</RepositoryRoot>
+    <RepositorySources>$(RepositoryRoot)\src</RepositorySources>
+    <RepositorySource>$(RepositoryRoot)\src</RepositorySource>
+    <RepositoryRootDir>$(SolutionDir)..\..\</RepositoryRootDir>
+    <RepositorySourcesDir>$(RepositoryRootDir)src\</RepositorySourcesDir>
+    <RepositorySourceDir>$(RepositoryRootDir)src\</RepositorySourceDir>
+  </PropertyGroup>
+  <PropertyGroup />
+  <ItemDefinitionGroup>
+    <ClCompile>
+      <AdditionalIncludeDirectories>$(RepositorySourceDir)common;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
+    </ClCompile>
+  </ItemDefinitionGroup>
+  <ItemGroup>
+    <BuildMacro Include="RepositoryRoot">
+      <Value>$(RepositoryRoot)</Value>
+    </BuildMacro>
+    <BuildMacro Include="RepositorySources">
+      <Value>$(RepositorySources)</Value>
+    </BuildMacro>
+    <BuildMacro Include="RepositorySource">
+      <Value>$(RepositorySource)</Value>
+    </BuildMacro>
+    <BuildMacro Include="RepositoryRootDir">
+      <Value>$(RepositoryRootDir)</Value>
+    </BuildMacro>
+    <BuildMacro Include="RepositorySourcesDir">
+      <Value>$(RepositorySourcesDir)</Value>
+    </BuildMacro>
+    <BuildMacro Include="RepositorySourceDir">
+      <Value>$(RepositorySourceDir)</Value>
+    </BuildMacro>
+  </ItemGroup>
+</Project>

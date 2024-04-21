@@ -5,21 +5,21 @@ void fncore()
 
 
 // SegmentPreCoder.tpp
-// template <typename T, size_t allignment>
+// template <typename T, size_t alignment>
 // size_t bdepth(bitmap<T> src) {
 // 	// alligned segment data
 // 	T* segment = nullptr;
 // 	size_t segmentSize = 64;
-// 	T buffer[allignment] = { 0 };
-// 	// size_t vectorizable = segmentSize & (~(allignment - 1));
+// 	T buffer[alignment] = { 0 };
+// 	// size_t vectorizable = segmentSize & (~(alignment - 1));
 // 
-// 	for (size_t i = 0; i < segmentSize; i += allignment) {
-// 		for (size_t j = 0; j < allignment; ++j) {
+// 	for (size_t i = 0; i < segmentSize; i += alignment) {
+// 		for (size_t j = 0; j < alignment; ++j) {
 // 			buffer[j] |= altitude<T>(segment[i + j]);
 // 		}
 // 	}
 // 
-// 	for (size_t i = allignment >> 1; i > 0; i >>= 1) {
+// 	for (size_t i = alignment >> 1; i > 0; i >>= 1) {
 // 		for (size_t j = 0; j < i; ++j) {
 // 			buffer[j] |= buffer[i + j];
 // 		}
@@ -250,7 +250,7 @@ void fncore()
 // 	//	|xxx|xxx|xxx|xxx|	|	|	|	|+a	|	|	|	|	|	|	|	|
 // 	//	|xxx|xxx|xxx|xxx|	|	|	|D0	|D0	|D1	|D2	|D3	|	|	|	|	|
 // 
-// 	// allocate sufficient buffer to take into account allignment required for vectorization 
+// 	// allocate sufficient buffer to take into account alignment required for vectorization 
 // 	double* dest_D;
 // 	double* dest_C;
 // 	double* dest;
@@ -388,7 +388,7 @@ void fncore()
 // 	T* p_hdst = hdst + h_prepipeline_boundary;
 // 	T* p_lsrc = hdst;
 // 	T* p_ldst = ldst;
-// 	size_t p_count = count - vector_step;	// TODO: ensure allignment
+// 	size_t p_count = count - vector_step;	// TODO: ensure alignment
 // 
 // 	// run pipeline
 // 	for (size_t i = 0; i < p_count; i += vector_step) {
@@ -459,7 +459,7 @@ void fncore()
 // 	T* p_lsrc = hsrc + l_prepipeline_boundary;
 // 	T* p_lacc = lsrc + l_prepipeline_boundary;
 // 	T* p_ldst = dst + l_prepipeline_boundary + vector_step;
-// 	size_t p_count = (count - 1) & (~(vector_step - 1));	// TODO: verify allignment
+// 	size_t p_count = (count - 1) & (~(vector_step - 1));	// TODO: verify alignment
 // 
 // 	// run pipeline
 // 	for (size_t i = 0, k = 0; i < p_count; i += vector_step, k += 2 * vector_step) {	// i is for sources, k is for dst
@@ -805,13 +805,13 @@ void fncore()
 // }
 
 // SegmentPreCoder::apply()
-// size_t bufsize = (output[i].size + 3 * allignment - 1) & (~(allignment - 1));
+// size_t bufsize = (output[i].size + 3 * alignment - 1) & (~(alignment - 1));
 // output[i].quantizedDc = std::vector<T>(bufsize);
-// T* segmentDc = (T*)(((size_t)(output[i].quantizedDc.data()) + 2 * pallignment - 1) 
-// 	& (~(pallignment - 1)));
+// T* segmentDc = (T*)(((size_t)(output[i].quantizedDc.data()) + 2 * palignment - 1) 
+// 	& (~(palignment - 1)));
 // 
 // std::vector<T> diff(bufsize);
-// T* diffData = (T*)(((size_t)(diff.data()) + 2 * pallignment - 1) & (~(pallignment - 1)));
+// T* diffData = (T*)(((size_t)(diff.data()) + 2 * palignment - 1) & (~(palignment - 1)));
 
 
 
@@ -841,3 +841,452 @@ void fncore()
 // 		this->segments[i].quantizedDc[j] = this->segments[i].quantizedDc[j - 1] + ((-(val & 0x01)) ^ (val >> 1));
 // 	}
 // };
+
+
+
+// // 38 words total compound block context
+// 
+// struct block_bpe_meta {
+// 	// TODO: consider splitting the structure into 3 dedicated structs
+// 	// for each relevant encoding stage.
+// 
+// 	bpe_variadic_length_word types_P;
+// 	std::array<bpe_variadic_length_word, F_num> types_C;
+// 	std::array<std::array<bpe_variadic_length_word, HxpF_num>, F_num> types_H;
+// 
+// 	bpe_variadic_length_word signs_P;
+// 	std::array<bpe_variadic_length_word, F_num> signs_C;
+// 	std::array<std::array<bpe_variadic_length_word, HxpF_num>, F_num> signs_H;
+// 
+// 	bpe_variadic_length_word tran_B;
+// 	bpe_variadic_length_word tran_D;
+// 	bpe_variadic_length_word tran_G;
+// 	std::array<bpe_variadic_length_word, F_num> tran_H;
+// 
+// 	uint64_t bplane_mask_transit;
+// 
+// 	bool encode_descendants = false;
+// };
+// 
+// std::vector<block_bpe_meta> block_states(input.size);
+// 
+// ptrdiff_t i = 0;
+// for (; i < input_size_truncated; i += items_per_gaggle) {
+// 	for (ptrdiff_t j = 0; j < items_per_gaggle; ++j) {
+// 		std::array<decltype(family_masks)::value_type, family_masks.size()> prepared_block = { 0 };
+// 		for (ptrdiff_t k = 0; k < family_masks.size(); ++k) {
+// 			prepared_block[k] = current_bplane[i + j] & family_masks[k];
+// 		}
+// 		// bool descendants_selected = (prepared_block[B_index] > 0);
+// 		// size_t tran_B_len = (bplane_mask[i + j] & family_masks[B_index]) > 0;
+// 		// block_states[i + j].tran_B = { !(block_states[i + j].encode_descendants), descendants_selected };
+// 		// block_states[i + j].encode_descendants |= descendants_selected;
+// 
+// 		size_t tran_B_val = (prepared_block[B_index] > 0);
+// 		size_t tran_B_len = (bplane_mask[i + j] & family_masks[B_index]) > 0; // see,s there is a typo and should be == 0
+// 		block_states[i + j].tran_B = { tran_B_len, tran_B_val };	// TODO
+// 		bool skip_descendants = ((tran_B_val == 0) & (tran_B_len == 1));
+// 
+// 		uint64_t effective_mask_P = (family_masks[P_index] & (~bplane_mask[i + j]));
+// 		std::tie(
+// 			std::get<0>(block_states[i + j].types_P),
+// 			std::get<1>(block_states[i + j].types_P)
+// 		) = combine_bword(prepared_block[P_index], effective_mask_P);
+// 		std::tie(
+// 			std::get<0>(block_states[i + j].signs_P),
+// 			std::get<1>(block_states[i + j].signs_P)
+// 		) = combine_bword(block_signs[i + j], (prepared_block[P_index] & effective_mask_P));
+// 		block_states[i + j].bplane_mask_transit |= effective_mask_P;
+// 
+// 		if (!skip_descendants) {
+// 			// move descendant word computation here
+// 			// TODO: clean tran_D state (may remain from the previous iteration)
+// 			std::get<0>(block_states[i + j].tran_D) = 0;
+// 			std::get<0>(block_states[i + j].tran_G) = 0;
+// 			for (ptrdiff_t k = 0; k < F_num; ++k) {
+// 				size_t tran_Dx_val = prepared_block[(k * F_step) + D_offset] > 0;
+// 				size_t tran_Dx_len = ((bplane_mask[i + j] & family_masks[(k * F_step) + D_offset]) == 0);
+// 
+// 				bool skip_tran_Gx = ((tran_Dx_val == 0) & (tran_Dx_len == 1));
+// 
+// 				size_t tran_Gx_val = prepared_block[(k * F_step) + G_offset] > 0;
+// 				size_t tran_Gx_len = ((bplane_mask[i + j] & family_masks[(k * F_step) + G_offset]) == 0);
+// 				tran_Gx_len &= !skip_tran_Gx;
+// 
+// 				bool skip_tran_Hx = ((tran_Gx_val == 0) & (tran_Gx_len == 1));
+// 
+// 				std::get<1>(block_states[i + j].tran_D) <<= tran_Dx_len;
+// 				std::get<1>(block_states[i + j].tran_D) |= (tran_Dx_len & tran_Dx_val);
+// 				std::get<0>(block_states[i + j].tran_D) += tran_Dx_len;
+// 
+// 				std::get<1>(block_states[i + j].tran_G) <<= tran_Gx_len;
+// 				std::get<1>(block_states[i + j].tran_G) |= (tran_Gx_len & tran_Gx_val);
+// 				std::get<0>(block_states[i + j].tran_G) += tran_Gx_len;
+// 
+// 				uint64_t effective_mask_C =
+// 					(family_masks[(k * F_step) + C_offset] & (~bplane_mask[i + j])) & (-(!skip_tran_Gx));
+// 				std::tie(
+// 					std::get<0>(block_states[i + j].types_C[k]),
+// 					std::get<1>(block_states[i + j].types_C[k])
+// 				) = combine_bword(prepared_block[(k * F_step) + C_offset], effective_mask_C);
+// 				std::tie(
+// 					std::get<0>(block_states[i + j].signs_C[k]),
+// 					std::get<1>(block_states[i + j].signs_C[k])
+// 				) = combine_bword(block_signs[i + j], (prepared_block[(k * F_step) + C_offset] & effective_mask_C));
+// 				block_states[i + j].bplane_mask_transit |= effective_mask_C;
+// 
+// 				std::get<0>(block_states[i + j].tran_H[k]) = 0;
+// 				for (ptrdiff_t l = 0; l < HxpF_num; ++l) {
+// 					size_t tran_Hx_val = prepared_block[(k * F_step) + Hx_offset + l] > 0;
+// 					size_t tran_Hx_len = ((bplane_mask[i + j] & family_masks[(k * F_step) + Hx_offset + l]) == 0);
+// 					tran_Hx_len &= !skip_tran_Hx;
+// 
+// 					bool skip_Hx = ((tran_Hx_val == 0) & (tran_Hx_len == 1));
+// 
+// 					std::get<1>(block_states[i + j].tran_H[k]) <<= tran_Hx_len;
+// 					std::get<1>(block_states[i + j].tran_H[k]) |= (tran_Hx_len & tran_Hx_val);
+// 					std::get<0>(block_states[i + j].tran_H[k]) += tran_Hx_len;
+// 
+// 					uint64_t effective_mask_H =
+// 						(family_masks[(k * F_step) + Hx_offset + l] & (~bplane_mask[i + j])) & (-(!skip_Hx));
+// 					std::tie(
+// 						std::get<0>(block_states[i + j].types_H[k][l]),
+// 						std::get<1>(block_states[i + j].types_H[k][l])
+// 					) = combine_bword(prepared_block[(k * F_step) + Hx_offset + l], effective_mask_H);
+// 					std::tie(
+// 						std::get<0>(block_states[i + j].signs_H[k][l]),
+// 						std::get<1>(block_states[i + j].signs_H[k][l])
+// 					) = combine_bword(block_signs[i + j], (prepared_block[(k * F_step) + Hx_offset + l] & effective_mask_H));
+// 					block_states[i + j].bplane_mask_transit |= effective_mask_H;
+// 				}
+// 			}
+// 			// but actually better to omit other words computation if tran_B == '0'
+// 			// std::get<0>(block_states[i + j].tran_D) &=
+// 			// 	std::get<0>(block_states[i + j].tran_B) & (~(std::get<1>(block_states[i + j].tran_B)));
+// 
+// 			// 21 variable length encoded words per block.
+// 			// 3 words have maximum length = 3
+// 			// 18 words have maximum length = 4
+// 			// 
+// 			// max number of variable len words in the gaggle with length = 4:
+// 			//	18 * 16 = 288
+// 			// max bitlen of variable len words in the gaggle with length = 4:
+// 			//	288 * 4 = 1152
+// 			// 
+// 			// max number of variable len words in the gaggle with length = 3:
+// 			//	3 * 16 = 48
+// 			//	5 * 16 = 80
+// 			//	10 * 16 = 160
+// 			//	16 * 16 = 256
+// 			// max bitlen of variable len words in the gaggle with length = 3:
+// 			//	256 * 3 = 768
+// 			// 
+// 			// max number of variable len words in the gaggle with length = 2:
+// 			//	3 * 16 = 48
+// 			//	8 * 16 = 128
+// 			//	13 * 16 = 208
+// 			//	16 * 16 = 256
+// 			// max bitlen of variable len words in the gaggle with length = 2:
+// 			//	256 * 2 = 512
+// 			//
+// 
+// 			constexpr size_t bpe_vlw_length_index = 0;
+// 			constexpr size_t bpe_vlw_value_index = 1;
+// 
+// 			std::array<tempsymbolstream, 3> vlwstreams{
+// 				tempsymbolstream(std::vector<std::byte>(144));
+// 				tempsymbolstream(std::vector<std::byte>(128));
+// 				tempsymbolstream(std::vector<std::byte>(128));
+// 			};
+// 
+// 			auto addVlwToCollection = [&](bpe_variadic_length_word& vlw) -> void {
+// 				constexpr size_t vlwstreams_index_bias = 2;
+// 				size_t vlw_len = std::get<bpe_vlw_length_index>(vlw);
+// 				if (vlw_len >= 2) {
+// 					vlwstreams[vlw_len - vlwstreams_index_bias].put(std::get<bpe_vlw_value_index>(vlw));
+// 				}
+// 				};
+// 
+// 			auto computeTranVlw = [&](bpe_variadic_length_word& vlw, size_t index, bool skip) -> bool {
+// 				size_t tran_val = prepared_block[index] > 0;
+// 				size_t tran_len = ((bplane_mask[i + j] & family_masks[index]) == 0);
+// 				tran_len &= !skip;
+// 
+// 				std::get<bpe_vlw_value_index>(vlw) <<= tran_len;
+// 				std::get<bpe_vlw_value_index>(vlw) |= (tran_len & tran_val);
+// 				std::get<bpe_vlw_length_index>(vlw) += tran_len;
+// 
+// 				addVlwToCollection(vlw);
+// 
+// 				return ((tran_val == 0) & (tran_len == 1));
+// 				};
+// 
+// 			auto computeTerminalVlw = [&](bpe_variadic_length_word& typesVlw, bpe_variadic_length_word& signsVlw,
+// 				size_t index, bool skip) {
+// 					uint64_t effective_mask = (family_masks[index] & (~bplane_mask[i + j])) & (-(!skip));
+// 
+// 					std::tie(
+// 						std::get<bpe_vlw_length_index>(typesVlw),
+// 						std::get<bpe_vlw_value_index>(typesVlw)
+// 					) = combine_bword(prepared_block[index], effective_mask);
+// 					std::tie(
+// 						std::get<bpe_vlw_length_index>(signsVlw),
+// 						std::get<bpe_vlw_value_index>(signsVlw)
+// 					) = combine_bword(block_signs[i + j], (prepared_block[index] & effective_mask));
+// 
+// 					addVlwToCollection(typesVlw);
+// 					block_states[i + j].bplane_mask_transit |= effective_mask;
+// 				};
+// 		}
+// 	}
+// }
+// for (ptrdiff_t j = 0; j < last_gaggle_size; ++j) {}
+
+
+
+// template <typename T, size_t alignment>
+// void BitPlaneEncoder<T, alignment>::kOptimal(const segment<T>& input, obitwrapper<size_t>& output_stream) {
+// 	// TODO: check N=1 option
+// 	// implement heuristic k computation
+// 	//
+// 	// segment<T> input;
+// 	// obitwrapper<size_t> output_stream;
+// 
+// 	constexpr size_t max_N_value = 10;
+// 	size_t N = input.bdepthDc - input.q; // N is expected to be in range [1, 10]
+// 	// N is a property of a whole segment. 
+// 	// Therefore k_bound value is the same for every gaggle in the segment
+// 	ptrdiff_t k_bound = ((ptrdiff_t)(N)) - 2;
+// 
+// 	// compute lengths for all gaggles for all k encoding parameters;
+// 	// k has at most 9 different values for encoded data (0000 - 1000).
+// 	// max bit length is 2^10 - 1 (max DC value) * 16 (max gaggle length)
+// 	//	+ 16 additional bits (for '1' bit at the end of variable length sequence)
+// 	//	= 16384. That requires 14 bits; 2-byte integer may be used
+// 	// 
+// 
+// 	// For implementations with small-width simd instructions computing all 
+// 	// possible stream lengths for all k values may be redundant and may
+// 	// hurt performance; in this case well-predictable if branch is needed.
+// 	//
+// 
+// 	constexpr size_t gaggle_len = 16;
+// 	constexpr size_t gaggle_scale_factor = 2;
+// 
+// 	// zero placehoder for DC reference samble. 
+// 	// zero remaining placeholders for dc elements at the end of the segmnet to extend 
+// 	// the last gaggle to len=16
+// 	{
+// 		input.quantizedDc[-1] = 0;
+// 		constexpr size_t gaggle_mask = gaggle_len - 1;
+// 		ptrdiff_t dc_boundary = input.size + ((~input.size) & gaggle_mask);
+// 		for (ptrdiff_t i = input.size; i < dc_boundary; ++i) {
+// 			input.quantizedDc[i] = 0;
+// 		}
+// 	}
+// 
+// 	constexpr size_t k_simd_width = 8;
+// 	std::vector<std::pair<size_t, ptrdiff_t>> k_options((input.size >> 4) + (gaggle_scale_factor * 2)); // extended just in case
+// 
+// 	uint_least16_t simdr_k_bound_mask[k_simd_width] = { 0 };
+// 	for (ptrdiff_t i = k_bound; i < k_simd_width; ++i) {
+// 		// clear sign bit to make comparison operate correctly later
+// 		simdr_k_bound_mask[i] = ((uint_least16_t)((ptrdiff_t)(-1))) >> 1;
+// 	}
+// 	constexpr uint_least16_t simdr_shift[k_simd_width] = { 1, 2, 3, 4, 5, 6, 7, 8 };
+// 	// requires input.quantizedDc to have gaggle_len * gaggle_scale_factor additional elements at the end (at most)
+// 	for (ptrdiff_t i = 0; i < input.size; i += gaggle_len * gaggle_scale_factor) {
+// 		uint_least16_t simdr_acc[gaggle_scale_factor][k_simd_width] = { 0 };
+// 		uint_fast16_t gpr_acc[gaggle_scale_factor] = { 0 };
+// 
+// 		// attempt to increase pipline load uniformity; repeat uniform operation blocks several times
+// 		// should be beneficial for branch prediction in the second block as well
+// 		for (ptrdiff_t j = 0; j < gaggle_scale_factor; ++j) {
+// 			for (ptrdiff_t ii = 0; ii < gaggle_len; ++ii) {
+// 				uint_fast16_t gpr = input.quantizedDc[i + (j * gaggle_len) + ii - 1]; // -1 here because of reference sample
+// 				gpr_acc[j] += gpr;
+// 				uint_least16_t simdr[k_simd_width];
+// 				for (ptrdiff_t jj = 0; jj < k_simd_width; ++jj) {
+// 					simdr[jj] = gpr;
+// 					simdr[jj] >>= simdr_shift[jj];
+// 					simdr_acc[j][jj] += simdr[jj];
+// 				}
+// 			}
+// 			for (ptrdiff_t jj = 0; jj < k_simd_width; ++jj) {
+// 				simdr_acc[j][jj] |= simdr_k_bound_mask[jj];
+// 			}
+// 		}
+// 
+// 		ptrdiff_t k_option_index = i << 4;
+// 		for (ptrdiff_t j = 0; j < gaggle_scale_factor; ++j) {
+// 			// There is no straitforward way to compare with uncoded option reliably due to different 
+// 			// uncoded stream length for the first gaggle, subsequent gaggles and the last one. 
+// 			// Encoded stream lengths can be compared safely on the other hand as the diff value due to
+// 			// additional '1' bit is the same for all k options for a given gaggle.
+// 			decltype(k_options)::value_type current_k = { gpr_acc[j], 0 };
+// 			// hopefully this can be vectorized or at least well-predicted
+// 			for (ptrdiff_t jj = 0; jj < k_simd_width; ++jj) {
+// 				if (simdr_acc[j][jj] < current_k.first) {
+// 					current_k.first = simdr_acc[j][jj];
+// 					current_k.second = simdr_shift[j][jj];
+// 				}
+// 			}
+// 			k_options[k_option_index + j] = current_k;
+// 		}
+// 
+// 		// PMINSW x86-64: vectorized min for 16-bit words
+// 		// several simd iterations per one loop cycle for 2+ gaggles that lays continiously
+// 		// compute simd bitmask to reflect k_bound to invalidate simd items with index > k_bound (make max signed numbers)
+// 		// 
+// 		// store gpr and min simd k results in a temporal buffer. Buffer length is known before processing
+// 		// (but we need k value ~ index rather then pre-computed length itself)
+// 		// 
+// 	}
+// 
+// 	// adjust parameters for the first gaggle (see 4.3.2.8 and 4.3.2.10, figures 4-8 and 4-9)
+// 	{
+// 		size_t k_bitsize = std::bit_width(N - 1);
+// 		constexpr ptrdiff_t k_uncoded_opt = -1;
+// 		// take into account '1' bits inserted into the stream after the first part of the codewords
+// 		// to make it comparable with encoded stream lengths
+// 		size_t k_uncoded_len = N * gaggle_len - gaggle_len;
+// 		size_t k_uncoded_len_first = k_uncoded_len + 1 - N; // TODO: ensure that unsigned arithmetic is not reordered
+// 
+// 		ptrdiff_t gaggle_index = 0;
+// 		if (k_options[gaggle_index].first >= k_uncoded_len_first) {
+// 			k_options[gaggle_index].second = k_uncoded_opt;
+// 		}
+// 		output_stream << {k_bitsize, k_options[gaggle_index].second};
+// 		output_stream << {N, input.referenceSample};
+// 
+// 		ptrdiff_t i;
+// 		bool execute_preamble = false;
+// 		for (i = -1; i < input.size - gaggle_len; i += gaggle_len) {
+// 			if (execute_preamble) {
+// 				gaggle_index = (i >> 4) + 1;
+// 				if (k_options[gaggle_index].first >= k_uncoded_len) {
+// 					k_options[gaggle_index].second = k_uncoded_opt;
+// 				}
+// 				output_stream << {k_bitsize, k_options[gaggle_index].second};
+// 			}
+// 			execute_preamble = true;
+// 
+// 			if (k_options[gaggle_index].second != k_uncoded_opt) {
+// 				for (ptrdiff_t j = (i < 0); j < gaggle_len; ++j) {
+// 					output_stream << {(input.quantizedDc[i + j] >> k_options[gaggle_index].second) + 1, 1};
+// 				}
+// 			} else {
+// 				// WTF is that? I don't remeber the reason I wrote this code
+// 				// is it casting signed k value to unsigned alternative of k encoding?
+// 				// k_options[gaggle_index].second = (~(((ptrdiff_t)(-1)) << k_bitsize)) + 1;
+// 				k_options[gaggle_index].second = N;
+// 			}
+// 
+// 			for (ptrdiff_t j = (i < 0); j < gaggle_len; ++j) {
+// 				output_stream << {k_options[gaggle_index].second, input.quantizedDc[i + j]};
+// 			}
+// 		}
+// 
+// 		ptrdiff_t last_gaggle_len = input.size - i;
+// 		size_t k_uncoded_len_last = N * last_gaggle_len - last_gaggle_len;
+// 		if (execute_preamble) {
+// 			gaggle_index = (i >> 4) + 1;
+// 			if (k_options[gaggle_index].first >= k_uncoded_len_last) {
+// 				k_options[gaggle_index].second = k_uncoded_opt;
+// 			}
+// 			output_stream << {k_bitsize, k_options[gaggle_index].second};
+// 		}
+// 		execute_preamble = true;
+// 
+// 		if (k_options[gaggle_index].second != k_uncoded_opt) {
+// 			for (ptrdiff_t j = (i < 0); j < last_gaggle_len; ++j) {
+// 				output_stream << {(input.quantizedDc[i + j] >> k_options[gaggle_index].second) + 1, 1};
+// 			}
+// 		} else {
+// 			k_options[gaggle_index].second = N;
+// 		}
+// 
+// 		for (ptrdiff_t j = (i < 0); j < last_gaggle_len; ++j) {
+// 			output_stream << {k_options[gaggle_index].second, input.quantizedDc[i + j]};
+// 		}
+// 	}
+// }
+// 
+// template <typename T, size_t alignment>
+// void BitPlaneEncoder<T, alignment>::kHeuristic(const segment<T>& input, obitwrapper<size_t>& output_stream) {
+// 	size_t N = input.bdepthDc - input.q; // N is expected to be in range [1, 10]
+// 	size_t k_bitsize = std::bit_width(N - 1);
+// 	constexpr ptrdiff_t k_uncoded_option = -1;
+// 	constexpr size_t gaggle_len = 16;
+// 	ptrdiff_t J = 15;
+// 	for (ptrdiff_t i = 0; i < input.size; i += J) {
+// 		if (i > 0) {
+// 			J = std::min(gaggle_len, input.size - i);
+// 		}
+// 		size_t delta = 0;
+// 		for (ptrdiff_t j = 0; j < J; ++j) {
+// 			delta += input.quantizedDc[i + j];
+// 		}
+// 
+// 		std::array<size_t, 3> predicates1 = {
+// 			delta * 64, 
+// 			J * 207, 
+// 			J * (1 << (N + 5)), 
+// 		};
+// 		std::array<size_t, 3> predicates2 = {
+// 			J * 23 * (1 << N), 
+// 			delta * 128, 
+// 			(delta * 128) + (J * 49), 
+// 		};
+// 
+// 		ptrdiff_t k = k_uncoded_option;
+// 		if (predicate1[0] >= predicate2[0]) {
+// 			k = k_uncoded_option;
+// 		} else if (predicate1[1] > predicate2[1]) {
+// 			k = 0;
+// 		} else if (predicate1[2] <= predicate2[2]) {
+// 			k = N - 2;
+// 		} else {
+// 			// TODO: check underflow/arithmetic/input values, potential UB
+// 			k = std::bit_width(predicate2[2] / J) - 7;
+// 		}
+// 
+// 		output_stream << { k_bitsize, k };
+// 		if (i == 0) {
+// 			output_stream << { N, input.referenceSample };
+// 		}
+// 		if (k != k_uncoded_option) {
+// 			for (ptrdiff_t j = 0; j < J; ++j) {
+// 				output_stream << { (input.quanitzedDc[i + j] >> k) + 1, 1 };
+// 			}
+// 		} else {
+// 			k = N;
+// 		}
+// 		for (ptrdiff_t j = 0; j < J; ++j) {
+// 			output_stream << { k, input.qiantizedDc[i + j]};
+// 		}
+// 	}
+// }
+// 
+// template <typename T, size_t alignment>
+// void BitPlaneEncoder<T, alignment>::encodeDc(const segment<T>& input) {
+// 	obitwrapper<size_t> output_stream;
+// 	bool use_heuristic;
+// 
+// 	// TODO: check if std::max is needed with 1 as a second parameter for N computation
+// 	// see 4.3.2.1
+// 	using sbdepth_t = std::make_signed_t<decltype(input.bdepthDc)>;
+// 	size_t N = std::max(((sbdepth_t)(input.bdepthDc)) - input.q, 1); // N is expected to be in range [1, 10]
+// 	if (N > 1) {
+// 		if (use_heuristic) {
+// 			this->kHeuristic(input, output_stream);
+// 		} else {
+// 			this->kOptimal(input, output_stream);
+// 		}
+// 	} else {
+// 		// N == 1
+// 		for (ptrdiff_t i = 0; i < input.size; ++i) {
+// 			output_stream << { N, input.quantizedDc[i] };
+// 		}
+// 	}
+// }

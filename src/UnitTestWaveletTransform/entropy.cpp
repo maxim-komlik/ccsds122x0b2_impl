@@ -199,7 +199,7 @@ TEST(entropy, SymbolCycleChainSmoke) {
 
 		for (size_t i = 0; i < sizeof(test_sequence) / sizeof(buffer_t); ++i) {
 			test_sequence[i] = EndianCoder<buffer_t>::apply(test_sequence[i]);
-			bplane_stream.write((decltype(bplane_stream)::char_type*) & (test_sequence[i]),
+			bplane_stream.write((decltype(bplane_stream)::char_type*) &(test_sequence[i]),
 				sizeof(*test_sequence) / sizeof(decltype(bplane_stream)::char_type));
 		}
 
@@ -235,7 +235,7 @@ TEST(entropy, SymbolCycleChainSmoke) {
 
 		for (size_t i = 0; i < actual_size; ++i) {
 			buffer_t temp;
-			bplane_stream.read((decltype(bplane_stream)::char_type*) & temp,
+			bplane_stream.read((decltype(bplane_stream)::char_type*) &temp,
 				sizeof(*test_sequence) / sizeof(decltype(bplane_stream)::char_type));
 			actual[i] = EndianCoder<buffer_t>::apply(temp);
 		}

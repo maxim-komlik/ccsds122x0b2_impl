@@ -136,5 +136,11 @@
     <None Include="..\..\..\src\common\alligned_vector.tpp">
       <Filter>common\librarian\Header Files</Filter>
     </None>
+    <None Include="..\..\..\src\EntropyCoding\entropy_code.tpp">
+      <Filter>EntropyCoding\Source Files</Filter>
+    </None>
+    <None Include="..\..\..\src\EntropyCoding\symbol_code.tpp">
+      <Filter>EntropyCoding\Source Files</Filter>
+    </None>
   </ItemGroup>
 </Project>

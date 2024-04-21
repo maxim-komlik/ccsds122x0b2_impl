@@ -2,7 +2,7 @@
 
 #include <algorithm>
 
-template <typename T, size_t allignment = 16>
+template <typename T, size_t alignment = 16>
 class alligned_vector {
 	T* m_begin;
 	T* m_rawdata;
@@ -10,7 +10,7 @@ class alligned_vector {
 	size_t m_offset;
 	size_t m_rawdata_length;
 
-	static constexpr size_t pallignment = allignment * sizeof(T);
+	static constexpr size_t palignment = alignment * sizeof(T);
 public:
 	~alligned_vector();
 	alligned_vector(alligned_vector&& other) noexcept;
@@ -32,18 +32,18 @@ public:
 	// T operator[](size_t index) const;
 	T& operator[](size_t index) const;
 	// TODO: refactor operator in favor of member ptr() or data() function
-	T* operator*() const;
+	T* data() const;
 private:
 	void __reallocate();
 };
 
-template <typename T, size_t allignment>
-alligned_vector<T, allignment>::~alligned_vector() {
+template <typename T, size_t alignment>
+alligned_vector<T, alignment>::~alligned_vector() {
 	delete[] this->m_rawdata;
 }
 
-template <typename T, size_t allignment>
-alligned_vector<T, allignment>::alligned_vector(alligned_vector&& other) noexcept :
+template <typename T, size_t alignment>
+alligned_vector<T, alignment>::alligned_vector(alligned_vector&& other) noexcept :
 		m_begin(other.m_begin), m_rawdata(other.m_rawdata),
 		m_length(other.m_length), m_offset(other.m_offset), m_rawdata_length(other.m_rawdata_length) {
 	other.m_rawdata = nullptr;
@@ -51,25 +51,25 @@ alligned_vector<T, allignment>::alligned_vector(alligned_vector&& other) noexcep
 	other.m_rawdata_length = 0;
 }
 
-template <typename T, size_t allignment>
-alligned_vector<T, allignment>::alligned_vector(const alligned_vector& other) : 
+template <typename T, size_t alignment>
+alligned_vector<T, alignment>::alligned_vector(const alligned_vector& other) : 
 		m_length(other.m_length), m_offset(other.m_offset) {
 	this->m_rawdata_length = std::min(other.m_rawdata_length,
-		((other.m_length + allignment - 1) & (~(allignment - 1))) + 2 * other.m_offset);
+		((other.m_length + alignment - 1) & (~(alignment - 1))) + 2 * other.m_offset);
 
-	this->m_rawdata = new T[this->m_rawdata_length + (allignment - 1)];	// adds multiple of sizeof(T)
-	this->m_begin = ((T*)(((size_t)this->m_rawdata + (this->pallignment - 1))
-		& (~(this->pallignment - 1)))) + this->m_offset;
+	this->m_rawdata = new T[this->m_rawdata_length + (alignment - 1)];	// adds multiple of sizeof(T)
+	this->m_begin = ((T*)(((size_t)this->m_rawdata + (this->palignment - 1))
+		& (~(this->palignment - 1)))) + this->m_offset;
 
-	for (size_t i = 0; i < this->m_length; i += allignment) {
-		for (size_t j = 0; j < allignment; ++j) {
+	for (size_t i = 0; i < this->m_length; i += alignment) {
+		for (size_t j = 0; j < alignment; ++j) {
 			this->m_begin[i + j] = other.m_begin[i + j];
 		}
 	}
 }
 
-template <typename T, size_t allignment>
-alligned_vector<T, allignment>& alligned_vector<T, allignment>::operator= (alligned_vector<T, allignment>&& other) noexcept {
+template <typename T, size_t alignment>
+alligned_vector<T, alignment>& alligned_vector<T, alignment>::operator= (alligned_vector<T, alignment>&& other) noexcept {
 	T* temp = this->m_rawdata;
 	this->m_rawdata = other.m_rawdata;
 	other.m_rawdata = temp;
@@ -81,20 +81,20 @@ alligned_vector<T, allignment>& alligned_vector<T, allignment>::operator= (allig
 	return *this;
 }
 
-template <typename T, size_t allignment>
-alligned_vector<T, allignment>& alligned_vector<T, allignment>::operator= (alligned_vector<T, allignment>& other) {
+template <typename T, size_t alignment>
+alligned_vector<T, alignment>& alligned_vector<T, alignment>::operator= (alligned_vector<T, alignment>& other) {
 	if (this != &other) {
 		this->m_length = other.m_length;
 		this->m_offset = other.m_offset;
 
 		if (this->m_rawdata_length < (other.m_length + other.m_offset)) {
 			this->m_rawdata_length = std::min(other.m_rawdata_length,
-				((other.length + allignment - 1) & (~(allignment - 1))) + 2 * other.m_offset);
+				((other.length + alignment - 1) & (~(alignment - 1))) + 2 * other.m_offset);
 			this->__reallocate();
 		}
 
-		for (size_t i = 0; i < this->m_length; i += allignment) {
-			for (size_t j = 0; j < allignment; ++j) {
+		for (size_t i = 0; i < this->m_length; i += alignment) {
+			for (size_t j = 0; j < alignment; ++j) {
 				this->m_begin[i + j] = other.m_begin[i + j];
 			}
 		}
@@ -102,25 +102,25 @@ alligned_vector<T, allignment>& alligned_vector<T, allignment>::operator= (allig
 	return *this;
 }
 
-template <typename T, size_t allignment>
-alligned_vector<T, allignment>::alligned_vector() : m_rawdata(nullptr), m_begin(nullptr), m_rawdata_length(0) {}
+template <typename T, size_t alignment>
+alligned_vector<T, alignment>::alligned_vector() : m_rawdata(nullptr), m_begin(nullptr), m_rawdata_length(0) {}
 
-template <typename T, size_t allignment>
-alligned_vector<T, allignment>::alligned_vector(size_t length, T* origin) {
+template <typename T, size_t alignment>
+alligned_vector<T, alignment>::alligned_vector(size_t length, T* origin) {
 	this->m_length = length;
 	// that ensures every new row starts with alligned address
-	length = (length + allignment - 1) & (~(allignment - 1));
-	this->m_offset = allignment;
-	this->m_rawdata_length = length + 2 * allignment;
+	length = (length + alignment - 1) & (~(alignment - 1));
+	this->m_offset = alignment;
+	this->m_rawdata_length = length + 2 * alignment;
 
-	this->m_rawdata = new T[this->m_rawdata_length + (allignment - 1)];	// adds multiple of sizeof(T)
-	// physical memory allignment
-	this->m_begin = ((T*)(((size_t)this->m_rawdata + (this->pallignment - 1))
-		& (~(this->pallignment - 1)))) + this->m_offset;
+	this->m_rawdata = new T[this->m_rawdata_length + (alignment - 1)];	// adds multiple of sizeof(T)
+	// physical memory alignment
+	this->m_begin = ((T*)(((size_t)this->m_rawdata + (this->palignment - 1))
+		& (~(this->palignment - 1)))) + this->m_offset;
 
 	ptrdiff_t i;
-	for (i = 0; i < ((ptrdiff_t)length) - allignment; i += allignment) {
-		for (ptrdiff_t j = 0; j < allignment; ++j) {
+	for (i = 0; i < ((ptrdiff_t)length) - alignment; i += alignment) {
+		for (ptrdiff_t j = 0; j < alignment; ++j) {
 			this->m_begin[i + j] = origin[i + j];
 		}
 	}
@@ -129,38 +129,38 @@ alligned_vector<T, allignment>::alligned_vector(size_t length, T* origin) {
 	}
 }
 
-template <typename T, size_t allignment>
-alligned_vector<T, allignment>::alligned_vector(size_t length, size_t offset) {
+template <typename T, size_t alignment>
+alligned_vector<T, alignment>::alligned_vector(size_t length, size_t offset) {
 	this->m_length = length;
 	// that ensures every new row starts with alligned address
-	length = (length + allignment - 1) & (~(allignment - 1));
-	offset = (offset + allignment) & (~(allignment - 1));
+	length = (length + alignment - 1) & (~(alignment - 1));
+	offset = (offset + alignment) & (~(alignment - 1));
 	this->m_offset = offset;
 	this->m_rawdata_length = length + 2 * offset;
 
-	this->m_rawdata = new T[this->m_rawdata_length + (allignment - 1)];	// adds multiple of sizeof(T)
-	// physical memory allignment
-	this->m_begin = ((T*)(((size_t)this->m_rawdata + (this->pallignment - 1))
-		& (~(this->pallignment - 1)))) + this->m_offset;
+	this->m_rawdata = new T[this->m_rawdata_length + (alignment - 1)];	// adds multiple of sizeof(T)
+	// physical memory alignment
+	this->m_begin = ((T*)(((size_t)this->m_rawdata + (this->palignment - 1))
+		& (~(this->palignment - 1)))) + this->m_offset;
 }
 
-template <typename T, size_t allignment>
-void alligned_vector<T, allignment>::__reallocate() {
+template <typename T, size_t alignment>
+void alligned_vector<T, alignment>::__reallocate() {
 	delete[] this->m_rawdata;
-	this->m_rawdata = new T[this->m_rawdata_length + (allignment - 1)];	// adds multiple of sizeof(T)
-	// physical memory allignment
-	this->m_begin = ((T*)(((size_t)this->m_rawdata + (this->pallignment - 1))
-		& (~(this->pallignment - 1)))) + this->m_offset;
+	this->m_rawdata = new T[this->m_rawdata_length + (alignment - 1)];	// adds multiple of sizeof(T)
+	// physical memory alignment
+	this->m_begin = ((T*)(((size_t)this->m_rawdata + (this->palignment - 1))
+		& (~(this->palignment - 1)))) + this->m_offset;
 }
 
-template <typename T, size_t allignment>
-void alligned_vector<T, allignment>::swap(alligned_vector<T, allignment>& other) noexcept {
+template <typename T, size_t alignment>
+void alligned_vector<T, alignment>::swap(alligned_vector<T, alignment>& other) noexcept {
 	swap(*this, other);
 }
 
 // friend swap function
-template <typename T, size_t allignment>
-void swap(alligned_vector<T, allignment>& first, alligned_vector<T, allignment>& second) noexcept {
+template <typename T, size_t alignment>
+void swap(alligned_vector<T, alignment>& first, alligned_vector<T, alignment>& second) noexcept {
 	using std::swap;
 	swap(first.m_begin, second.m_begin);
 	swap(first.m_rawdata, second.m_rawdata);
@@ -170,24 +170,24 @@ void swap(alligned_vector<T, allignment>& first, alligned_vector<T, allignment>&
 }
 
 namespace std {
-	template <typename T, size_t allignment>
-	void swap(alligned_vector<T, allignment>& first, alligned_vector<T, allignment>& second) noexcept {
+	template <typename T, size_t alignment>
+	void swap(alligned_vector<T, alignment>& first, alligned_vector<T, alignment>& second) noexcept {
 		swap(first, second);
 	}
 }
 
-template <typename T, size_t allignment>
-size_t alligned_vector<T, allignment>::size() const noexcept {
+template <typename T, size_t alignment>
+size_t alligned_vector<T, alignment>::size() const noexcept {
 	return this->m_length;
 }
 
-template <typename T, size_t allignment>
-T& alligned_vector<T, allignment>::operator[](size_t index) const {
+template <typename T, size_t alignment>
+T& alligned_vector<T, alignment>::operator[](size_t index) const {
 	// TODO: boundary checks
 	return this->m_begin[index];
 }
 
-template <typename T, size_t allignment>
-T* alligned_vector<T, allignment>::operator*() const {
+template <typename T, size_t alignment>
+T* alligned_vector<T, alignment>::data() const {
 	return this->m_begin;
 }

@@ -3,6 +3,15 @@
 template <size_t wordDepth, int setType, bool reverse = false>
 struct SymbolCode;
 
+// fictive
+template <>
+struct SymbolCode<1, 0> {
+	size_t mapping[1 << 1] = {
+		0x00,	// 0
+		0x01,	// 1
+	};
+};
+
 template <>
 struct SymbolCode<2, 0> {
 	size_t mapping[1 << 2] = {

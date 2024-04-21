@@ -140,7 +140,7 @@ TEST(dwti, 2dSmoke) {
 
 TEST(tbitmap, bitmapMemorySmoke) {
 	typedef long long item_t;
-	constexpr size_t allignment = 16;
+	constexpr size_t alignment = 16;
 	constexpr size_t testIterations = 1 << 7;
 
 	size_t seed = 1067;
@@ -167,9 +167,9 @@ TEST(tbitmap, bitmapMemorySmoke) {
 		size_t slice_x = generator() % second_meta.width;
 		size_t slice_y = generator() % second_meta.height;
 		size_t slice_len = generator() % (second_meta.width * (second_meta.height - slice_y) - slice_x);
-		std::vector<item_t> first_slice(slice_len + 3 * allignment);
-		std::vector<item_t> second_slice(slice_len + 3 * allignment);
-		std::vector<item_t> control_slice(slice_len + 3 * allignment);
+		std::vector<item_t> first_slice(slice_len + 3 * alignment);
+		std::vector<item_t> second_slice(slice_len + 3 * alignment);
+		std::vector<item_t> control_slice(slice_len + 3 * alignment);
 
 		// get linear slice second
 		// first <-(move) second
@@ -178,14 +178,14 @@ TEST(tbitmap, bitmapMemorySmoke) {
 		// compare slices
 		// compare second to slice
 
-		constexpr size_t pallignment = allignment * sizeof(item_t);
-		item_t* second_slice_ptr = (item_t*)((((size_t)(second_slice.data())) + (2 * pallignment - 1)) & (~(pallignment - 1)));
+		constexpr size_t palignment = alignment * sizeof(item_t);
+		item_t* second_slice_ptr = (item_t*)((((size_t)(second_slice.data())) + (2 * palignment - 1)) & (~(palignment - 1)));
 		second.linear(second_slice_ptr, slice_len, slice_x, slice_y);
 		first = std::move(second);
-		item_t* first_slice_ptr = (item_t*)((((size_t)(first_slice.data())) + (2 * pallignment - 1)) & (~(pallignment - 1)));
+		item_t* first_slice_ptr = (item_t*)((((size_t)(first_slice.data())) + (2 * palignment - 1)) & (~(palignment - 1)));
 		first.linear(first_slice_ptr, slice_len, slice_x, slice_y);
 		second = std::forward<bitmap<item_t>&>(first);
-		item_t* control_slice_ptr = (item_t*)((((size_t)(control_slice.data())) + (2 * pallignment - 1)) & (~(pallignment - 1)));
+		item_t* control_slice_ptr = (item_t*)((((size_t)(control_slice.data())) + (2 * palignment - 1)) & (~(palignment - 1)));
 		second.linear(control_slice_ptr, slice_len, slice_x, slice_y);
 
 		for (size_t j = 0; j < slice_len; ++j) {
@@ -204,7 +204,7 @@ TEST(tbitmap, bitmapMemorySmoke) {
 #include "../WaveletTransform/SegmentPreCoder.tpp"
 TEST(segments, PrecoderSmoke) {
 	typedef long long item_t;
-	constexpr size_t allignment = 16;
+	constexpr size_t alignment = 16;
 	img_pos props;
 	props.width = 1 << 10;
 	props.height = 1 << 10;
@@ -221,11 +221,12 @@ TEST(segments, PrecoderSmoke) {
 		EXPECT_LE(output[i].q, output[i].bdepthDc) << " q > depth DC at index [" << i << "]";
 		EXPECT_LE(output[i].q, output[i].bdepthDc) << " q > depth DC at index [" << i << "]";
 	}
+	// DEBUG NOTE: something throws after desctructions of some objects.
 }
 
 TEST(segments, PrecoderRound) {
 	typedef long long item_t;
-	constexpr size_t allignment = 16;
+	constexpr size_t alignment = 16;
 	img_pos props;
 	props.width = 1 << 10;
 	props.height = 1 << 10;
@@ -277,6 +278,26 @@ TEST(segments, PrecoderRound) {
 			EXPECT_EQ(input[i][j], output[i][j]) << " at index [" << i << "][" << j << "]";
 		}
 	}
+}
+
+#include "../EntropyCoding/BitPlaneEncoder.tpp"
+
+TEST(bpe, EncoderSmoke) {
+	typedef long long item_t;
+	constexpr size_t alignment = 16;
+	img_pos props;
+	props.width = 1 << 10;
+	props.height = 1 << 10;
+	bitmap<item_t> input = generateNoisyBitmap<item_t>(props.width, props.height, 64);
+
+	ForwardWaveletTransformer<item_t> dwt(props);
+	auto m_blocks = dwt.apply(input);
+	auto i_coeffs = dwt._getBuffers();
+	std::vector<bitmap<item_t>> coeffs_v(i_coeffs.cbegin(), i_coeffs.cend());
+	SegmentPreCoder<item_t> precoder(coeffs_v);
+	auto output = precoder.apply();
+
+	__encode<item_t, alignment>(output[0]);
 }
 
 #include <functional>

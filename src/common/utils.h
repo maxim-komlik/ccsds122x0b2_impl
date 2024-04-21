@@ -97,7 +97,10 @@ struct _sufficient_integral<8> {
 };
 
 template <typename T>
-using sufficient_integral = _sufficient_integral<sizeof(T)>;
+using sufficient_integral = _sufficient_integral<sizeof(T)>::type;
+
+template <size_t byte_width>
+using sufficient_integral_i = _sufficient_integral<byte_width>::type;
 
 
 template <typename T>
@@ -119,7 +122,7 @@ T& strong_assign(T& dst, T src) {
 
 // Vectorizable alternative for abs
 template <typename T>
-inline T magnitude(T val) {
+inline std::make_unsigned_t<T> magnitude(T val) {
 	constexpr size_t bitsize = (sizeof(T) << 3) - 1;
 	return (val ^ (val >> bitsize)) - (val >> bitsize);
 }
@@ -134,27 +137,30 @@ inline T signxor(T val) {
 // Currently fixed via make_unsigned, therefore input
 // value is limited to ((1 << (sizeof(T) << 3) - 1) - 1)
 // in unsigned representation (not valid for negative ints)
+// 
+// constexpr is implicitly inline
 template <typename T>
-inline T relu(std::make_signed_t<T> val) {
-	constexpr size_t bitsize = (sizeof(T) << 3) - 1;
-	return val & (~(val >> bitsize));
+constexpr T relu(T val) {
+	using sT = std::make_signed_t<T>;
+	constexpr size_t bitsize = (sizeof(sT) << 3) - 1;
+	return val & (~(((sT)(val)) >> bitsize));
 }
 
 // Requires src to be large enough to handle *length* elements 
-// + rest of allignment unit at the end. Otherwise blame yourself.
-template <typename T, size_t allignment>
+// + rest of alignment unit at the end. Otherwise blame yourself.
+template <typename T, size_t alignment>
 size_t bdepthv(T* src, size_t length) {
-	T buffer[allignment] = { 0 };
+	T buffer[alignment] = { 0 };
 
-	for (size_t i = 0; i < length; i += allignment) {
-		for (size_t j = 0; j < allignment; ++j) {
+	for (size_t i = 0; i < length; i += alignment) {
+		for (size_t j = 0; j < alignment; ++j) {
 			// TODO: check handling negative power-of-two
 			// call below is actually abs
 			buffer[j] |= magnitude<T>(src[i + j]);
 		}
 	}
 
-	for (size_t i = allignment >> 1; i > 0; i >>= 1) {
+	for (size_t i = alignment >> 1; i > 0; i >>= 1) {
 		for (size_t j = 0; j < i; ++j) {
 			buffer[j] |= buffer[i + j];
 		}
@@ -170,4 +176,27 @@ size_t bdepthv(T* src, size_t length) {
 	// size_t depth = ((sizeof(i) << 3) - 1);
 	// for (size_t i = ((-1) << depth); !(i & buffer); i >>= 1, --depth) { }
 	return depth;
+}
+
+// accumulate with or vectorized
+// 
+// Requires src to be large enough to handle *length* elements 
+// + rest of alignment unit at the end. Otherwise blame yourself.
+template <typename T, size_t alignment>
+inline std::make_unsigned_t<T> accorv(const T* src, size_t length) {
+	std::make_unsigned_t<T> buffer[alignment] = { 0 };
+
+	for (size_t i = 0; i < length; i += alignment) {
+		for (size_t j = 0; j < alignment; ++j) {
+			buffer[j] |= magnitude(src[i + j]);
+		}
+	}
+
+	for (size_t i = alignment >> 1; i > 0; i >>= 1) {
+		for (size_t j = 0; j < i; ++j) {
+			buffer[j] |= buffer[i + j];
+		}
+	}
+
+	return buffer[0];
 }
