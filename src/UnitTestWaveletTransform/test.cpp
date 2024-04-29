@@ -221,7 +221,6 @@ TEST(segments, PrecoderSmoke) {
 		EXPECT_LE(output[i].q, output[i].bdepthDc) << " q > depth DC at index [" << i << "]";
 		EXPECT_LE(output[i].q, output[i].bdepthDc) << " q > depth DC at index [" << i << "]";
 	}
-	// DEBUG NOTE: something throws after desctructions of some objects.
 }
 
 TEST(segments, PrecoderRound) {
@@ -297,7 +296,14 @@ TEST(bpe, EncoderSmoke) {
 	SegmentPreCoder<item_t> precoder(coeffs_v);
 	auto output = precoder.apply();
 
-	__encode<item_t, alignment>(output[0]);
+	size_t size_compressed = __encode<item_t, alignment>(output[0]);
+	size_t size_initial = input.getImgMeta().length;
+
+	EXPECT_LE(size_compressed, size_initial) 
+		<< " compressed size increased! compressed = " << size_compressed 
+		<< "; initial = " << size_initial;
+
+	std::cout << "Compression rate: " << (((double)size_compressed) / ((double)size_initial)) << std::endl;
 }
 
 #include <functional>

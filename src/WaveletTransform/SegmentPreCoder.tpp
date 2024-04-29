@@ -126,7 +126,7 @@ std::vector<segment<T>> SegmentPreCoder<T, alignment>::pack() {
 }
 
 template<typename T, size_t alignment>
-inline void kdiff(T* input, T* output, size_t length, size_t bdepth, bool normalize = false){
+inline void kdiff(T* input, T* output, size_t length, size_t bdepth, bool normalize = false) {
 	// mask covers half of static range
 	T mask = ~((-1 << bdepth) >> 1);
 	// norm is either 0 either half of static range
@@ -155,145 +155,6 @@ inline void kdiff(T* input, T* output, size_t length, size_t bdepth, bool normal
 			output[ii + jj] -= sign;
 		}
 	}
-}
-
-template<typename T, size_t alignment>
-std::vector<segment<T>> SegmentPreCoder<T, alignment>::apply() {
-	// TODO:
-	// AC values: sign bit + magnitude (see p. 4-3)
-	// perform scaling of the input depending on its type (ceiling or shifting)
-	std::vector<segment<T>> output = this->pack();
-	for (size_t i = 1; i < this->buffers.size(); ++i) {
-		// free buffers, they are not necessary once we packed all values
-		this->buffers[i] = bitmap<T, alignment>();
-	}
-
-	size_t dc_index = 0;
-	for (size_t i = 0; i < output.size(); ++i) {
-		output[i].plainDc = alligned_vector<T>(output[i].size);
-		output[i].bdepthAcBlocks = alligned_vector<size_t>(output[i].size);
-		T* segmentDc = output[i].plainDc.data();
-		this->buffers[0].linear(segmentDc, output[i].size, dc_index);
-		output[i].bdepthDc = bdepthv<T, alignment>(segmentDc, output[i].size);
-
-		std::make_unsigned_t<T> magnitude_mask_acc = 0;
-		for (ptrdiff_t j = 0; j < output[i].size; ++j) {
-			// std::make_unsigned_t<T> magnitude_mask = accorv<T, alignment>(output[i].data.data()->content, this->c_block_item_count);
-			std::make_unsigned_t<T> magnitude_mask = accorv<T, alignment>(output[i].data[j].content, this->c_block_item_count);
-			output[i].bdepthAcBlocks[j] = std::bit_width(magnitude_mask) + 1; // see 4.1, p. 4-3, eq (13)
-			magnitude_mask_acc |= magnitude_mask;
-
-			// output[i].bdepthAcBlocks[j] = accorv<T, alignment>(output[i].data.data()->content, this->c_block_item_count);
-			// output[i].bdepthAc |= output[i].bdepthAcBlocks[j];
-			// output[i].bdepthAcBlocs[j] = std::bit_width(output[i].bdepthAcBlocs[j]);
-		}
-		output[i].bdepthAc = std::bit_width(magnitude_mask_acc);
-		// dc coefficients are not assigned to block[0] in pack function, hence bdepth below 
-		// is effective for ac only
-		// output[i].bdepthAc = bdepthv<T, alignment>(output[i].data.data()->content, output[i].size * this->c_block_item_count);
-		dc_index += output[i].size;
-	}
-
-	constexpr size_t palignment = alignment * sizeof(T);
-	for (size_t i = 0; i < output.size(); ++i) {
-		T* segmentDc = output[i].plainDc.data();
-		output[i].q = this->segmentQ(output[i].bdepthDc, output[i].bdepthAc);
-
-		T mask = ~(-1 << output[i].q);
-		for (size_t j = 0; j < output[i].size; ++j) {
-			output[i].data[j].content[0] = segmentDc[j] & mask;
-		}
-
-		for (size_t ii = 0; ii < output[i].size; ii += alignment) {
-			for (size_t jj = 0; jj < alignment; ++jj) {
-				segmentDc[ii + jj] >>= output[i].q;
-			}
-		}
-		output[i].referenceSample = segmentDc[0];
-
-		output[i].quantizedDc = alligned_vector<T>(output[i].size);
-		T* diffData = output[i].quantizedDc.data();
-		// Below is the same as kdiff function but works for quantized DC only. 
-		// I decided to keep it in a comments for future reference.
-		// 
-		// mask = ~(-1 << (output[i].bdepthDc - output[i].q));
-		// for (size_t ii = 0; ii < output[i].size; ii += alignment) {
-		// 	for (size_t jj = 0; jj < alignment; ++jj) {
-		// 		// see 4.3.2.4
-		// 		// see comments for transformation below after the function body
-		// 		diffData[ii + jj] = segmentDc[ii + jj + 1] - segmentDc[ii + jj];
-		// 		T theta = (segmentDc[ii + jj] ^ (~(segmentDc[ii + jj] >> ((sizeof(T) << 3) - 1)))) & mask;
-		// 
-		// 		// effectively codes sign bit in the least significant bit
-		// 		// allows applying xor by extended sign value
-		// 		// sign = n & 0x01
-		// 		// base = n >> 1
-		// 		// value = base ^ signext(sign)
-		// 		T sign = diffData[ii + jj] >> ((sizeof(T) << 3) - 1);
-		// 		diffData[ii + jj] = diffData[ii + jj] ^ sign;
-		// 		// this implements strict less than
-		// 		T rel = (theta - diffData[ii + jj]) >> ((sizeof(T) << 3) - 1);
-		// 		diffData[ii + jj] += theta & rel;
-		// 		diffData[ii + jj] += diffData[ii + jj] & (~rel);
-		// 		diffData[ii + jj] -= sign;
-		// 	}
-		// }
-		// 
-		kdiff<T, alignment>(segmentDc, diffData, output[i].size, (output[i].bdepthDc - output[i].q) + 1, false);
-		ptrdiff_t* bdepthsAc = (ptrdiff_t*)output[i].bdepthAcBlocks.data();
-		output[i].referenceBdepthAc = bdepthsAc[0];
-		output[i].quantizedBdepthAc = alligned_vector<size_t>(output[i].size);
-		ptrdiff_t* diffBdipthAc = (ptrdiff_t*)output[i].quantizedBdepthAc.data();
-		constexpr size_t bdepthAcBdepth = std::bit_width((sizeof(T) << 3) - 1); // bit_width(max_value)
-		kdiff<ptrdiff_t, alignment>(bdepthsAc, diffBdipthAc, output[i].size, bdepthAcBdepth, true);
-
-		// TODO: implement constexpr if to enable the block below in 
-		// debug builds only
-		// 
-		// debug block, reverse op
-		{
-			diffData[-1] = output[i].referenceSample;
-			mask = ~(-1 << (output[i].bdepthDc - output[i].q));
-			for (ptrdiff_t j = 0; j < output[i].size - 1; ++j) {
-				T signmask = segmentDc[j] >> ((sizeof(T) << 3) - 1);
-				T theta = (segmentDc[j] ^ (~signmask)) & mask;
-				T predicate = diffData[j] - theta;
-				T val = diffData[j];
-				T diff = ((-(val & 0x01)) ^ (val >> 1));
-				if (predicate > theta) {
-					diff = -(predicate ^ signmask) + signmask;
-				}
-
-				T restoredDcCoeff = segmentDc[j] + diff;
-				if (restoredDcCoeff != segmentDc[j + 1]) {
-					throw "NEQ!";
-				}
-			}
-		}
-		{
-			diffBdipthAc[-1] = output[i].referenceBdepthAc;
-			mask = ~(-1 << bdepthAcBdepth);
-			T norm = (1 << bdepthAcBdepth) >> 1;
-			for (ptrdiff_t j = 0; j < output[i].size - 1; ++j) {
-				T normalized = bdepthsAc[j] - norm;
-				T signmask = normalized >> ((sizeof(T) << 3) - 1);
-				T theta = (normalized ^ (~signmask)) & mask;
-				T predicate = diffBdipthAc[j] - theta;
-				T val = diffBdipthAc[j];
-				T diff = ((-(val & 0x01)) ^ (val >> 1));
-				if (predicate > theta) {
-					diff = -(predicate ^ signmask) + signmask;
-				}
-
-				T restoredBdepthAcCoeff = bdepthsAc[j] + diff;
-				if (restoredBdepthAcCoeff != bdepthsAc[j + 1]) {
-					throw "NEQ!";
-				}
-			}
-		}
-	}
-
-	return output;
 }
 
 // As per paragraph 4.3.2.4, p. 4-20
@@ -370,6 +231,142 @@ std::vector<segment<T>> SegmentPreCoder<T, alignment>::apply() {
 // delta[m] = theta + signxor(delta[m]') - signext(delta[m]'	otherwise
 // 
 
+template<typename T, size_t alignment>
+std::vector<segment<T>> SegmentPreCoder<T, alignment>::apply() {
+	// TODO:
+	// AC values: sign bit + magnitude (see p. 4-3)
+	// perform scaling of the input depending on its type (ceiling or shifting)
+	std::vector<segment<T>> output = this->pack();
+	for (size_t i = 1; i < this->buffers.size(); ++i) {
+		// free buffers, they are not necessary once we packed all values
+		this->buffers[i] = bitmap<T, alignment>();
+	}
+
+	size_t dc_index = 0;
+	for (size_t i = 0; i < output.size(); ++i) {
+		output[i].plainDc = alligned_vector<T>(output[i].size);
+		output[i].bdepthAcBlocks = alligned_vector<size_t>(output[i].size);
+		T* segmentDc = output[i].plainDc.data();
+		this->buffers[0].linear(segmentDc, output[i].size, dc_index);
+		output[i].bdepthDc = bdepthv<T, alignment>(segmentDc, output[i].size);
+
+		std::make_unsigned_t<T> magnitude_mask_acc = 0;
+		for (ptrdiff_t j = 0; j < output[i].size; ++j) {
+			std::make_unsigned_t<T> magnitude_mask = accorv<T, alignment>(output[i].data[j].content, this->c_block_item_count);
+			output[i].bdepthAcBlocks[j] = std::bit_width(magnitude_mask) + 1; // see 4.1, p. 4-3, eq (13)
+			magnitude_mask_acc |= magnitude_mask;
+		}
+		output[i].bdepthAc = std::bit_width(magnitude_mask_acc);
+		// dc coefficients are not assigned to block[0] in pack function, hence bdepth below 
+		// is effective for ac only
+		// output[i].bdepthAc = bdepthv<T, alignment>(output[i].data.data()->content, output[i].size * this->c_block_item_count);
+		dc_index += output[i].size;
+	}
+
+	constexpr size_t palignment = alignment * sizeof(T);
+	for (size_t i = 0; i < output.size(); ++i) {
+		T* segmentDc = output[i].plainDc.data();
+		output[i].q = this->segmentQ(output[i].bdepthDc, output[i].bdepthAc);
+
+		T mask = ~(-1 << output[i].q);
+		for (size_t j = 0; j < output[i].size; ++j) {
+			output[i].data[j].content[0] = segmentDc[j] & mask;
+		}
+
+		for (size_t ii = 0; ii < output[i].size; ii += alignment) {
+			for (size_t jj = 0; jj < alignment; ++jj) {
+				segmentDc[ii + jj] >>= output[i].q;
+			}
+		}
+		output[i].referenceSample = segmentDc[0];
+
+		output[i].quantizedDc = alligned_vector<T>(output[i].size);
+		T* diffData = output[i].quantizedDc.data();
+
+		// Below is the same as kdiff function but works for quantized DC only. 
+		// I decided to keep it in a comments for future reference.
+		// 
+		// mask = ~(-1 << (output[i].bdepthDc - output[i].q));
+		// for (size_t ii = 0; ii < output[i].size; ii += alignment) {
+		// 	for (size_t jj = 0; jj < alignment; ++jj) {
+		// 		// see 4.3.2.4
+		// 		// see comments for transformation below after the function body
+		// 		diffData[ii + jj] = segmentDc[ii + jj + 1] - segmentDc[ii + jj];
+		// 		T theta = (segmentDc[ii + jj] ^ (~(segmentDc[ii + jj] >> ((sizeof(T) << 3) - 1)))) & mask;
+		// 
+		// 		// effectively codes sign bit in the least significant bit
+		// 		// allows applying xor by extended sign value
+		// 		// sign = n & 0x01
+		// 		// base = n >> 1
+		// 		// value = base ^ signext(sign)
+		// 		T sign = diffData[ii + jj] >> ((sizeof(T) << 3) - 1);
+		// 		diffData[ii + jj] = diffData[ii + jj] ^ sign;
+		// 		// this implements strict less than
+		// 		T rel = (theta - diffData[ii + jj]) >> ((sizeof(T) << 3) - 1);
+		// 		diffData[ii + jj] += theta & rel;
+		// 		diffData[ii + jj] += diffData[ii + jj] & (~rel);
+		// 		diffData[ii + jj] -= sign;
+		// 	}
+		// }
+		// 
+
+		kdiff<T, alignment>(segmentDc, diffData, output[i].size, (output[i].bdepthDc - output[i].q) + 1, false);
+		ptrdiff_t* bdepthsAc = (ptrdiff_t*)output[i].bdepthAcBlocks.data();
+		output[i].referenceBdepthAc = bdepthsAc[0];
+		output[i].quantizedBdepthAc = alligned_vector<size_t>(output[i].size);
+		ptrdiff_t* diffBdipthAc = (ptrdiff_t*)output[i].quantizedBdepthAc.data();
+		constexpr size_t bdepthAcBdepth = std::bit_width((sizeof(T) << 3) - 1); // bit_width(max_value)
+		kdiff<ptrdiff_t, alignment>(bdepthsAc, diffBdipthAc, output[i].size, bdepthAcBdepth, true);
+
+		// TODO: implement constexpr if to enable the block below in 
+		// debug builds only
+		// 
+		// debug block, reverse op
+		{
+			diffData[-1] = output[i].referenceSample;
+			mask = ~(-1 << (output[i].bdepthDc - output[i].q));
+			for (ptrdiff_t j = 0; j < output[i].size - 1; ++j) {
+				T signmask = segmentDc[j] >> ((sizeof(T) << 3) - 1);
+				T theta = (segmentDc[j] ^ (~signmask)) & mask;
+				T predicate = diffData[j] - theta;
+				T val = diffData[j];
+				T diff = ((-(val & 0x01)) ^ (val >> 1));
+				if (predicate > theta) {
+					diff = -(predicate ^ signmask) + signmask;
+				}
+
+				T restoredDcCoeff = segmentDc[j] + diff;
+				if (restoredDcCoeff != segmentDc[j + 1]) {
+					throw "NEQ!";
+				}
+			}
+		}
+		{
+			diffBdipthAc[-1] = output[i].referenceBdepthAc;
+			mask = ~(-1 << bdepthAcBdepth);
+			T norm = (1 << bdepthAcBdepth) >> 1;
+			for (ptrdiff_t j = 0; j < output[i].size - 1; ++j) {
+				T normalized = bdepthsAc[j] - norm;
+				T signmask = normalized >> ((sizeof(T) << 3) - 1);
+				T theta = (normalized ^ (~signmask)) & mask;
+				T predicate = diffBdipthAc[j] - theta;
+				T val = diffBdipthAc[j];
+				T diff = ((-(val & 0x01)) ^ (val >> 1));
+				if (predicate > theta) {
+					diff = -(predicate ^ signmask) + signmask;
+				}
+
+				T restoredBdepthAcCoeff = bdepthsAc[j] + diff;
+				if (restoredBdepthAcCoeff != bdepthsAc[j + 1]) {
+					throw "NEQ!";
+				}
+			}
+		}
+	}
+
+	return output;
+}
+
 template <typename T, size_t alignment>
 size_t SegmentPreCoder<T, alignment>::segmentQ(ptrdiff_t bdepthDc, ptrdiff_t bdepthAc) noexcept {
 	bdepthAc = (bdepthAc >> 1) + 1;
@@ -392,9 +389,10 @@ SegmentPostDecoder<T, alignment>::SegmentPostDecoder(std::vector<segment<T>> inp
 
 template <typename T, size_t alignment>
 inline void rkdiff(T* diffData, size_t length, size_t bdepth, bool normalize = false) {
-	T mask = ~(-1 << bdepth);
+	// mask covers half of static range
+	T mask = ~((-1 << bdepth) >> 1);
 	// norm is either 0 either half of static range
-	T norm = (1 << (bdepth & normalize)) >> 1;
+	T norm = (1 << (bdepth & (-((ptrdiff_t)(normalize))))) >> 1;
 	for (ptrdiff_t j = 0; j < length; ++j) {
 		T normalized = diffData[j - 1] - norm;
 		T signmask = normalized >> ((sizeof(T) << 3) - 1);
@@ -417,39 +415,36 @@ SegmentPostDecoder<T, alignment>::output_t SegmentPostDecoder<T, alignment>::app
 		this->segments[i].data[0].content[0] |= this->segments[i].referenceSample << this->segments[i].q;
 		T* diffData = this->segments[i].quantizedDc.data();
 		diffData[-1] = this->segments[i].referenceSample;
-		// T bound = this->segments[i].bdepthDc - this->segments[i].q;
-		// bound = ((-1) << bound) ^ ((-1) << (bound - 1));
 
-		T mask = ~(-1 << (this->segments[i].bdepthDc - this->segments[i].q));
+		// Below is the same as rkdiff function but works for quantized DC only. 
+		// I decided to keep it in a comments for future reference.
+		// Note that inlined implementation moves the coefficient to the corresponding
+		// block at the end of the loop.
+		// 
+		// T mask = ~(-1 << (this->segments[i].bdepthDc - this->segments[i].q));
+		// for (ptrdiff_t j = 0; j < this->segments[i].size - 1; ++j) {
+		// 	T signmask = diffData[j - 1] >> ((sizeof(T) << 3) - 1);
+		// 	T theta = (diffData[j - 1] ^ (~signmask)) & mask;
+		// 	T predicate = diffData[j] - theta;
+		// 	T val = diffData[j];
+		// 	T diff = ((-(val & 0x01)) ^ (val >> 1));
+		// 	if (predicate > theta) {
+		// 		diff = -(predicate ^ signmask) + signmask;
+		// 	}
+		// 
+		// 	diffData[j] = diffData[j - 1] + diff;
+		// 	this->segments[i].data[j + 1].content[0] |= diffData[j] << this->segments[i].q;
+		// }
+
+		rkdiff<T, alignment>(diffData, (this->segments[i].size - 1), (this->segments[i].bdepthDc - this->segments[i].q) + 1, false);
 		for (ptrdiff_t j = 0; j < this->segments[i].size - 1; ++j) {
-			// T theta = bound - (this->segments[i].quantizedDc[j - 1] ^ (this->segments[i].quantizedDc[j - 1] >> ((sizeof(T) << 3) - 1)));
-			// T predicate = this->segments[i].quantizedDc[j] - theta;
-			// T signmask = this->segments[i].quantizedDc[j] >> ((sizeof(T) << 3) - 1);
-			// T val = this->segments[i].quantizedDc[j];
-			// T diff = ((-(val & 0x01)) ^ (val >> 1));
-			// if (predicate > theta) {
-			// 	diff = -(predicate ^ signmask) + signmask;
-			// }
-
-			T signmask = diffData[j - 1] >> ((sizeof(T) << 3) - 1);
-			T theta = (diffData[j - 1] ^ (~signmask)) & mask;
-			T predicate = diffData[j] - theta;
-			T val = diffData[j];
-			T diff = ((-(val & 0x01)) ^ (val >> 1));
-			if (predicate > theta) {
-				diff = -(predicate ^ signmask) + signmask;
-			}
-
-			diffData[j] = diffData[j - 1] + diff;
 			this->segments[i].data[j + 1].content[0] |= diffData[j] << this->segments[i].q;
 		}
 
-		// rkdiff<T, alignment>(diffData, (this->segments[i].size - 1), (this->segments[i].bdepthDc - this->segments[i].q), false);
-
-		size_t* diffBdepthAc = this->segments[i].quantizedBdepthAc.data();
+		ptrdiff_t* diffBdepthAc = (ptrdiff_t*)this->segments[i].quantizedBdepthAc.data();
 		diffBdepthAc[-1] = this->segments[i].referenceBdepthAc;
-		constexpr size_t bdepthAcbdepth = std::bit_width(sizeof(T) << 3);
-		rkdiff<size_t, alignment>(diffBdepthAc, (this->segments[i].size - 1), bdepthAcbdepth, true);
+		constexpr size_t bdepthAcbdepth = std::bit_width((sizeof(T) << 3) - 1); // bit_width(max_value)
+		rkdiff<ptrdiff_t, alignment>(diffBdepthAc, (this->segments[i].size - 1), bdepthAcbdepth, true);
 	}
 
 	// do unpack here

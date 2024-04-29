@@ -65,7 +65,7 @@ public:
 	void flush() {
 		this->dest(this->buffer);
 		this->wcount = this->capacity;
-		this->buffer = 0;
+		this->buffer = 0; // see 4.2.3.2.5, paragraph c
 	}
 
 	template <typename word_t>
@@ -103,7 +103,7 @@ void obitwrapper<buffer_t>::flush_word(word_t word) {
 	if constexpr (sizeof(word_t) < sizeof(buffer_t)) {
 		(*this) << vlw_t{ sizeof(word) << 3, word };
 	}
-	else if (sizeof(word_t) == sizeof(buffer_t)) {
+	else if constexpr (sizeof(word_t) == sizeof(buffer_t)) {
 		this->flush_word<buffer_t>(word);
 	}
 	else {

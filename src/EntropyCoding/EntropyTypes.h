@@ -24,9 +24,6 @@ struct _variadic_code_item {
 typedef _variadic_code_item SymbolEncoding;
 typedef _variadic_code_item shift_params;
 
-// TODO: PRIORITY change underlying type from std::byte to smth else, like unsigned char.
-using bpe_variadic_length_word = std::tuple<std::byte, std::byte>;
-
 template <typename T = size_t>
 struct _vlw_t {
 	using type = T;
@@ -41,8 +38,12 @@ struct _vlw_t {
 };
 
 using dense_vlw_t = _vlw_t<uint8_t>;
-
 using vlw_t = _vlw_t<size_t>;
+// 
+// uint8_t is not proper type because symbol encodings have points 8 bit length.
+// When coding to obitwrapper, shift operator for uint8_t and shit amount 8 bit 
+// is UB.
+using symbol_encoding = _vlw_t<uint_fast16_t>;
 
 
 template <typename int_type>

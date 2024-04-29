@@ -1290,3 +1290,66 @@ void fncore()
 // 		}
 // 	}
 // }
+
+// Initial decoding quantized DC coeffs implementation
+// 
+// // T bound = this->segments[i].bdepthDc - this->segments[i].q;
+// // bound = ((-1) << bound) ^ ((-1) << (bound - 1));
+// 
+// T mask = ~(-1 << (this->segments[i].bdepthDc - this->segments[i].q));
+// for (ptrdiff_t j = 0; j < this->segments[i].size - 1; ++j) {
+// 	// T theta = bound - (this->segments[i].quantizedDc[j - 1] ^ (this->segments[i].quantizedDc[j - 1] >> ((sizeof(T) << 3) - 1)));
+// 	// T predicate = this->segments[i].quantizedDc[j] - theta;
+// 	// T signmask = this->segments[i].quantizedDc[j] >> ((sizeof(T) << 3) - 1);
+// 	// T val = this->segments[i].quantizedDc[j];
+// 	// T diff = ((-(val & 0x01)) ^ (val >> 1));
+// 	// if (predicate > theta) {
+// 	// 	diff = -(predicate ^ signmask) + signmask;
+// 	// }
+// 
+// 	T signmask = diffData[j - 1] >> ((sizeof(T) << 3) - 1);
+// 	T theta = (diffData[j - 1] ^ (~signmask)) & mask;
+// 	T predicate = diffData[j] - theta;
+// 	T val = diffData[j];
+// 	T diff = ((-(val & 0x01)) ^ (val >> 1));
+// 	if (predicate > theta) {
+// 		diff = -(predicate ^ signmask) + signmask;
+// 	}
+// 
+// 	diffData[j] = diffData[j - 1] + diff;
+// 	this->segments[i].data[j + 1].content[0] |= diffData[j] << this->segments[i].q;
+// }
+// 
+// 
+// T mask = ~(-1 << bdepth);
+// // norm is either 0 either half of static range
+// T norm = (1 << (bdepth & normalize)) >> 1;
+// 
+
+
+// 
+// struct BitOrderTranslator {
+// private:
+// 	std::tuple <std::array<size_t, (1 << 1)>,
+// 		std::array<size_t, (1 << 2)>,
+// 		std::array<size_t, (1 << 3)>,
+// 		std::array<size_t, (1 << 4)>> codes =
+// 	{
+// 		{ 0x00, 0x01 },
+// 		{ 0x00, 0x02, 0x01, 0x03 },
+// 		{ 0x00, 0x04, 0x02, 0x06, 0x01, 0x05, 0x03, 0x07 },
+// 		{ 0x00, 0x08, 0x04, 0x0c, 0x02, 0x0a, 0x06, 0x0e, 0x01, 0x09, 0x05, 0x0d, 0x03, 0x0b, 0x07, 0x0f}
+// 	};
+// 
+// 	std::array<size_t*, 5> mapping = {
+// 		std::get<0>(codes).data(),
+// 		std::get<0>(codes).data(),
+// 		std::get<1>(codes).data(),
+// 		std::get<2>(codes).data(),
+// 		std::get<3>(codes).data()
+// 	};
+// public:
+// 	void translate(dense_vlw_t& vlw) {
+// 		vlw.value = this->mapping[vlw.length][vlw.value];
+// 	}
+// };

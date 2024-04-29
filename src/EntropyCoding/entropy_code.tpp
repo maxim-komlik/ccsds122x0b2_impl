@@ -3,11 +3,11 @@
 #include "EntropyTypes.h"
 
 template <size_t wordDepth, size_t codeOption>
-struct EntropyCode;
+struct entropy_code;
 
 template<>
-struct EntropyCode <2, 0> {
-	SymbolEncoding mapping[1 << 2] =
+struct entropy_code <2, 0> {
+	symbol_encoding mapping[1 << 2] =
 	{
 		{ 1, 	0b01	},	// 0
 		{ 2, 	0b001	},	// 1
@@ -17,8 +17,8 @@ struct EntropyCode <2, 0> {
 };
 
 template<>
-struct EntropyCode <3, 0> {
-	SymbolEncoding mapping[1 << 3] =
+struct entropy_code <3, 0> {
+	symbol_encoding mapping[1 << 3] =
 	{
 		{ 1, 	0b01	},		// 0
 		{ 2, 	0b001	},		// 1
@@ -32,8 +32,8 @@ struct EntropyCode <3, 0> {
 };
 
 template<>
-struct EntropyCode <3, 1> {
-	SymbolEncoding mapping[1 << 3] =
+struct entropy_code <3, 1> {
+	symbol_encoding mapping[1 << 3] =
 	{
 		{ 2, 	0b010	},	// 0
 		{ 2, 	0b011	},	// 1
@@ -47,8 +47,8 @@ struct EntropyCode <3, 1> {
 };
 
 template<>
-struct EntropyCode <4, 0> {
-	SymbolEncoding mapping[1 << 4] =
+struct entropy_code <4, 0> {
+	symbol_encoding mapping[1 << 4] =
 	{
 		{ 1, 	0b01	},	    // 0
 		{ 2, 	0b001	},	    // 1
@@ -70,8 +70,8 @@ struct EntropyCode <4, 0> {
 };
 
 template<>
-struct EntropyCode <4, 1> {
-	SymbolEncoding mapping[1 << 4] =
+struct entropy_code <4, 1> {
+	symbol_encoding mapping[1 << 4] =
 	{
 		{ 2, 	0b010	},		// 0
 		{ 2, 	0b011	},		// 1
@@ -93,8 +93,8 @@ struct EntropyCode <4, 1> {
 };
 
 template<>
-struct EntropyCode <4, 2> {
-	SymbolEncoding mapping[1 << 4] =
+struct entropy_code <4, 2> {
+	symbol_encoding mapping[1 << 4] =
 	{
 		{ 3, 	0b0100	},		// 0
 		{ 3, 	0b0101	},		// 1
