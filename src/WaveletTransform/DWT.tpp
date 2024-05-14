@@ -70,12 +70,12 @@ class ForwardWaveletTransformer {
 	img_meta m_src_meta;
 	img_pos m_frame_pos;
 
-	static const size_t c_h_alignment = 8;
-	static const size_t c_v_alignment = 8;
-	static const size_t c_level_count = 3;
+	static constexpr size_t c_h_alignment = 8;
+	static constexpr size_t c_v_alignment = 8;
+	static constexpr size_t c_level_count = 3;
 
-	static const size_t c_families_count = 3;
-	static const size_t c_LL3_offset = 8;
+	static constexpr size_t c_families_count = 3;
+	static constexpr size_t c_LL3_offset = 8;
 public:
 	ForwardWaveletTransformer(img_pos frame_properties);
 
@@ -107,12 +107,12 @@ class BackwardWaveletTransformer {
 	img_meta m_src_meta;
 	img_pos m_frame_pos;
 
-	static const size_t c_h_alignment = 8;
-	static const size_t c_v_alignment = 8;
-	static const size_t c_level_count = 3;
+	static constexpr size_t c_h_alignment = 8;
+	static constexpr size_t c_v_alignment = 8;
+	static constexpr size_t c_level_count = 3;
 
-	static const size_t c_families_count = 3;
-	static const size_t c_LL3_offset = 8;
+	static constexpr size_t c_families_count = 3;
+	static constexpr size_t c_LL3_offset = 8;
 
 public:
 	BackwardWaveletTransformer(img_pos frame_properties);

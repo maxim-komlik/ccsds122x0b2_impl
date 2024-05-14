@@ -14,8 +14,8 @@ class SegmentPreCoder {
 	std::array<typename bitmap<T>, 10> buffers;
 	size_t segment_size;
 
-	static const size_t c_families_count = 3;
-	static const size_t c_block_item_count = 64;
+	static constexpr size_t c_families_count = 3;
+	static constexpr size_t c_block_item_count = 64;
 public:
 	SegmentPreCoder(std::array<typename bitmap<T>, 10> input);
 	SegmentPreCoder(std::vector<typename bitmap<T>>& input);
@@ -30,7 +30,7 @@ template <typename T, size_t alignment = 16>
 class SegmentPostDecoder {
 	std::vector<typename segment<T>> segments;
 
-	static const size_t c_families_count = 3;
+	static constexpr size_t c_families_count = 3;
 public:
 	typedef std::vector<typename std::array<typename bitmap<T>, 10>> output_t;
 
@@ -244,8 +244,8 @@ std::vector<segment<T>> SegmentPreCoder<T, alignment>::apply() {
 
 	size_t dc_index = 0;
 	for (size_t i = 0; i < output.size(); ++i) {
-		output[i].plainDc = alligned_vector<T>(output[i].size);
-		output[i].bdepthAcBlocks = alligned_vector<size_t>(output[i].size);
+		output[i].plainDc = aligned_vector<T>(output[i].size);
+		output[i].bdepthAcBlocks = aligned_vector<size_t>(output[i].size);
 		T* segmentDc = output[i].plainDc.data();
 		this->buffers[0].linear(segmentDc, output[i].size, dc_index);
 		output[i].bdepthDc = bdepthv<T, alignment>(segmentDc, output[i].size);
@@ -279,8 +279,10 @@ std::vector<segment<T>> SegmentPreCoder<T, alignment>::apply() {
 			}
 		}
 		output[i].referenceSample = segmentDc[0];
+		// TODO: see 4.3.2.2: skip kdiff if N == 1
+		// may need to move output[i].plainDc to output[i].quantizedDc and reinitialize plainDc
 
-		output[i].quantizedDc = alligned_vector<T>(output[i].size);
+		output[i].quantizedDc = aligned_vector<T>(output[i].size);
 		T* diffData = output[i].quantizedDc.data();
 
 		// Below is the same as kdiff function but works for quantized DC only. 
@@ -313,7 +315,7 @@ std::vector<segment<T>> SegmentPreCoder<T, alignment>::apply() {
 		kdiff<T, alignment>(segmentDc, diffData, output[i].size, (output[i].bdepthDc - output[i].q) + 1, false);
 		ptrdiff_t* bdepthsAc = (ptrdiff_t*)output[i].bdepthAcBlocks.data();
 		output[i].referenceBdepthAc = bdepthsAc[0];
-		output[i].quantizedBdepthAc = alligned_vector<size_t>(output[i].size);
+		output[i].quantizedBdepthAc = aligned_vector<size_t>(output[i].size);
 		ptrdiff_t* diffBdipthAc = (ptrdiff_t*)output[i].quantizedBdepthAc.data();
 		constexpr size_t bdepthAcBdepth = std::bit_width((sizeof(T) << 3) - 1); // bit_width(max_value)
 		kdiff<ptrdiff_t, alignment>(bdepthsAc, diffBdipthAc, output[i].size, bdepthAcBdepth, true);

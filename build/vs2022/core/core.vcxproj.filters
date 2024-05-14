@@ -66,11 +66,14 @@
     <ClInclude Include="..\..\..\src\EntropyCoding\symbolstream_base.h">
       <Filter>EntropyCoding\Header Files</Filter>
     </ClInclude>
-    <ClInclude Include="..\..\..\src\common\utils.h">
-      <Filter>common\librarian\Header Files</Filter>
-    </ClInclude>
     <ClInclude Include="..\..\..\src\common\core_types.h">
-      <Filter>common\librarian\Header Files</Filter>
+      <Filter>common\Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="..\..\..\src\common\utils.h">
+      <Filter>common\Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="..\..\..\src\common\exception.h">
+      <Filter>common\Header Files</Filter>
     </ClInclude>
   </ItemGroup>
   <ItemGroup>
@@ -88,6 +91,9 @@
     </ClCompile>
     <ClCompile Include="..\..\..\src\EntropyCoding\symbolstream_base.cpp">
       <Filter>EntropyCoding\Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="..\..\..\src\common\exception.cpp">
+      <Filter>common\Source Files</Filter>
     </ClCompile>
   </ItemGroup>
   <ItemGroup>
@@ -133,14 +139,14 @@
     <None Include="..\..\..\src\EntropyCoding\BitPlaneEncoder.tpp">
       <Filter>EntropyCoding\Source Files</Filter>
     </None>
-    <None Include="..\..\..\src\common\alligned_vector.tpp">
-      <Filter>common\librarian\Header Files</Filter>
-    </None>
     <None Include="..\..\..\src\EntropyCoding\entropy_code.tpp">
       <Filter>EntropyCoding\Source Files</Filter>
     </None>
     <None Include="..\..\..\src\EntropyCoding\symbol_code.tpp">
       <Filter>EntropyCoding\Source Files</Filter>
+    </None>
+    <None Include="..\..\..\src\common\aligned_vector.tpp">
+      <Filter>common\Source Files</Filter>
     </None>
   </ItemGroup>
 </Project>

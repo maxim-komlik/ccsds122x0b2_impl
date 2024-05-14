@@ -2,7 +2,7 @@
 
 // TODO: This functionality is ptrovided by the standard library since C++23
 // See std::byteswap
-// THerefore should be removed.
+// Therefore should be removed.
 
 #include <type_traits>
 

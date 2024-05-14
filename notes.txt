@@ -186,3 +186,10 @@ Image extension depends on image data type.
 // and then copy transformed data, results are identical.
 // To extend horizontally modify source image with response to alignment boundaries before applying 
 // transform.
+
+
+[----------] 1 test from bpe
+[ RUN      ] bpe.EncoderSmoke
+Compression rate: 0.248262
+[       OK ] bpe.EncoderSmoke (582 ms)
+[----------] 1 test from bpe (583 ms total)

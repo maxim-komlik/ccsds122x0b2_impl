@@ -133,6 +133,13 @@ inline T signxor(T val) {
 	return (val ^ (val >> bitsize));
 }
 
+template <typename T>
+inline T signext(T val, size_t sign_pos) {
+	T mask = ((T)(-1)) << (sign_pos - 1);
+	return (val & (~mask)) - (val & mask);
+	// return val | ((((T)(-1)) << (sign_pos - 1)) + val);
+}
+
 // TODO: apply signed constraint (uses sign extension)
 // Currently fixed via make_unsigned, therefore input
 // value is limited to ((1 << (sizeof(T) << 3) - 1) - 1)
@@ -166,6 +173,7 @@ size_t bdepthv(T* src, size_t length) {
 		}
 	}
 
+	// TODO: std::bit_width
 	size_t depth = sizeof(*buffer) << 3;
 	size_t i = ((size_t)-1) << (depth - 1);
 	while (!(i & buffer[0])) {

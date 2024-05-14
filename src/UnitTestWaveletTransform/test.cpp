@@ -296,7 +296,21 @@ TEST(bpe, EncoderSmoke) {
 	SegmentPreCoder<item_t> precoder(coeffs_v);
 	auto output = precoder.apply();
 
-	size_t size_compressed = __encode<item_t, alignment>(output[0]);
+	std::vector<uint64_t> bpe_debug_output_buffer;
+
+	{
+		auto bpe_debug_output_buffer_callback = [&bpe_debug_output_buffer](uint64_t item) -> void {
+			bpe_debug_output_buffer.push_back(item);
+		};
+		obitwrapper<uint64_t> boutput(bpe_debug_output_buffer_callback);
+
+		__encode(output[0], boutput);
+
+		// here boutput dtor gets called and flushes current buffer, pushing
+		// padding to the output container as well.
+	}
+
+	size_t size_compressed = bpe_debug_output_buffer.size();
 	size_t size_initial = input.getImgMeta().length;
 
 	EXPECT_LE(size_compressed, size_initial) 
@@ -304,6 +318,121 @@ TEST(bpe, EncoderSmoke) {
 		<< "; initial = " << size_initial;
 
 	std::cout << "Compression rate: " << (((double)size_compressed) / ((double)size_initial)) << std::endl;
+}
+
+TEST(bpe, EncoderRound) {
+	typedef long long item_t;
+	constexpr size_t alignment = 16;
+	img_pos props;
+	props.width = 1 << 10;
+	props.height = 1 << 10;
+	bitmap<item_t> input = generateNoisyBitmap<item_t>(props.width, props.height, 64);
+
+	ForwardWaveletTransformer<item_t> dwt(props);
+	auto m_blocks = dwt.apply(input);
+	auto i_coeffs = dwt._getBuffers();
+	std::vector<bitmap<item_t>> coeffs_v(i_coeffs.cbegin(), i_coeffs.cend());
+	SegmentPreCoder<item_t> precoder(coeffs_v);
+	auto precoded = precoder.apply();
+
+	std::vector<uint64_t> compressed;
+	// constexpr size_t stage_limit = 0x0937; // stage 2 debug
+	// constexpr size_t stage_limit = 0x0a4a; // stage 3 debug
+	constexpr size_t stage_limit = (0x01 << 24) - 1;
+
+	{
+		auto bpe_debug_output_buffer_callback = [&compressed](uint64_t item) -> void {
+			compressed.push_back(item);
+		};
+		obitwrapper<uint64_t> boutput(bpe_debug_output_buffer_callback, stage_limit << 3);
+
+		try {
+			__encode(precoded[0], boutput);
+		} catch (const ccsds::bpe::byte_limit_exception& ex) {
+			std::cout << "Byte limit reached when encoding segment 0, output size: "
+				<< compressed.size() << std::endl;
+		}
+
+		// here boutput dtor gets called and flushes current buffer, pushing
+		// padding to the output container as well.
+	}
+	bitmap<item_t> output;
+
+	{
+		segment<item_t> backward_input;
+		backward_input.size = precoded[0].size;
+		backward_input.bdepthAc = precoded[0].bdepthAc;
+		backward_input.bdepthDc = precoded[0].bdepthDc;
+		backward_input.bit_shifts = precoded[0].bit_shifts;
+
+		// determines T type, T should be the smallest type with bdepth(T) is not less than bdepth_pixel
+		size_t bdepth_pixel;
+		// used by segmentPostDecoder
+		size_t image_width;
+		// determines buffer type of obitwrapper (or other encoding structure used by other implementation)
+		// and indicates if additional padding should be appended to the end of input collection to align 
+		// to the ibitwrapper buffer type word boundary
+		size_t codeword_length;
+		// SegByteLimit is a parameter for ibitwrapper/obitwrapper to terminate early.
+		size_t input_size_bytes; // aka SegByteLimit
+
+		// size_t input_size; // aka Header part 3 S
+		// std::array<size_t, 10> bit_shifts{ 3, 3, 3, 2, 2, 2, 1, 1, 1, 0 };
+		// size_t bdepthAc;
+		// size_t bdepthDc;
+
+		{
+			size_t compressed_index = 0;
+			auto bpe_debug_input_buffer_callback = [&compressed, &compressed_index]() -> uint64_t {
+				// static auto iter = compressed.begin();
+				return compressed[compressed_index++];
+			};
+			ibitwrapper<uint64_t> binput(bpe_debug_input_buffer_callback, stage_limit << 3);
+
+			try {
+				__decode(backward_input, binput);
+			} catch (const ccsds::bpe::byte_limit_exception& ex) {
+				std::cout << "Byte limit reached when decoding segment 0, decoded output size: "
+					<< compressed_index << std::endl;
+			}
+		}
+		precoded[0] = backward_input;
+		SegmentPostDecoder<item_t> postdecoder(precoded);
+		auto decoded = postdecoder.apply(props.width);
+
+		size_t out_row_offset = 0;
+		for (auto& block: decoded) {
+			img_meta meta = block[0].getImgMeta();
+			img_pos fragment_props { 0 };
+			fragment_props.width = meta.width;
+			fragment_props.height = meta.height;
+			BackwardWaveletTransformer<item_t> bdwt(fragment_props);
+			bdwt._setPayloadBuffers(block);
+			auto out_fragment = bdwt.apply();
+			size_t out_fragment_height; // = relu(out_fragment.getImgMeta().height - 16);
+			if (&block != &(decoded.back())) {
+				out_fragment_height = relu(out_fragment.getImgMeta().height - 16);
+			} else {
+				out_fragment_height = out_fragment.getImgMeta().height;
+			}
+			output.resize(props.width, out_row_offset + out_fragment_height);
+			for (size_t i = 0; i < out_fragment_height; ++i) {
+				output[out_row_offset + i].assign(out_fragment[i]);
+			}
+			out_row_offset += out_fragment_height;
+		}
+	}
+
+	img_meta input_props = input.getImgMeta();
+	img_meta output_props = output.getImgMeta();
+	ASSERT_EQ(input_props.width, output_props.width);
+	ASSERT_EQ(input_props.height, output_props.height);
+
+	for (size_t i = 0; i < props.height; ++i) {
+		for (size_t j = 0; j < props.width; ++j) {
+			EXPECT_EQ(input[i][j], output[i][j]) << " at index [" << i << "][" << j << "]";
+		}
+	}
 }
 
 #include <functional>

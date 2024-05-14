@@ -4,24 +4,29 @@
 #include <type_traits>
 
 #include "EntropyTypes.h"
-#include "EndianCoder.tpp"
+#include "exception.h"
 
 template <typename buffer_t> 
 class obitwrapper {
 	typedef typename std::make_unsigned<buffer_t>::type ubuffer_t;
 	typedef typename std::make_signed<buffer_t>::type sbuffer_t;
 	buffer_t buffer = 0;
-	size_t capacity = sizeof(buffer_t) << 3;
+	const size_t capacity = sizeof(buffer_t) << 3;
 	size_t wcount = capacity;
+
+	size_t byte_limit; // TODO: but should be capable of holding 2^27 - 1. See 4.2.3.2.1
+	size_t byte_count = 0;
 
 	typedef std::function<void(buffer_t)> callback_t;
 	callback_t dest;
 
 public:
 	using value_type = ubuffer_t;
-	obitwrapper(const callback_t &callback) : dest(callback) {};
+	obitwrapper(const callback_t &callback, size_t dst_byte_limit = ((1 << 27) - 1)) 
+			: dest(callback), byte_limit(dst_byte_limit) {};
 	// obitwrapper(const callback_t &&callback) = delete;
 	~obitwrapper() {
+		// TODO: MAJOR: dtor may throw!
 		if (this->wcount < this->capacity) {
 			this->dest(this->buffer);
 		}
@@ -49,21 +54,38 @@ public:
 		// when symbol.length equals bitlen(buffer_t) may cause shift amount param 
 		// overflow (as per x86 and riscv specs). If happens, writes 0 to the output 
 		// collection instead of symbol.value.
+		// That implies requirement of symbol.length < this->capacity so that the body 
+		// of the loop below is executed no more than 2 times per function call.
+		// 
+		// Mitigated by explicit check below. Need to estimate performance impact.
 		//
 		do {
 			size_t shift = std::min(symbol.length, this->wcount);
-			this->wcount -= shift;
 			symbol.length -= shift;
-			this->buffer ^= ((~(((sbuffer_t)(-1)) << shift)) & (symbol.value >> symbol.length)) << this->wcount;
-			if (this->wcount == 0) {
-				this->flush();
+
+			[[likely]]
+			if (shift != this->capacity) {
+				this->wcount -= shift;
+				this->buffer ^= ((~(((sbuffer_t)(-1)) << shift)) & (symbol.value >> symbol.length)) << this->wcount;
+				if (this->wcount == 0) {
+					this->flush();
+				}
+			} else {
+				[[likely]]
+				if (!this->dirty()) {
+					this->flush_word((buffer_t)(symbol.value >> symbol.length));
+				} else {
+					// infinite recursion otherwise
+					throw "unreachable by design!";
+				}
 			}
 		} while (symbol.length > 0);
 		return *this;
 	}
 
 	void flush() {
-		this->dest(this->buffer);
+		// this->dest(this->buffer);
+		this->__store_item(this->buffer);
 		this->wcount = this->capacity;
 		this->buffer = 0; // see 4.2.3.2.5, paragraph c
 	}
@@ -75,9 +97,10 @@ public:
 	void flush_word(buffer_t word) {
 		[[unlikely]]
 		if (this->dirty()) {
+			// check above guarantees no overflow will happen due to length == bitlen(buffer_t)
 			(*this) << vlw_t{ sizeof(word) << 3, word };
 		} else {
-			this->dest(word);
+			this->__store_item(word);
 		}
 	}
 
@@ -92,6 +115,18 @@ public:
 	bool dirty() const {
 		return (this->wcount < this->capacity);
 	}
+
+private:
+	// TODO: but inline is implicit here because defined inside class definition
+	inline void __store_item(buffer_t item) {
+		this->dest(item);
+
+		this->byte_count += sizeof(decltype(item));
+		[[unlikely]]
+		if (this->byte_count >= this->byte_limit) {
+			throw ccsds::bpe::byte_limit_exception();
+		}
+	}
 };
 
 
@@ -102,11 +137,9 @@ void obitwrapper<buffer_t>::flush_word(word_t word) {
 	// returns a result that breaks the logic below
 	if constexpr (sizeof(word_t) < sizeof(buffer_t)) {
 		(*this) << vlw_t{ sizeof(word) << 3, word };
-	}
-	else if constexpr (sizeof(word_t) == sizeof(buffer_t)) {
+	} else if constexpr (sizeof(word_t) == sizeof(buffer_t)) {
 		this->flush_word<buffer_t>(word);
-	}
-	else {
+	} else {
 		constexpr size_t ratio = sizeof(word_t) / sizeof(buffer_t);
 		for (ptrdiff_t i = (ptrdiff_t)(ratio - 1); i >= 0; --i) {
 			this->flush_word<buffer_t>(word >> (i * sizeof(buffer_t) * 8));

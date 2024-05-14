@@ -1353,3 +1353,304 @@ void fncore()
 // 		vlw.value = this->mapping[vlw.length][vlw.value];
 // 	}
 // };
+
+
+//	constexpr size_t gaggle_mask = items_per_gaggle - 1; // 0x0f
+// 	size_t input_size_truncated = input.size & (~gaggle_mask);
+// 	size_t last_gaggle_size = input.size & gaggle_mask;
+// 
+// 	size_t b = input.bdepthAc - 1;
+// 	for (; b >= max_subband_shift; --b) {
+// 		if (current_bplane.empty()) {
+// 			// TODO: the logic below is relevant less significant bits; as per the loop conditions 
+// 			// b is guaranteed to be more than or equal to 3, that means at least 4 bitplanes are
+// 			// available always. 
+// 			// 
+// 			// extracts next 4 bplanes at most
+// 			size_t bplane_num_to_extract = std::min(b, (decltype(b))(3));
+// 			++bplane_num_to_extract;
+// 
+// 			// fills current_bplane container
+// 			bplaneEncode(raw_block_data, raw_block_size, b, bplane_num_to_extract, current_bitplane_bitwrapper);
+// 		}
+// 
+// 		// stage 0
+// 		if (b < input.q) {
+// 			// q may be less than bdepthAc, e.g.:
+// 			// bdepthAc = 3; bdepthDc = 10; bitShift(LL3) = 0
+// 			// => 
+// 			// q = 2
+// 			//
+// 			bplaneEncode(input.plainDc.data(), input.size, b, 1, output); // the output buffer can still not be flushed yet
+// 		}
+// 
+// 		// interleaving bpe stages
+// 		{
+// 			// the words not encoded further:
+// 			// (all computed on a dedicated signs data set)
+// 			// signs_P
+// 			// signs_C0
+// 			// signs_C1
+// 			// signs_C2
+// 			// signs_H00
+// 			// signs_H01
+// 			// signs_H02
+// 			// signs_H03
+// 			// signs_H10
+// 			// signs_H11
+// 			// signs_H12
+// 			// signs_H13
+// 			// signs_H20
+// 			// signs_H21
+// 			// signs_H22
+// 			// signs_H23
+// 			//
+// 			// the words encoded further:
+// 			// types_P
+// 			// types_C0
+// 			// types_C1
+// 			// types_C2
+// 			// types_H00
+// 			// types_H01
+// 			// types_H02
+// 			// types_H03
+// 			// types_H10
+// 			// types_H11
+// 			// types_H12
+// 			// types_H13
+// 			// types_H20
+// 			// types_H21
+// 			// types_H22
+// 			// types_H23
+// 			//
+// 			// transition words encoded further:
+// 			// tran_B	// but actually max len is 1, therefore never encoded. But still suits this set
+// 			// tran_D
+// 			// tran_G
+// 			// tran_H0
+// 			// tran_H1
+// 			// tran_H2
+// 			//
+// 
+// 			ptrdiff_t i = 0;
+// 			for (; i < input_size_truncated; i += items_per_gaggle) {
+// 				for (ptrdiff_t j = 0; j < items_per_gaggle; ++j) {
+// 					std::array<decltype(family_masks)::value_type, family_masks.size()> prepared_block = { 0 };
+// 					for (ptrdiff_t k = 0; k < family_masks.size(); ++k) {
+// 						prepared_block[k] = current_bplane[i + j] & family_masks[k];
+// 					}
+// 
+// 					auto addVlwToCollection = [&](dense_vlw_t& vlw) -> void {
+// 					// auto addVlwToCollection = [&](bpe_variadic_length_word& vlw, size_t vlw_len) -> void {
+// 						constexpr size_t vlwstreams_index_bias = 2;
+// 						size_t vlw_len = vlw.length;
+// 						// 
+// 						// PERFMARK:	TODO:
+// 						// Keep branch. If lambda's operator() gets inlined, then there should be
+// 						// enough instruction queue clocks to elide branch prediction. 
+// 						// // Hence explicit
+// 						// // function parameter for word length to avoid transitive dependincies through
+// 						// // vlw structure.
+// 						//
+// 						if (vlw_len >= 2) {
+// 							vlwstreams[vlw_len - vlwstreams_index_bias].put(vlw.value);
+// 						}
+// 					};
+// 
+// 					auto accumulateTranVlw = [&](dense_vlw_t& vlw, size_t index, bool skip = false) -> bool {
+// 						// Accumulates transition word with next signle bit. Since the word
+// 						// is not complete yet, the correspnding stream for length estimation
+// 						// is not populated, therefore the resulting symbol should be inserted
+// 						// into the stream when the complete word is ready.
+// 						//
+// 
+// 						size_t tran_val = prepared_block[index] > 0;
+// 						size_t tran_len = ((bplane_mask[i + j] & family_masks[index]) == 0);
+// 						tran_len &= !skip;
+// 
+// 						// tran_len value is either 0 or 1, and used as both mask and len
+// 						vlw.value <<= tran_len;
+// 						vlw.value |= (tran_len & tran_val);
+// 						vlw.length += tran_len;
+// 
+// 						return ((tran_val == 0) & (tran_len == 1));
+// 					};
+// 
+// 					auto computeTerminalVlw = [&](dense_vlw_t& typesVlw, dense_vlw_t& signsVlw, size_t index, bool skip = false) {
+// 						// All active elements that are not of type 2 (or -1) yet, mask is applicable
+// 						// to get values '0' and '1' of dedicated bits
+// 						uint64_t effective_mask = (family_masks[index] & (~bplane_mask[i + j])) & (-((int64_t)(!skip)));
+// 
+// 						typesVlw = combine_bword(prepared_block[index], effective_mask);
+// 						// Actually the same as below, but may relief contention for a single item 
+// 						// in current_bplane[i + j] and use masked copy instead, that should be just
+// 						// used by computing transition word
+// 						// 
+// 						// ) = combine_bword(current_bplane[i + j], effective_mask);
+// 						signsVlw = combine_bword(block_signs[i + j], (prepared_block[index] & effective_mask));
+// 
+// 						block_states[i + j].bplane_mask_transit |= (prepared_block[index] & effective_mask);
+// 					};
+// 
+// 					// set tran words to completely clean states to mitigate interfering with leftovers
+// 					// of the previous bitplane. Also allows write operations only with no need to read
+// 					// the old state and elide assosiated memory ops dependencies.
+// 					block_states[i + j].tran_B = dense_vlw_t{ 0, 0 };
+// 					bool skip_descendants = accumulateTranVlw(block_states[i + j].tran_B, B_index);
+// 					computeTerminalVlw(block_states[i + j].types_P, block_states[i + j].signs_P, P_index);
+// 					symbol_translator.translate(block_states[i + j].types_P);
+// 					addVlwToCollection(block_states[i + j].types_P);
+// 
+// 					if (!skip_descendants) {
+// 						block_states[i + j].tran_D = dense_vlw_t{ 0, 0 };
+// 						block_states[i + j].tran_G = dense_vlw_t{ 0, 0 };
+// 						for (ptrdiff_t k = 0; k < F_num; ++k) {
+// 							// (skip = false) is implied because the case is covered by control flow dependency
+// 							// introduced by branch few lines above
+// 							bool skip_tran_Gx = accumulateTranVlw(block_states[i + j].tran_D, (k * F_step) + D_offset);
+// 							bool skip_tran_Hx = accumulateTranVlw(block_states[i + j].tran_G, (k * F_step) + G_offset, skip_tran_Gx);
+// 
+// 							computeTerminalVlw(block_states[i + j].types_C[k], block_states[i + j].signs_C[k],
+// 								(k * F_step) + C_offset, skip_tran_Gx);
+// 							symbol_translator.translate(block_states[i + j].types_C[k]);
+// 							addVlwToCollection(block_states[i + j].types_C[k]);
+// 
+// 							block_states[i + j].tran_H[k] = dense_vlw_t{ 0, 0 };
+// 							for (ptrdiff_t l = 0; l < HxpF_num; ++l) {
+// 								bool skip_Hx = accumulateTranVlw(block_states[i + j].tran_H[k], (k * F_step) + Hx_offset + l, skip_tran_Hx);
+// 								computeTerminalVlw(block_states[i + j].types_H[k][l], block_states[i + j].signs_H[k][l],
+// 									(k * F_step) + Hx_offset + l, skip_Hx);
+// 								symbol_translator.translate<decltype(symbol_translator)::types_H_codeparam>(
+// 									block_states[i + j].types_H[k][l]);
+// 								addVlwToCollection(block_states[i + j].types_H[k][l]);
+// 							}
+// 						}
+// 					}
+// 
+// 					symbol_translator.translate<decltype(symbol_translator)::tran_D_codeparam>(block_states[i + j].tran_D);
+// 					addVlwToCollection(block_states[i + j].tran_D);
+// 					symbol_translator.translate(block_states[i + j].tran_G);
+// 					addVlwToCollection(block_states[i + j].tran_G);
+// 					for (size_t k = 0; k < block_states[i + j].tran_H.size(); ++k) {
+// 						symbol_translator.translate<decltype(symbol_translator)::tran_H_codeparam>(block_states[i + j].tran_H[k]);
+// 						addVlwToCollection(block_states[i + j].tran_H[k]);
+// 					}
+// 				}
+// 
+// 				{
+// 					std::array<std::pair<size_t, ptrdiff_t>, vlwstreams.size()> optimal_code_options = { {
+// 						{ vlwstreams[0]._size() * 2, -1 },
+// 						{ vlwstreams[1]._size() * 3, -1 },
+// 						{ vlwstreams[2]._size() * 4, -1 }
+// 					} };
+// 
+// 					auto update_optimal_code_option = [&](size_t index, size_t blen, size_t option) -> void {
+// 						size_t current_bitsize = 0;
+// 						while (vlwstreams[index]) {
+// 							current_bitsize += entropy_translator.word_length(vlwstreams[index].get(), blen, option);
+// 						}
+// 						if (current_bitsize < optimal_code_options[index].first) {
+// 							optimal_code_options[index] = { current_bitsize, option };
+// 						}
+// 						vlwstreams[index].restart();
+// 					};
+// 
+// 					update_optimal_code_option(0, 2, 0);
+// 					update_optimal_code_option(1, 3, 0);
+// 					update_optimal_code_option(1, 3, 1);
+// 					update_optimal_code_option(2, 4, 0);
+// 					update_optimal_code_option(2, 4, 1);
+// 					update_optimal_code_option(2, 4, 2);
+// 
+// 					for (ptrdiff_t k = 0; k < vlwstreams.size(); ++k) {
+// 						constexpr size_t codeoptions_bias = 2;
+// 						gaggle_states[i >> 4].entropy_codeoptions[k + codeoptions_bias] = optimal_code_options[k].second;
+// 						gaggle_states[i >> 4].code_marker_written[k + codeoptions_bias] = false;
+// 						vlwstreams[k].reset();
+// 					}
+// 				}
+// 			}
+// 			for (ptrdiff_t j = 0; j < last_gaggle_size; ++j) {}
+// 			
+// 			// The code below writes the computed words to the output stream. Per 4.5.3.1.7 and 
+// 			// 4.5.3.1.8 some words shall not be written to the output stream upon certain 
+// 			// conditions dependent on other words' states. The stages encoding code section 
+// 			// below ignores these dependencies as they are already taken into accoung when 
+// 			// the words are computed (code section above), and all the words that shall not 
+// 			// be written to the stream have length 0, that is, these words are null-words. 
+// 			// All the words are initialized with length 0 in the beginning, and then are 
+// 			// eventually computed when necessary on a later bitplane. Once computed, they're 
+// 			// computed in a subsequent bitplanes also, until evaluate to null-word in some 
+// 			// less signigicant bitplane.
+// 			//
+// 
+// 			auto translateEncodeVlw = [&](dense_vlw_t& vlw) -> void {
+// 				// TODO: warning, i is captured by reference
+// 				size_t vlw_length = vlw.length;
+// 				ptrdiff_t codeoption = gaggle_states[i >> 4].entropy_codeoptions[vlw_length];
+// 				if (!gaggle_states[i >> 4].code_marker_written[vlw_length]) {
+// 					// for word length 0 and 1 predicate is always false, should
+// 					// never be executed for these lengths
+// 					gaggle_states[i >> 4].code_marker_written[vlw_length] = true;
+// 					size_t codeoption_bitsize = std::bit_width((size_t)(vlw_length - 1));
+// 					output << vlw_t{ codeoption_bitsize, (vlw_t::type)(codeoption) };
+// 				}
+// 				output << entropy_translator.translate(vlw, codeoption);
+// 			};
+// 
+// 			// stage 1
+// 			i = 0;
+// 			for (; i < input_size_truncated; i += items_per_gaggle) {
+// 				for (ptrdiff_t j = 0; j < items_per_gaggle; ++j) {
+// 					translateEncodeVlw(block_states[i + j].types_P);
+// 					output << block_states[i + j].signs_P;
+// 				}
+// 			}
+// 			for (ptrdiff_t j = 0; j < last_gaggle_size; ++j) {}
+// 
+// 			// stage 2
+// 			i = 0;
+// 			for (; i < input_size_truncated; i += items_per_gaggle) {
+// 				for (ptrdiff_t j = 0; j < items_per_gaggle; ++j) {
+// 					output << block_states[i + j].tran_B;
+// 					translateEncodeVlw(block_states[i + j].tran_D);
+// 					for (ptrdiff_t k = 0; k < F_num; ++k) {
+// 						translateEncodeVlw(block_states[i + j].types_C[k]);
+// 						output << block_states[i + j].signs_C[k];
+// 					}
+// 				}
+// 			}
+// 			for (ptrdiff_t j = 0; j < last_gaggle_size; ++j) {}
+// 
+// 			// stage 3
+// 			i = 0;
+// 			for (; i < input_size_truncated; i += items_per_gaggle) {
+// 				for (ptrdiff_t j = 0; j < items_per_gaggle; ++j) {
+// 					translateEncodeVlw(block_states[i + j].tran_G);
+// 					for (ptrdiff_t k = 0; k < F_num; ++k) {
+// 						translateEncodeVlw(block_states[i + j].tran_H[k]);
+// 						for (ptrdiff_t l = 0; l < HxpF_num; ++l) {
+// 							translateEncodeVlw(block_states[i + j].types_H[k][l]);
+// 							output << block_states[i + j].signs_H[k][l];
+// 						}
+// 					}
+// 				}
+// 			}
+// 			for (ptrdiff_t j = 0; j < last_gaggle_size; ++j) {}
+// 
+// 			// stage 4
+// 			for (ptrdiff_t j = 0; j < input.size; ++j) {
+// 				output << combine_bword(current_bplane[j], bplane_mask[j]);
+// 				bplane_mask[j] |= block_states[j].bplane_mask_transit;
+// 				block_states[j].bplane_mask_transit = 0;
+// 			}
+// 		}
+// 		{
+// 			// fast forward to the next bplane, will make the container empty
+// 			// if the current bplane was the last extracted.
+// 			// Since the elements at the beginning only are erased, no moves/copies
+// 			// occur and no iteraters are invalidated (as guaranteed by std::deque)
+// 
+// 			current_bplane.erase(current_bplane.begin(), current_bplane.begin() + input.size);
+// 		}
+// 	}
