@@ -410,7 +410,7 @@ void __encode(segment<T>& input, obitwrapper<obwT>& output) {
 			kEncode(quantizedBdepthAcParams, use_heuristic_bdepthAc, output);
 		}
 		__encodeBpeStages(input, output); // TODO: somehow links without forward declaration
-	}
+	} // TODO: else {} check if DC data can remain uncoded otherwise
 
 	// TODO: flush output buffer and handle fill bits in the last flashed word
 	// TODO: put obitwrapper buffer type parameter size as Header part 4 field
@@ -1010,7 +1010,7 @@ void __encodeBpeStages(segment<T>& input, obitwrapper<obwT>& output) {
 	size_t input_size_truncated = input.size & (~gaggle_mask);
 	size_t last_gaggle_size = input.size & gaggle_mask;
 
-	size_t b = input.bdepthAc - 1;
+	size_t b = input.bdepthAc - 1; // TODO: requires bdepthAc > 0; check at caller side
 	for (; b >= max_subband_shift; --b) {
 		if (current_bplane.empty()) {
 			// Per the loop conditions b is guaranteed to be more than or equal to 3, 
@@ -1432,7 +1432,7 @@ void bplane(T* data, size_t size, size_t b, obitwrapper<obwT>& ostream) {
 
 template <typename T, typename obwT, size_t alignment>
 void bplanev4(T* data, size_t size, size_t belder, std::array<std::reference_wrapper<obitwrapper<obwT>>, 4> ostreams) {
-	size_t b = relu(((std::make_signed_t<decltype(belder)>)(belder)) - ostreams.size());
+	size_t b = relu(((std::make_signed_t<decltype(belder)>)(belder)) - ostreams.size() + 1);
 	std::make_unsigned_t<T> mask = ((T)(0x01) << b);
 
 	std::array<T, ostreams.size()> indicies{ 0 };
@@ -1726,9 +1726,10 @@ void __decode(segment<T>& output, ibitwrapper<ibwT>& input) {
 	output.referenceSample = 0;
 	output.quantizedDc = aligned_vector<T>(output.size);
 	output.plainDc = aligned_vector<T>(output.size);
+	output.plainDc.assign(0);
 	output.referenceBdepthAc = 0;
 	output.quantizedBdepthAc = aligned_vector<size_t>(output.size);
-	output.bdepthAcBlocks = aligned_vector<size_t>(output.size);
+	// output.bdepthAcBlocks = aligned_vector<size_t>(output.size);
 
 	output.q = quant_dc(output.bdepthDc, output.bdepthAc, output.bit_shifts[0]);
 

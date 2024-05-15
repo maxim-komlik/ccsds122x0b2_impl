@@ -335,6 +335,9 @@ TEST(bpe, EncoderRound) {
 	SegmentPreCoder<item_t> precoder(coeffs_v);
 	auto precoded = precoder.apply();
 
+	auto bpe_input_segment = precoded[0];
+	bpe_input_segment.bit_shifts.fill(0); // TODO: workaround as scling is not implemented yet.
+
 	std::vector<uint64_t> compressed;
 	// constexpr size_t stage_limit = 0x0937; // stage 2 debug
 	// constexpr size_t stage_limit = 0x0a4a; // stage 3 debug
@@ -347,7 +350,7 @@ TEST(bpe, EncoderRound) {
 		obitwrapper<uint64_t> boutput(bpe_debug_output_buffer_callback, stage_limit << 3);
 
 		try {
-			__encode(precoded[0], boutput);
+			__encode(bpe_input_segment, boutput);
 		} catch (const ccsds::bpe::byte_limit_exception& ex) {
 			std::cout << "Byte limit reached when encoding segment 0, output size: "
 				<< compressed.size() << std::endl;
@@ -360,10 +363,10 @@ TEST(bpe, EncoderRound) {
 
 	{
 		segment<item_t> backward_input;
-		backward_input.size = precoded[0].size;
-		backward_input.bdepthAc = precoded[0].bdepthAc;
-		backward_input.bdepthDc = precoded[0].bdepthDc;
-		backward_input.bit_shifts = precoded[0].bit_shifts;
+		backward_input.size = bpe_input_segment.size;
+		backward_input.bdepthAc = bpe_input_segment.bdepthAc;
+		backward_input.bdepthDc = bpe_input_segment.bdepthDc;
+		backward_input.bit_shifts = bpe_input_segment.bit_shifts;
 
 		// determines T type, T should be the smallest type with bdepth(T) is not less than bdepth_pixel
 		size_t bdepth_pixel;
@@ -396,6 +399,14 @@ TEST(bpe, EncoderRound) {
 					<< compressed_index << std::endl;
 			}
 		}
+
+		for (ptrdiff_t i = 0; i < backward_input.size; ++i) {
+			for (ptrdiff_t j = 1; j < 64; ++j) { // TODO: items per block
+				EXPECT_EQ(backward_input.data[i].content[j], precoded[0].data[i].content[j]) 
+					<< " at segment [0], block [" << i << "], coeff [" << j << "]";
+			}
+		}
+
 		precoded[0] = backward_input;
 		SegmentPostDecoder<item_t> postdecoder(precoded);
 		auto decoded = postdecoder.apply(props.width);

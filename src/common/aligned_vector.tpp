@@ -3,6 +3,12 @@
 #include <algorithm>
 #include <memory>
 
+template <typename T, size_t alignment>
+class aligned_vector;
+
+template <typename T, size_t alignment>
+void swap(aligned_vector<T, alignment>& first, aligned_vector<T, alignment>& second) noexcept;
+
 template <typename T, size_t alignment = 16>
 class aligned_vector {
 	T* m_begin;
@@ -24,8 +30,9 @@ public:
 	aligned_vector(size_t length, T* origin);
 	aligned_vector(size_t length, size_t offset = 16);
 
+	// declaration order matters
+	friend void swap<>(aligned_vector& first, aligned_vector& second) noexcept;
 	void swap(aligned_vector& other) noexcept;
-	friend void swap(aligned_vector& first, aligned_vector& second);
 
 	void assign(T value);
 	void fill(size_t length, T* origin);
@@ -167,13 +174,14 @@ void swap(aligned_vector<T, alignment>& first, aligned_vector<T, alignment>& sec
 	swap(first.m_rawdata, second.m_rawdata);
 	swap(first.m_length, second.m_length);
 	swap(first.m_offset, second.m_offset);
-	swap(first.m_rawdata_length, second.rawdata_length);
+	swap(first.m_rawdata_length, second.m_rawdata_length);
 }
 
 namespace std {
 	template <typename T, size_t alignment>
 	void swap(aligned_vector<T, alignment>& first, aligned_vector<T, alignment>& second) noexcept {
-		swap(first, second);
+		// swap(first, second); // will cause recursion as the current namespace std:: will be searched first
+		first.swap(second);
 	}
 }
 
@@ -204,4 +212,13 @@ template <typename T, size_t alignment>
 inline
 T* aligned_vector<T, alignment>::data() const {
 	return std::assume_aligned<this->palignment>(this->m_begin);
+}
+
+template <typename T, size_t alignment>
+void aligned_vector<T, alignment>::resize(size_t length) {
+	if (this->m_rawdata_length < (length + this->m_offset)) { // check operator=
+		this->m_rawdata_length = ((length + alignment - 1) & (~(alignment - 1))) + 2 * this->m_offset;
+		this->__reallocate();
+	}
+	this->m_length = length;
 }

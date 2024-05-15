@@ -235,7 +235,7 @@ template<typename T, size_t alignment>
 std::vector<segment<T>> SegmentPreCoder<T, alignment>::apply() {
 	// TODO:
 	// AC values: sign bit + magnitude (see p. 4-3)
-	// perform scaling of the input depending on its type (ceiling or shifting)
+	// TODO: perform scaling of the input depending on its type (ceiling or shifting)
 	std::vector<segment<T>> output = this->pack();
 	for (size_t i = 1; i < this->buffers.size(); ++i) {
 		// free buffers, they are not necessary once we packed all values
@@ -245,7 +245,8 @@ std::vector<segment<T>> SegmentPreCoder<T, alignment>::apply() {
 	size_t dc_index = 0;
 	for (size_t i = 0; i < output.size(); ++i) {
 		output[i].plainDc = aligned_vector<T>(output[i].size);
-		output[i].bdepthAcBlocks = aligned_vector<size_t>(output[i].size);
+		output[i].quantizedDc = aligned_vector<T>(output[i].size);
+		output[i].quantizedBdepthAc = aligned_vector<size_t>(output[i].size);
 		T* segmentDc = output[i].plainDc.data();
 		this->buffers[0].linear(segmentDc, output[i].size, dc_index);
 		output[i].bdepthDc = bdepthv<T, alignment>(segmentDc, output[i].size);
@@ -253,7 +254,7 @@ std::vector<segment<T>> SegmentPreCoder<T, alignment>::apply() {
 		std::make_unsigned_t<T> magnitude_mask_acc = 0;
 		for (ptrdiff_t j = 0; j < output[i].size; ++j) {
 			std::make_unsigned_t<T> magnitude_mask = accorv<T, alignment>(output[i].data[j].content, this->c_block_item_count);
-			output[i].bdepthAcBlocks[j] = std::bit_width(magnitude_mask) + 1; // see 4.1, p. 4-3, eq (13)
+			output[i].quantizedBdepthAc[j] = std::bit_width(magnitude_mask) + 1; // see 4.1, p. 4-3, eq (13)
 			magnitude_mask_acc |= magnitude_mask;
 		}
 		output[i].bdepthAc = std::bit_width(magnitude_mask_acc);
@@ -263,18 +264,24 @@ std::vector<segment<T>> SegmentPreCoder<T, alignment>::apply() {
 		dc_index += output[i].size;
 	}
 
+	aligned_vector<T> plainDcBuffer(output[0].size);
+	aligned_vector<size_t> bdepthAcBuffer(output[0].size);
+
 	constexpr size_t palignment = alignment * sizeof(T);
 	for (size_t i = 0; i < output.size(); ++i) {
+		plainDcBuffer.resize(output[i].size);
+		bdepthAcBuffer.resize(output[i].size);
 		T* segmentDc = output[i].plainDc.data();
 		output[i].q = this->segmentQ(output[i].bdepthDc, output[i].bdepthAc);
 
 		T mask = ~(-1 << output[i].q);
-		for (size_t j = 0; j < output[i].size; ++j) {
-			output[i].data[j].content[0] = segmentDc[j] & mask;
-		}
+		// for (size_t j = 0; j < output[i].size; ++j) {
+		// 	output[i].data[j].content[0] = segmentDc[j] & mask;
+		// }
 
 		for (size_t ii = 0; ii < output[i].size; ii += alignment) {
 			for (size_t jj = 0; jj < alignment; ++jj) {
+				plainDcBuffer[ii + jj] = segmentDc[ii + jj] & mask; // PERF NOTE: by pointer assigned to subscripted
 				segmentDc[ii + jj] >>= output[i].q;
 			}
 		}
@@ -282,8 +289,10 @@ std::vector<segment<T>> SegmentPreCoder<T, alignment>::apply() {
 		// TODO: see 4.3.2.2: skip kdiff if N == 1
 		// may need to move output[i].plainDc to output[i].quantizedDc and reinitialize plainDc
 
-		output[i].quantizedDc = aligned_vector<T>(output[i].size);
-		T* diffData = output[i].quantizedDc.data();
+		// PERF NOTE: call to new() contains side effects and therefore considered 
+		// serializing op. Moved to the first loop due to performance reasons.
+		// output[i].quantizedDc = aligned_vector<T>(output[i].size); // TODO: move to first loop?
+		// T* diffData = output[i].quantizedDc.data();
 
 		// Below is the same as kdiff function but works for quantized DC only. 
 		// I decided to keep it in a comments for future reference.
@@ -312,19 +321,43 @@ std::vector<segment<T>> SegmentPreCoder<T, alignment>::apply() {
 		// }
 		// 
 
-		kdiff<T, alignment>(segmentDc, diffData, output[i].size, (output[i].bdepthDc - output[i].q) + 1, false);
-		ptrdiff_t* bdepthsAc = (ptrdiff_t*)output[i].bdepthAcBlocks.data();
-		output[i].referenceBdepthAc = bdepthsAc[0];
-		output[i].quantizedBdepthAc = aligned_vector<size_t>(output[i].size);
-		ptrdiff_t* diffBdipthAc = (ptrdiff_t*)output[i].quantizedBdepthAc.data();
-		constexpr size_t bdepthAcBdepth = std::bit_width((sizeof(T) << 3) - 1); // bit_width(max_value)
-		kdiff<ptrdiff_t, alignment>(bdepthsAc, diffBdipthAc, output[i].size, bdepthAcBdepth, true);
+		size_t bdepthQDc = (output[i].bdepthDc - output[i].q) + 1;
+		// TODO: see 4.3.2.2: skip kdiff if N == 1
+		// may need to move output[i].plainDc to output[i].quantizedDc and reinitialize plainDc
+		if (bdepthQDc > 1) {
+			T* diffData = output[i].quantizedDc.data();
+			kdiff<T, alignment>(segmentDc, diffData, output[i].size, bdepthQDc, false);
+			swap(output[i].plainDc, plainDcBuffer); // do not expose temporal values to the caller
+		} else {
+			swap(output[i].plainDc, output[i].quantizedDc);
+		}
+
+		// see 4.4 (c): N = round_up(log(1 + bdepthAc))
+		// TODO: check formulas, see bit_width and eq.21 from 4.4
+		size_t bdepthAcBdepth = std::bit_width(output[i].bdepthAc);
+		if (bdepthAcBdepth > 1) {
+			ptrdiff_t* bdepthsAc = (ptrdiff_t*)output[i].quantizedBdepthAc.data();
+			output[i].referenceBdepthAc = bdepthsAc[0];
+			// output[i].quantizedBdepthAc = aligned_vector<size_t>(output[i].size);
+			// ptrdiff_t* diffBdipthAc = (ptrdiff_t*)output[i].quantizedBdepthAc.data();
+			ptrdiff_t* diffBdipthAc = (ptrdiff_t*)bdepthAcBuffer.data();
+			//constexpr size_t bdepthAcBdepth = std::bit_width((sizeof(T) << 3) - 1); // bit_width(max_value)
+			kdiff<ptrdiff_t, alignment>(bdepthsAc, diffBdipthAc, output[i].size, bdepthAcBdepth, true);
+			swap(output[i].quantizedBdepthAc, bdepthAcBuffer); // do not expose temporal values to the caller
+		}
+
+		// TODO: bdepth AC blocks values are encoded per standard, but not required to be used
+		// during BPE encoding/decoding, and are not actually used in this implementation.
+		// Maybe possible to use for performance improvement during BPE decoding or AC 
+		// approximation when coded data terminates early.
+		// 
 
 		// TODO: implement constexpr if to enable the block below in 
 		// debug builds only
 		// 
 		// debug block, reverse op
 		{
+			T* diffData = output[i].quantizedDc.data();
 			diffData[-1] = output[i].referenceSample;
 			mask = ~(-1 << (output[i].bdepthDc - output[i].q));
 			for (ptrdiff_t j = 0; j < output[i].size - 1; ++j) {
@@ -344,6 +377,8 @@ std::vector<segment<T>> SegmentPreCoder<T, alignment>::apply() {
 			}
 		}
 		{
+			ptrdiff_t* diffBdipthAc = (ptrdiff_t*)output[i].quantizedBdepthAc.data();
+			ptrdiff_t* bdepthsAc = (ptrdiff_t*)bdepthAcBuffer.data();
 			diffBdipthAc[-1] = output[i].referenceBdepthAc;
 			mask = ~(-1 << bdepthAcBdepth);
 			T norm = (1 << bdepthAcBdepth) >> 1;
@@ -414,7 +449,9 @@ template <typename T, size_t alignment>
 SegmentPostDecoder<T, alignment>::output_t SegmentPostDecoder<T, alignment>::apply(size_t image_width) {
 	for (ptrdiff_t i = 0; i < this->segments.size(); ++i) {
 		// reference sample:
-		this->segments[i].data[0].content[0] |= this->segments[i].referenceSample << this->segments[i].q;
+		// this->segments[i].data[0].content[0] |= this->segments[i].referenceSample << this->segments[i].q;
+		this->segments[i].data[0].content[0] = 
+			(this->segments[i].referenceSample << this->segments[i].q) | this->segments[i].plainDc[0];
 		T* diffData = this->segments[i].quantizedDc.data();
 		diffData[-1] = this->segments[i].referenceSample;
 
@@ -437,16 +474,23 @@ SegmentPostDecoder<T, alignment>::output_t SegmentPostDecoder<T, alignment>::app
 		// 	diffData[j] = diffData[j - 1] + diff;
 		// 	this->segments[i].data[j + 1].content[0] |= diffData[j] << this->segments[i].q;
 		// }
-
-		rkdiff<T, alignment>(diffData, (this->segments[i].size - 1), (this->segments[i].bdepthDc - this->segments[i].q) + 1, false);
-		for (ptrdiff_t j = 0; j < this->segments[i].size - 1; ++j) {
-			this->segments[i].data[j + 1].content[0] |= diffData[j] << this->segments[i].q;
+		size_t bdepthQDc = (this->segments[i].bdepthDc - this->segments[i].q) + 1;
+		if (bdepthQDc > 1) {
+			rkdiff<T, alignment>(diffData, (this->segments[i].size - 1), bdepthQDc, false);
+			for (ptrdiff_t j = 0; j < this->segments[i].size - 1; ++j) {
+				// this->segments[i].data[j + 1].content[0] |= diffData[j] << this->segments[i].q;
+				this->segments[i].data[j + 1].content[0] = 
+					(diffData[j] << this->segments[i].q) | this->segments[i].plainDc[j + 1]; // PERF NOTE: access by ptr and subscript operator
+			}
 		}
 
-		ptrdiff_t* diffBdepthAc = (ptrdiff_t*)this->segments[i].quantizedBdepthAc.data();
-		diffBdepthAc[-1] = this->segments[i].referenceBdepthAc;
-		constexpr size_t bdepthAcbdepth = std::bit_width((sizeof(T) << 3) - 1); // bit_width(max_value)
-		rkdiff<ptrdiff_t, alignment>(diffBdepthAc, (this->segments[i].size - 1), bdepthAcbdepth, true);
+		size_t bdepthAcBdepth = std::bit_width(this->segments[i].bdepthAc);
+		if (bdepthAcBdepth > 1) {
+			ptrdiff_t* diffBdepthAc = (ptrdiff_t*)this->segments[i].quantizedBdepthAc.data();
+			diffBdepthAc[-1] = this->segments[i].referenceBdepthAc;
+			// constexpr size_t bdepthAcBdepth = std::bit_width((sizeof(T) << 3) - 1); // bit_width(max_value)
+			rkdiff<ptrdiff_t, alignment>(diffBdepthAc, (this->segments[i].size - 1), bdepthAcBdepth, true);
+		}
 	}
 
 	// do unpack here

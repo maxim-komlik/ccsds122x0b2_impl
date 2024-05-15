@@ -25,7 +25,7 @@ struct segment {
 
 	// but values are in range [0-63], 6 bits is enough...
 	size_t referenceBdepthAc;
-	aligned_vector<size_t> bdepthAcBlocks;
+	// aligned_vector<size_t> bdepthAcBlocks;
 	aligned_vector<size_t> quantizedBdepthAc;
 
 	std::vector<typename block<T>> data;
