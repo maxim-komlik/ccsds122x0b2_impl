@@ -214,7 +214,20 @@ TEST(segments, PrecoderSmoke) {
 	auto m_blocks = dwt.apply(input);
 	auto i_coeffs = dwt._getBuffers();
 	std::vector<bitmap<item_t>> coeffs_v(i_coeffs.cbegin(), i_coeffs.cend());
+
+	std::vector<std::array<size_t, 10>> subband_scale_collection;
+	{
+		std::array<size_t, 10> shifts_stub = { 0 };
+		for (ptrdiff_t i = 0; i < 3; ++i) {
+			subband_scale_collection.push_back(shifts_stub);
+		}
+	}
+	scaling_set subband_shifts_provider;
+	subband_shifts_provider.set_shifts_collection(subband_scale_collection);
+	subband_shifts_provider.set_policy(scaling_set::extension_policy::begin);
+
 	SegmentPreCoder<item_t> precoder(coeffs_v);
+	precoder.set_shifts(subband_shifts_provider);
 	auto output = precoder.apply();
 
 	for (size_t i = 0; i < output.size(); ++i) {
@@ -235,7 +248,20 @@ TEST(segments, PrecoderRound) {
 	auto m_blocks = dwt.apply(input);
 	auto i_coeffs = dwt._getBuffers();
 	std::vector<bitmap<item_t>> coeffs_v(i_coeffs.cbegin(), i_coeffs.cend());
+
+	std::vector<std::array<size_t, 10>> subband_scale_collection;
+	{
+		std::array<size_t, 10> shifts_stub = { 0 };
+		for (ptrdiff_t i = 0; i < 3; ++i) {
+			subband_scale_collection.push_back(shifts_stub);
+		}
+	}
+	scaling_set subband_shifts_provider;
+	subband_shifts_provider.set_shifts_collection(subband_scale_collection);
+	subband_shifts_provider.set_policy(scaling_set::extension_policy::begin);
+
 	SegmentPreCoder<item_t> precoder(coeffs_v);
+	precoder.set_shifts(subband_shifts_provider);
 	auto coded = precoder.apply();
 	SegmentPostDecoder<item_t> postdecoder(coded);
 	auto decoded = postdecoder.apply(props.width);
@@ -293,7 +319,20 @@ TEST(bpe, EncoderSmoke) {
 	auto m_blocks = dwt.apply(input);
 	auto i_coeffs = dwt._getBuffers();
 	std::vector<bitmap<item_t>> coeffs_v(i_coeffs.cbegin(), i_coeffs.cend());
+
+	std::vector<std::array<size_t, 10>> subband_scale_collection;
+	{
+		std::array<size_t, 10> shifts_stub = { 0 };
+		for (ptrdiff_t i = 0; i < 3; ++i) {
+			subband_scale_collection.push_back(shifts_stub);
+		}
+	}
+	scaling_set subband_shifts_provider;
+	subband_shifts_provider.set_shifts_collection(subband_scale_collection);
+	subband_shifts_provider.set_policy(scaling_set::extension_policy::begin);
+
 	SegmentPreCoder<item_t> precoder(coeffs_v);
+	precoder.set_shifts(subband_shifts_provider);
 	auto output = precoder.apply();
 
 	std::vector<uint64_t> bpe_debug_output_buffer;
@@ -332,7 +371,20 @@ TEST(bpe, EncoderRound) {
 	auto m_blocks = dwt.apply(input);
 	auto i_coeffs = dwt._getBuffers();
 	std::vector<bitmap<item_t>> coeffs_v(i_coeffs.cbegin(), i_coeffs.cend());
+
+	std::vector<std::array<size_t, 10>> subband_scale_collection;
+	{
+		std::array<size_t, 10> shifts_stub = { 0 };
+		for (ptrdiff_t i = 0; i < 3; ++i) {
+			subband_scale_collection.push_back(shifts_stub);
+		}
+	}
+	scaling_set subband_shifts_provider;
+	subband_shifts_provider.set_shifts_collection(subband_scale_collection);
+	subband_shifts_provider.set_policy(scaling_set::extension_policy::begin);
+
 	SegmentPreCoder<item_t> precoder(coeffs_v);
+	precoder.set_shifts(subband_shifts_provider);
 	auto precoded = precoder.apply();
 
 	auto bpe_input_segment = precoded[0];

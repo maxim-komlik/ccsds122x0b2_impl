@@ -2050,7 +2050,7 @@ void __decodeBpeStages(segment<T>& output, ibitwrapper<ibwT>& input) {
 		}
 
 		// stage 0
-		if (((bplane_skip & family_masks[DC_index]) == 0) & (b <= output.q)) {
+		if ((b <= output.q) & ((bplane_skip & family_masks[DC_index]) == 0)) {
 			if constexpr ((dbg::bpe::decoder::disabled_stages & dbg::bpe::mask_stage_0) == 0) {
 				bplaneDecode(output.plainDc.data(), output.size, 1, input);
 			}
@@ -2066,16 +2066,7 @@ void __decodeBpeStages(segment<T>& output, ibitwrapper<ibwT>& input) {
 					size_t current_gaggle_size = (i == last_gaggle_start) ? last_gaggle_size : items_per_gaggle;
 					for (ptrdiff_t j = 0; j < current_gaggle_size; ++j) {
 						uint64_t types_P_extract_mask = family_masks[P_index] & (~bplane_mask[i + j]);
-						size_t bitsize_types_P = std::popcount(types_P_extract_mask);
-						vlw_t types_P = decodeTranslateVlw(bitsize_types_P, (i >> 4));
-						symbol_backward_translator.translate(types_P);
-						size_t bitsize_signs_P = std::popcount(types_P.value);
-						uint64_t signs_P = input.extract(bitsize_signs_P);
-						uint64_t extracted_types_P = decompose_bword(types_P.value, types_P_extract_mask);
-						uint64_t extracted_signs_P = decompose_bword(signs_P, extracted_types_P);
-						block_signs[i + j] |= extracted_signs_P;
-						block_states[i + j].bplane_mask_transit |= extracted_types_P;
-						current_bplane[i + j] |= extracted_types_P;
+						decodeTypesSigns((i >> 4), j, types_P_extract_mask);
 					}
 				}
 			}
@@ -2090,22 +2081,10 @@ void __decodeBpeStages(segment<T>& output, ibitwrapper<ibwT>& input) {
 				for (ptrdiff_t j = 0; j < current_gaggle_size; ++j) {
 					dense_vlw_t& tran_B = block_states[i + j].tran_B;
 					tran_B.value = input.extract(tran_B.length);
-					// tran_B.length = (tran_B.value == 0x00); // DUBUG NOTE: bug cause
 					tran_B.length &= (~tran_B.value);
 					if (tran_B.length == 0) {
-						size_t tran_D_length = 0;
 						auto& tran_D = block_states[i + j].tran_D;
-						for (dense_vlw_t item : tran_D) {
-							tran_D_length += item.length;
-						}
-						vlw_t tran_D_raw = decodeTranslateVlw(tran_D_length, (i >> 4));
-						symbol_backward_translator.translate<symbol_backward_translator.tran_D_codeparam>(tran_D_raw);
-
-						for (ptrdiff_t k = tran_D.size() - 1; k >= 0; --k) {
-							tran_D[k].value = (tran_D_raw.value & 0x01) & tran_D[k].length;
-							tran_D_raw.value >>= tran_D[k].length;
-							tran_D[k].length &= (~tran_D[k].value);
-						}
+						decodeTran.template operator()<SymbolBackwardTranslator::tran_D_codeparam>(tran_D, (i >> 4));
 
 						if constexpr ((dbg::bpe::decoder::disabled_stages & dbg::bpe::mask_stage_2) == 0) {
 							// TODO: loop variables naming conistense
@@ -2175,38 +2154,12 @@ void __decodeBpeStages(segment<T>& output, ibitwrapper<ibwT>& input) {
 			bplane_mask[j] |= block_states[j].bplane_mask_transit;
 			block_states[j].bplane_mask_transit = 0;
 		}
-
+		
 		{
-			constexpr size_t alignment = 16;
-			// maybe should be implemented as a fucntion (accumulate bplane)
-			T* block_raw_data = output.data.data()->content;
-			uint64_t* bplane_raw_data = current_bplane.data();
-			constexpr size_t bplane_index_shift = std::bit_width(sizeof(*bplane_raw_data)) - 1 + 3;
-			constexpr size_t serial_max_shift = (sizeof(*bplane_raw_data) << 3) - alignment;
-			constexpr T serial_mask = ~((-1) << alignment);
-			size_t block_raw_data_size = output.size << bplane_index_shift;
-
-			std::array<T, alignment> rshifts;
-			for (ptrdiff_t i = 0; i < alignment; ++i) {
-				rshifts[i] = alignment - i - 1;
-			}
-
-			std::make_unsigned_t<sufficient_integral_i<(alignment >> 3)>> serial_buffer;
-			constexpr size_t i_step = sizeof(*bplane_raw_data) << 3;
-			for (ptrdiff_t i = 0; i < block_raw_data_size; i += i_step) {
-				ptrdiff_t bplane_index = i >> bplane_index_shift;
-				auto bplane_item = bplane_raw_data[bplane_index];
-				for (ptrdiff_t j = 0; j < i_step; j += alignment) {
-					size_t serial_shift = serial_max_shift - j;
-					serial_buffer = (bplane_item >> serial_shift) & serial_mask;
-					std::array<decltype(serial_buffer), alignment> buffer;
-					for (ptrdiff_t k = 0; k < alignment; ++k) {
-						buffer[k] = serial_buffer >> rshifts[k];
-						block_raw_data[i + j + k] = (block_raw_data[i + j + k] << 1) | (buffer[k] & 0x01);
-					}
-				}
-				bplane_raw_data[bplane_index] = 0;
-			}
+			auto accbit = [](T& dst, uint64_t val) -> void {
+				dst = (dst << 1) | (val & 0x01);
+			};
+			accumulate_bplane<uint64_t, T>(current_bplane.data(), output.data.data()->content, output.size * items_per_block, accbit);
 		}
 
 		--b;

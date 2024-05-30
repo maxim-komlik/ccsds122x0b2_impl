@@ -75,6 +75,9 @@
     <ClInclude Include="..\..\..\src\common\exception.h">
       <Filter>common\Header Files</Filter>
     </ClInclude>
+    <ClInclude Include="..\..\..\src\WaveletTransform\subband_scale.h">
+      <Filter>WaveletTransform\Header Files</Filter>
+    </ClInclude>
   </ItemGroup>
   <ItemGroup>
     <ClCompile Include="core.cpp">
@@ -94,6 +97,9 @@
     </ClCompile>
     <ClCompile Include="..\..\..\src\common\exception.cpp">
       <Filter>common\Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="..\..\..\src\WaveletTransform\subband_scale.cpp">
+      <Filter>WaveletTransform\Source Files</Filter>
     </ClCompile>
   </ItemGroup>
   <ItemGroup>

@@ -1,6 +1,7 @@
 #pragma once
 
 #include <functional>
+#include <bit>
 
 // loop unroll staff
 
@@ -77,6 +78,9 @@ template <bool B = false, UnrollFoldType UT = left>
 using unroll = _unroll_wrapper<B, UT>;
 
 // common type wrappers and helpers
+
+// TODO: add specializations for dense instead of fast
+// specify types for input size not equal to napot
 
 template <size_t size_bytes>
 struct _sufficient_integral;
@@ -174,16 +178,17 @@ size_t bdepthv(T* src, size_t length) {
 	}
 
 	// TODO: std::bit_width
-	size_t depth = sizeof(*buffer) << 3;
-	size_t i = ((size_t)-1) << (depth - 1);
-	while (!(i & buffer[0])) {
-		i >>= 1;
-		--depth;
-	}
+	// size_t depth = sizeof(*buffer) << 3;
+	// size_t i = ((size_t)-1) << (depth - 1);
+	// while (!(i & buffer[0])) {
+	// 	i >>= 1;
+	// 	--depth;
+	// }
 
 	// size_t depth = ((sizeof(i) << 3) - 1);
 	// for (size_t i = ((-1) << depth); !(i & buffer); i >>= 1, --depth) { }
-	return depth;
+	// return depth;
+	return std::bit_width((std::make_unsigned_t<T>)(*buffer));
 }
 
 // accumulate with or vectorized
