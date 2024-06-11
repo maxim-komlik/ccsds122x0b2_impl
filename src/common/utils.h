@@ -161,13 +161,16 @@ constexpr T relu(T val) {
 // + rest of alignment unit at the end. Otherwise blame yourself.
 template <typename T, size_t alignment>
 size_t bdepthv(T* src, size_t length) {
-	T buffer[alignment] = { 0 };
+	std::make_unsigned_t<T> buffer[alignment] = { 0 };
 
 	for (size_t i = 0; i < length; i += alignment) {
 		for (size_t j = 0; j < alignment; ++j) {
-			// TODO: check handling negative power-of-two
-			// call below is actually abs
-			buffer[j] |= magnitude<T>(src[i + j]);
+			if constexpr (std::is_signed_v<T>) {
+				// see 4.1, equation 12
+				buffer[j] |= signxor<T>(src[i + j]);
+			} else {
+				buffer[j] |= src[i + j];
+			}
 		}
 	}
 
@@ -176,19 +179,7 @@ size_t bdepthv(T* src, size_t length) {
 			buffer[j] |= buffer[i + j];
 		}
 	}
-
-	// TODO: std::bit_width
-	// size_t depth = sizeof(*buffer) << 3;
-	// size_t i = ((size_t)-1) << (depth - 1);
-	// while (!(i & buffer[0])) {
-	// 	i >>= 1;
-	// 	--depth;
-	// }
-
-	// size_t depth = ((sizeof(i) << 3) - 1);
-	// for (size_t i = ((-1) << depth); !(i & buffer); i >>= 1, --depth) { }
-	// return depth;
-	return std::bit_width((std::make_unsigned_t<T>)(*buffer));
+	return std::bit_width((std::make_unsigned_t<T>)(*buffer)) + std::is_signed_v<T>;
 }
 
 // accumulate with or vectorized
@@ -212,4 +203,19 @@ inline std::make_unsigned_t<T> accorv(const T* src, size_t length) {
 	}
 
 	return buffer[0];
+}
+
+// let here compiler do necessary type conversion to avoid unsigned underflow
+inline size_t quant_dc(ptrdiff_t bdepthDc, ptrdiff_t bdepthAc, ptrdiff_t shiftDc) noexcept {
+	bdepthAc = (bdepthAc >> 1) + 1;
+	// avoids jumps and hints to use conditional moves here
+	if (bdepthDc - bdepthAc <= 1) {
+		bdepthAc = bdepthDc - 3;
+	}
+	if (bdepthDc - bdepthAc > 10) {
+		bdepthAc = bdepthDc - 10;
+	}
+	// result is guaranteed to be positive, implicit conversion to size_t here
+	// See 4.3.1.3
+	return std::max<decltype(bdepthAc)>(bdepthAc, shiftDc);
 }

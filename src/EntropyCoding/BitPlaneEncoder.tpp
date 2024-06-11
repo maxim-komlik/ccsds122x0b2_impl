@@ -873,6 +873,9 @@ void __encodeBpeStages(segment<T>& input, obitwrapper<obwT>& output) {
 				size_t tran_val = prepared_block[index] > 0;
 				size_t tran_len = ((bplane_mask[i + j] & family_masks[index]) == 0);
 				tran_len &= !skip;
+				if constexpr (enable_short_circuit) {
+					tran_len &= ((bplane_skip & family_masks[index]) != family_masks[index]);
+				}
 
 				// tran_len value is either 0 or 1, and used as both mask and len
 				vlw.value <<= tran_len;
@@ -887,6 +890,9 @@ void __encodeBpeStages(segment<T>& input, obitwrapper<obwT>& output) {
 				// All active elements that are not of type 2 (or -1) yet, mask is applicable
 				// to get values '0' and '1' of dedicated bits
 				uint64_t effective_mask = (family_masks[index] & (~bplane_mask[i + j])) & (-((int64_t)(!skip)));
+				if constexpr (enable_short_circuit) {
+					effective_mask &= ~bplane_skip;
+				}
 
 				typesVlw = combine_bword(prepared_block[index], effective_mask);
 				// Actually the same as below, but may relief contention for a single item 
@@ -904,6 +910,7 @@ void __encodeBpeStages(segment<T>& input, obitwrapper<obwT>& output) {
 			// the old state and elide assosiated memory ops dependencies.
 			block_states[i + j].tran_B = dense_vlw_t{ 0, 0 };
 			bool skip_descendants = accumulateTranVlw(block_states[i + j].tran_B, B_index);
+			// subband scaling for P coeffs is handled in computeTerminalVlw
 			computeTerminalVlw(block_states[i + j].types_P, block_states[i + j].signs_P, P_index);
 			symbol_translator.translate(block_states[i + j].types_P);
 			addVlwToCollection(block_states[i + j].types_P);
@@ -927,6 +934,9 @@ void __encodeBpeStages(segment<T>& input, obitwrapper<obwT>& output) {
 							(k * F_step) + C_offset, skip_tran_Gx);
 						symbol_translator.translate(block_states[i + j].types_C[k]);
 						addVlwToCollection(block_states[i + j].types_C[k]);
+					} else {
+						block_states[i + j].types_C[k] = dense_vlw_t{ 0, 0 };
+						block_states[i + j].signs_C[k] = dense_vlw_t{ 0, 0 };
 					}
 
 					block_states[i + j].tran_H[k] = dense_vlw_t{ 0, 0 };
@@ -943,6 +953,11 @@ void __encodeBpeStages(segment<T>& input, obitwrapper<obwT>& output) {
 							symbol_translator.translate<decltype(symbol_translator)::types_H_codeparam>(
 								block_states[i + j].types_H[k][l]);
 							addVlwToCollection(block_states[i + j].types_H[k][l]);
+						}
+					} else {
+						for (ptrdiff_t l = 0; l < HxpF_num; ++l) {
+							block_states[i + j].types_H[k][l] = dense_vlw_t{ 0, 0 };
+							block_states[i + j].signs_H[k][l] = dense_vlw_t{ 0, 0 };
 						}
 					}
 				}
@@ -1244,8 +1259,8 @@ void __encodeBpeStages(segment<T>& input, obitwrapper<obwT>& output) {
 		// with respect to the lower bound, therefore both checks should be performed; no skip is 
 		// possible due to a priori knowledge.
 		// 
-		if (((bplane_skip & family_masks[DC_index]) == 0) & (b < input.q)) {
-			if constexpr ((dbg::bpe::encoder::disabled_stages & dbg::bpe::mask_stage_0) == 0) {
+		if constexpr ((dbg::bpe::encoder::disabled_stages & dbg::bpe::mask_stage_0) == 0) {
+			if (((bplane_skip & family_masks[DC_index]) == 0) & (b < input.q)) {
 				bplaneEncode(input.plainDc.data(), input.size, b, 1, output);
 			}
 		}
@@ -1285,7 +1300,8 @@ void __encodeBpeStages(segment<T>& input, obitwrapper<obwT>& output) {
 		// 
 		// bplane_skip is not checked during stage 2 encoding due to non-clear 
 		// profit and potential performance degradation because of poor branch 
-		// prediction.
+		// prediction. All words that must be skiped due to subband scaling are
+		// already zeroed.
 		//
 		if constexpr (((dbg::bpe::encoder::disabled_stages & dbg::bpe::mask_stage_2) == 0) || 
 				((dbg::bpe::encoder::disabled_stages & dbg::bpe::mask_stage_3) == 0)) {
@@ -1319,7 +1335,7 @@ void __encodeBpeStages(segment<T>& input, obitwrapper<obwT>& output) {
 			i = 0;
 			for (; i < input_size_truncated; i += items_per_gaggle) {
 				for (ptrdiff_t j = 0; j < items_per_gaggle; ++j) {
-					translateEncodeVlw(block_states[i + j].tran_G, (i >> 4));
+					translateEncodeVlw(block_states[i + j].tran_G, (i >> 4)); // TODO: respect bplane_skip here
 					for (ptrdiff_t k = 0; k < F_num; ++k) {
 						if ((bplane_skip & family_masks[(k * F_step) + G_offset]) == 0) {
 							translateEncodeVlw(block_states[i + j].tran_H[k], (i >> 4));
@@ -1565,20 +1581,6 @@ constexpr size_t block_index_to_buf_index(size_t l) {
 }
 
 // reverse op
-size_t quant_dc(ptrdiff_t bdepthDc, ptrdiff_t bdepthAc, ptrdiff_t shiftDc) noexcept {
-	bdepthAc = (bdepthAc >> 1) + 1;
-	// avoids jumps and hints to use conditional moves here
-	if (bdepthDc - bdepthAc <= 1) {
-		bdepthAc = bdepthDc - 3;
-	}
-	if (bdepthDc - bdepthAc > 10) {
-		bdepthAc = bdepthDc - 10;
-	}
-	// result is guaranteed to be positive, implicit conversion to size_t here
-	// See 4.3.1.3
-	return std::max<decltype(bdepthAc)>(bdepthAc, shiftDc);
-}
-
 template <typename T, typename ibwT, size_t alignment = 16>
 void bplaneDecode(T* data, size_t datasize, size_t pcount, ibitwrapper<ibwT>& binput) {
 	std::array<T, alignment> rshifts;
@@ -1659,6 +1661,7 @@ void kReverse(kParams<T>& params, ibitwrapper<obwT>& input_stream) {
 		params.reference = signext(input_stream.extract(N), N);
 
 		ptrdiff_t i;
+		bool current_uncoded = false;
 		bool execute_preamble = false;
 		for (i = -1; i < ((ptrdiff_t)(params.datalength - gaggle_len)); i += gaggle_len) {
 			if (execute_preamble) {
@@ -1666,7 +1669,8 @@ void kReverse(kParams<T>& params, ibitwrapper<obwT>& input_stream) {
 			}
 			execute_preamble = true;
 
-			if (current_k_opt != k_uncoded_opt) {
+			current_uncoded = (current_k_opt == k_uncoded_opt);
+			if (!current_uncoded) {
 				for (ptrdiff_t j = (i < 0); j < gaggle_len; ++j) {
 					params.data[i + j] = input_stream.extract_next_one();
 				}
@@ -1676,7 +1680,10 @@ void kReverse(kParams<T>& params, ibitwrapper<obwT>& input_stream) {
 
 			for (ptrdiff_t j = (i < 0); j < gaggle_len; ++j) {
 				// params.data contains unsigned items
-				vlw_t current_item{ current_k_opt, (size_t)(params.data[i + j]) };
+				vlw_t current_item{ 
+					current_k_opt, 
+					(size_t)(params.data[i + j]) & (-(!current_uncoded))
+				};
 				input_stream >> current_item;
 				params.data[i + j] = current_item.value;
 			}
@@ -1687,6 +1694,7 @@ void kReverse(kParams<T>& params, ibitwrapper<obwT>& input_stream) {
 			current_k_opt = input_stream.extract(k_bitsize);
 		}
 
+		current_uncoded = (current_k_opt == k_uncoded_opt);
 		if (current_k_opt != k_uncoded_opt) {
 			for (ptrdiff_t j = (i < 0); j < last_gaggle_len; ++j) {
 				params.data[i + j] = input_stream.extract_next_one();
@@ -1696,7 +1704,10 @@ void kReverse(kParams<T>& params, ibitwrapper<obwT>& input_stream) {
 		}
 
 		for (ptrdiff_t j = (i < 0); j < last_gaggle_len; ++j) {
-			vlw_t current_item{ current_k_opt, (size_t)(params.data[i + j]) };
+			vlw_t current_item{ 
+				current_k_opt, 
+				(size_t)(params.data[i + j]) & (-(!current_uncoded))
+			};
 			input_stream >> current_item;
 			params.data[i + j] = current_item.value;
 		}
@@ -1870,9 +1881,9 @@ void __decodeBpeStages(segment<T>& output, ibitwrapper<ibwT>& input) {
 	constexpr size_t F_num = 3;
 	constexpr size_t CpF_num = 1;
 	constexpr size_t HxpF_num = 4;
-	constexpr ptrdiff_t D_offset = 1; // ?
+	constexpr ptrdiff_t D_offset = 1;
 	constexpr ptrdiff_t C_offset = 2;
-	constexpr ptrdiff_t G_offset = 3; // ?
+	constexpr ptrdiff_t G_offset = 3;
 	constexpr ptrdiff_t Hx_offset = 4;
 	constexpr ptrdiff_t F_step = 8;
 	constexpr ptrdiff_t B_index = 0;
@@ -2050,10 +2061,13 @@ void __decodeBpeStages(segment<T>& output, ibitwrapper<ibwT>& input) {
 		}
 
 		// stage 0
-		if ((b <= output.q) & ((bplane_skip & family_masks[DC_index]) == 0)) {
-			if constexpr ((dbg::bpe::decoder::disabled_stages & dbg::bpe::mask_stage_0) == 0) {
+		if constexpr ((dbg::bpe::decoder::disabled_stages & dbg::bpe::mask_stage_0) == 0) {
+			if ((b <= output.q) & ((bplane_skip & family_masks[DC_index]) == 0)) {
 				bplaneDecode(output.plainDc.data(), output.size, 1, input);
 			}
+			// skip DC handling otherwise for this bitplane and pass the decoded
+			// coefficients to DWT with no scaling performed; the coefficients 
+			// are already unscaled naturally and passed in a separate buffer
 		}
 
 		// stage 1
@@ -2065,7 +2079,7 @@ void __decodeBpeStages(segment<T>& output, ibitwrapper<ibwT>& input) {
 				if ((bplane_skip & family_masks[P_index]) != family_masks[P_index]) {
 					size_t current_gaggle_size = (i == last_gaggle_start) ? last_gaggle_size : items_per_gaggle;
 					for (ptrdiff_t j = 0; j < current_gaggle_size; ++j) {
-						uint64_t types_P_extract_mask = family_masks[P_index] & (~bplane_mask[i + j]);
+						uint64_t types_P_extract_mask = family_masks[P_index] & (~bplane_mask[i + j]) & (~bplane_skip);
 						decodeTypesSigns((i >> 4), j, types_P_extract_mask);
 					}
 				}
@@ -2080,17 +2094,30 @@ void __decodeBpeStages(segment<T>& output, ibitwrapper<ibwT>& input) {
 				size_t current_gaggle_size = (i == last_gaggle_start) ? last_gaggle_size : items_per_gaggle;
 				for (ptrdiff_t j = 0; j < current_gaggle_size; ++j) {
 					dense_vlw_t& tran_B = block_states[i + j].tran_B;
+					tran_B.length &= ((bplane_skip & family_masks[B_index]) != family_masks[B_index]);
 					tran_B.value = input.extract(tran_B.length);
 					tran_B.length &= (~tran_B.value);
 					if (tran_B.length == 0) {
 						auto& tran_D = block_states[i + j].tran_D;
+						// TODO: so the code below became not specific to tran_G only.
+						// Even for tran_B check for bplane_skip is performed.
+						// Maybe wrap to a lambda?
+						//
+						size_t tran_D_dependency_mask = 0;
+						for (ptrdiff_t f = 0; f < F_num; ++f) {
+							tran_D_dependency_mask <<= 1;
+							// TODO: refactor predicate
+							tran_D_dependency_mask |= ((bplane_skip & family_masks[(f * F_step) + D_offset]) != family_masks[(f * F_step) + D_offset]);
+						}
+						tran_D_dependency_mask = ~tran_D_dependency_mask;
+						decodeTran.template operator()<SymbolBackwardTranslator::tran_D_codeparam>(tran_D, (i >> 4), tran_D_dependency_mask);
 						decodeTran.template operator()<SymbolBackwardTranslator::tran_D_codeparam>(tran_D, (i >> 4));
 
 						if constexpr ((dbg::bpe::decoder::disabled_stages & dbg::bpe::mask_stage_2) == 0) {
-							// TODO: loop variables naming conistense
+							// TODO: loop variables naming consistense
 							for (ptrdiff_t f = 0; f < F_num; ++f) {
-								if (tran_D[f].length == 0) {
-									uint64_t types_C_extract_mask = family_masks[f * F_step + C_offset] & (~bplane_mask[i + j]);
+								if ((tran_D[f].length == 0) & ((bplane_skip & family_masks[(f * F_step) + C_offset]) == 0)) {
+									uint64_t types_C_extract_mask = family_masks[(f * F_step) + C_offset] & (~bplane_mask[i + j]);
 									decodeTypesSigns((i >> 4), j, types_C_extract_mask);
 								}
 							}
@@ -2111,24 +2138,33 @@ void __decodeBpeStages(segment<T>& output, ibitwrapper<ibwT>& input) {
 						size_t tran_G_dependency_mask = 0;
 						for (ptrdiff_t f = 0; f < F_num; ++f) {
 							tran_G_dependency_mask <<= 1;
-							tran_G_dependency_mask |= tran_D[f].length;
+							// bplane_skip handling below works fine because grandhildren 
+							// coeffs correspond to one specific subband, different from 
+							// handling bplane_skip for composite tran words.
+							//
+							tran_G_dependency_mask |= tran_D[f].length & ((bplane_skip & family_masks[(f * F_step) + G_offset]) == 0);
+							// tran_G_dependency_mask |= tran_D[f].length;
 						}
 						tran_G_dependency_mask = ~tran_G_dependency_mask;
 
 						auto& tran_G = block_states[i + j].tran_G;
 						decodeTran(tran_G, (i >> 4), tran_G_dependency_mask);
 						for (ptrdiff_t f = 0; f < F_num; ++f) {
-							if (tran_G[f].length == 0) {
+							// TODO: seems like bplane_skip check below is redundant 
+							// already because handled properly when computing tran_G
+							if ((tran_G[f].length == 0) & ((bplane_skip & family_masks[(f * F_step) + G_offset]) == 0)) {
 								auto& tran_Hx = block_states[i + j].tran_Hx[f];
 								decodeTran.template operator()<SymbolBackwardTranslator::tran_H_codeparam>(tran_Hx, (i >> 4));
 							}
 						}
 						for (ptrdiff_t f = 0; f < F_num; ++f) {
-							if (tran_G[f].length == 0) {
+							// TODO: seems like bplane_skip check below is redundant 
+							// already because handled properly when computing tran_G
+							if ((tran_G[f].length == 0) & ((bplane_skip & family_masks[(f * F_step) + G_offset]) == 0)) {
 								auto& tran_Hx = block_states[i + j].tran_Hx[f];
 								for (ptrdiff_t k = 0; k < HxpF_num; ++k) {
 									if (tran_Hx[k].length == 0) {
-										uint64_t extract_mask = family_masks[f * F_step + Hx_offset + k] & (~bplane_mask[i + j]);
+										uint64_t extract_mask = family_masks[(f * F_step) + Hx_offset + k] & (~bplane_mask[i + j]);
 										decodeTypesSigns.template operator()<SymbolBackwardTranslator::types_H_codeparam>((i >> 4), j, extract_mask);
 									}
 								}
@@ -2173,6 +2209,11 @@ void __decodeBpeStages(segment<T>& output, ibitwrapper<ibwT>& input) {
 		};
 		accumulate_bplane<uint64_t, T>(block_signs.data(), output.data.data()->content, output.size * items_per_block, signset);
 	}
+
+	// trick segment decoder to handle DC subband as unscaled already
+	output.q = relu(((ptrdiff_t)(output.q)) - output.bit_shifts[0]);
+	output.bdepthDc = relu(((ptrdiff_t)(output.bdepthDc)) - output.bit_shifts[0]);
+	output.bit_shifts[0] = 0;
 }
 
 //

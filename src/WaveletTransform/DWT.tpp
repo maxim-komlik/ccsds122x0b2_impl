@@ -38,11 +38,13 @@ namespace inverse {
 	};
 }
 
+#include <array>
+#include <vector>
+
 #include "./../common/core_types.h"
 #include "bitmap.tpp"
 #include "dwtcore.tpp"
-#include <array>
-#include <vector>
+#include "dwtscale.tpp"
 
 struct img_pos {
 	size_t x;
@@ -70,6 +72,8 @@ class ForwardWaveletTransformer {
 	img_meta m_src_meta;
 	img_pos m_frame_pos;
 
+	dwtscale<T> scale;
+
 	static constexpr size_t c_h_alignment = 8;
 	static constexpr size_t c_v_alignment = 8;
 	static constexpr size_t c_level_count = 3;
@@ -82,17 +86,14 @@ public:
 	// TODO: takes source image as input only
 	// Image entry point moves transform frame accross the whole image
 	// Manages additional buffers that depends on input image properties.
-	std::vector<block<T>> apply(bitmap<T>& source);
-	
-	// TODO: below is debug stuff, refactor
-	auto _getBuffers() {
-		return this->buffers;
-	}
+	void apply(bitmap<T>& source);
+	subbands_t<T> get_subbands();
+
+	// TODO: redesign scaling configuration [const correctness]
+	dwtscale<T>& get_scale();
 
 private:
 	void transform(const bitmap<T>& source, bitmap<T>& hdst, bitmap<T>& ldst);
-	std::vector<block<T>> pack();
-
 	void ext(bitmap<T>& source, bitmap<T>& hdst, bitmap<T>& ldst, size_t i);
 };
 
@@ -107,6 +108,10 @@ class BackwardWaveletTransformer {
 	img_meta m_src_meta;
 	img_pos m_frame_pos;
 
+	dwtscale<T> scale;
+
+	bool skip_dc_scaling = true;
+
 	static constexpr size_t c_h_alignment = 8;
 	static constexpr size_t c_v_alignment = 8;
 	static constexpr size_t c_level_count = 3;
@@ -115,44 +120,15 @@ class BackwardWaveletTransformer {
 	static constexpr size_t c_LL3_offset = 8;
 
 public:
-	BackwardWaveletTransformer(img_pos frame_properties);
+	BackwardWaveletTransformer(img_pos frame_properties, bool scale_dc_props = true);
 
-	// TODO: takes source image as input only
-	// Image entry point moves transform frame accross the whole image
+	// TODO: Image entry point moves transform frame accross the whole image
 	// Manages additional buffers that depends on input image properties.
-	bitmap<T> apply(const std::vector<block<T>>& input);
 	bitmap<T> apply();
-
-	auto _getBuffers() {
-		return this->buffers;
-	}
-
-	// TODO: below is debug stuff, refactor
-	void _setBuffers(decltype(buffers)& __buffers) {
-		// Set all necessary planes from input blocks
-		for (size_t i = 8; i < this->buffers.size(); ++i) {
-			this->buffers[i] = __buffers[i].transpose();
-		}
-
-		constexpr size_t verify_index = 8;
-		img_meta temp = this->buffers[verify_index].getImgMeta();
-		for (size_t i = 0; i < temp.height; ++i) {
-			for (size_t j = 0; j < temp.width; ++j) {
-				if (this->buffers[verify_index][i][j] != __buffers[verify_index][j][i]) {
-					throw "NEQ!";
-				}
-			}
-		}
-	}
-
-	void _setPayloadBuffers(std::array<typename bitmap<T>, 10>& __buffers) {
-		// Set all necessary planes from input blocks
-		for (size_t i = 0; i < __buffers.size(); ++i) {
-			if (this->c_LL3_offset + i >= this->buffers.size())
-				throw "OOB!";
-			this->buffers[this->c_LL3_offset + i] = __buffers[i].transpose();
-		}
-	}
+	void set_subbands(const subbands_t<T>& subbands);
+	dwtscale<T>& get_scale();
+	bool get_skip_dc_scaling() const;
+	void set_skip_dc_scaling(bool value);
 
 private:
 	void transform(const bitmap<T>& hsrc, const bitmap<T>& lsrc, bitmap<T>& dst);
@@ -195,14 +171,14 @@ ForwardWaveletTransformer<T, alignment>::ForwardWaveletTransformer(img_pos frame
 }
 
 template <typename T, size_t alignment>
-std::vector<block<T>> ForwardWaveletTransformer<T, alignment>::apply(bitmap<T>& source) {
-	this->m_src_meta = source.getImgMeta();
+void ForwardWaveletTransformer<T, alignment>::apply(bitmap<T>& source) {
+	this->m_src_meta = source.get_meta();
 	this->m_src_meta.width = (this->m_src_meta.width + (this->c_h_alignment - 1))
 		& (~(this->c_h_alignment - 1));
-	if (source.getImgMeta().width < this->m_src_meta.width) {
+	if (source.get_meta().width < this->m_src_meta.width) {
 		for (size_t i = 0; i < this->m_src_meta.height; ++i) {
 			bitmap_row<T> source_row = source[i];
-			size_t start_index = source.getImgMeta().width;
+			size_t start_index = source.get_meta().width;
 			for (size_t j = start_index; j < this->m_src_meta.width + 1; ++j) {
 				source_row[j] = source_row[start_index - 1];
 			}
@@ -225,19 +201,36 @@ std::vector<block<T>> ForwardWaveletTransformer<T, alignment>::apply(bitmap<T>& 
 
 		src = &llout;
 	}
-	return this->pack();
+}
+
+template <typename T, size_t alignment>
+subbands_t<T> ForwardWaveletTransformer<T, alignment>::get_subbands() {
+	// TODO: Check if possible to omit default-initialization and 
+	// move-initialize members of output variable directly
+	// [because aggregate initialization copy-initializes elements]
+	subbands_t<T> result;
+	for (ptrdiff_t i = 0; i < result.size(); ++i) {
+		result[i] = std::move(this->buffers[c_LL3_offset + i]);
+		this->scale.scale(result[i], i);
+	}
+	return result;
+}
+
+template <typename T, size_t alignment>
+dwtscale<T>& ForwardWaveletTransformer<T, alignment>::get_scale() {
+	return this->scale;
 }
 
 template <typename T, size_t alignment>
 void ForwardWaveletTransformer<T, alignment>::transform(const bitmap<T>& source, bitmap<T>& hdst, bitmap<T>& ldst) {
-	// Change this->m_src_meta to source.getImgMeta();
-	img_meta source_meta = source.getImgMeta();
+	// Change this->m_src_meta to source.get_meta();
+	img_meta source_meta = source.get_meta();
 	size_t buffer_width = source_meta.width / 2;
 	bitmap<T> lbuffer(buffer_width, alignment, 32);
 	bitmap<T> hbuffer(buffer_width, alignment, 32);
-	size_t i = 0;
+	ptrdiff_t i = 0;
 	for (; i < source_meta.height; i += alignment) {
-		for (size_t j = 0; j < alignment; ++j) {
+		for (ptrdiff_t j = 0; j < alignment; ++j) {
 			bitmap_row<T> source_row(source[i + j]);
 			this->core.extfwd(source_row.ptr());
 			this->core.rextfwd(source_row.ptr() + source_row.width());
@@ -252,7 +245,7 @@ void ForwardWaveletTransformer<T, alignment>::transform(const bitmap<T>& source,
 		// debug block, inverse op
 		{
 			bitmap<T> dstbuffer(source_meta.width, alignment, 32);
-			for (size_t j = 0; j < alignment; ++j) {
+			for (ptrdiff_t j = 0; j < alignment; ++j) {
 				bitmap_row<T> hrow(hbuffer[j]);
 				bitmap_row<T> lrow(lbuffer[j]);
 				this->core.exthbwd(hrow.ptr());
@@ -261,18 +254,18 @@ void ForwardWaveletTransformer<T, alignment>::transform(const bitmap<T>& source,
 				this->core.rextlbwd(lrow.ptr() + lrow.width());
 				this->core.bwd(hrow.ptr(), lrow.ptr(), dstbuffer[j].ptr(), buffer_width);
 			}
-			for (size_t ii = 0; ii < alignment; ++ii) {
-				for (size_t jj = 0; jj < source_meta.width; ++jj) {
+			for (ptrdiff_t ii = 0; ii < alignment; ++ii) {
+				for (ptrdiff_t jj = 0; jj < source_meta.width; ++jj) {
 					if (source[i + ii][jj] != dstbuffer[ii][jj]) {
 						throw "NEQ!";
 					}
 				}
 			}
 		}
-		for (size_t k = 0; k < buffer_width; ++k) {
+		for (ptrdiff_t k = 0; k < buffer_width; ++k) {
 			bitmap_row<T> hrow = hdst[k];
 			bitmap_row<T> lrow = ldst[k];
-			for (size_t j = 0; j < alignment; ++j) {
+			for (ptrdiff_t j = 0; j < alignment; ++j) {
 				hrow[i + j] = hbuffer[j][k];
 				lrow[i + j] = lbuffer[j][k];
 			}
@@ -281,59 +274,9 @@ void ForwardWaveletTransformer<T, alignment>::transform(const bitmap<T>& source,
 }
 
 template <typename T, size_t alignment>
-std::vector<block<T>> ForwardWaveletTransformer<T, alignment>::pack() {
-	img_meta DC_loc = this->buffers[this->c_LL3_offset].getImgMeta();
-	std::vector<block<T>> output(DC_loc.width * DC_loc.height);
-
-	for (size_t i = 0; i < DC_loc.height; ++i) {
-		for (size_t j = 0; j < DC_loc.width; ++j) {
-			block<T>& current = output[i * DC_loc.width + j];
-			current.content[0] = this->buffers[this->c_LL3_offset][i][j];
-			for (size_t k = 0; k < this->c_families_count; ++k) {
-				size_t offset = 1;
-				size_t index = 0;
-				size_t size = 1;
-				size_t stride = 1;
-				current.content[k + offset] = this->buffers[this->c_LL3_offset + k + 1][i][j];
-
-				index = 0;
-				offset += 3 * size;
-				stride = 2;
-				size = stride * stride;
-				for (size_t ii = 0; ii < 2; ++ii) {
-					for (size_t jj = 0; jj < 2; ++jj) {
-						current.content[offset + k * size + index] =
-							this->buffers[this->c_LL3_offset + k + 4][i * stride + ii][j * stride + jj];
-						++index;
-					}
-				}
-
-				index = 0;
-				offset += 3 * size;
-				stride = 4;
-				size = stride * stride;
-				for (size_t ii = 0; ii < 2; ++ii) {
-					for (size_t jj = 0; jj < 2; ++jj) {
-						for (size_t iii = 0; iii < 2; ++iii) {
-							for (size_t jjj = 0; jjj < 2; ++jjj) {
-								current.content[offset + k * size + index] =
-									this->buffers[this->c_LL3_offset + k + 7]
-									[i * stride + ii * 2 + iii][j * stride + jj * 2 + jjj];
-								++index;
-							}
-						}
-					}
-				}
-			}
-		}
-	}
-	return output;
-}
-
-template <typename T, size_t alignment>
 void ForwardWaveletTransformer<T, alignment>::ext(bitmap<T>& source, bitmap<T>& hdst, bitmap<T>& ldst, size_t i) {
-	// Change this->m_src_meta to source.getImgMeta();
-	img_meta source_meta = source.getImgMeta();
+	// Change this->m_src_meta to source.get_meta();
+	img_meta source_meta = source.get_meta();
 	size_t buffer_width = source_meta.width / 2;
 	bitmap<T> lbuffer(buffer_width, alignment, 32);
 	bitmap<T> hbuffer(buffer_width, alignment, 32);
@@ -373,65 +316,47 @@ void ForwardWaveletTransformer<T, alignment>::ext(bitmap<T>& source, bitmap<T>& 
 // BackwardWaveletTransformer class template implementation
 
 template <typename T, size_t alignment>
-BackwardWaveletTransformer<T, alignment>::BackwardWaveletTransformer(img_pos frame_properties) {
+BackwardWaveletTransformer<T, alignment>::BackwardWaveletTransformer(img_pos frame_properties, bool scale_dc_props) {
+	// TODO: refactor this? Tried to fix issues caused by not scaled
+	// down frame_properties (passed the same as for forward dwt) and 
+	// rewrote all the related stuff =)
+	// Actually we don't need to pass expected output image dimensions
+	// as an input parameter in production code, only used in tests.
+	// frame_properties is DC subband's meta by design of segment 
+	// decoding, but may be expected output image meta if bool input 
+	// parameter set to true.
+	if (scale_dc_props) {
+		frame_properties.width <<= 3;
+		frame_properties.height <<= 3;
+	}
 	this->m_frame_pos.width = frame_properties.width;
 	this->m_frame_pos.height = frame_properties.height;
 	constexpr size_t buffer_iter_step = 3;
 
-	size_t width = this->m_frame_pos.height;
-	size_t height = this->m_frame_pos.width; // * 2;
-	for (size_t i = this->c_level_count; i > 0; --i) {
-		this->buffers[(i - 1) * buffer_iter_step + 2].resize(width, height);
-		for (size_t j = 0; j < 3; ++j) {
-			this->buffers[this->buffers.size() - i * buffer_iter_step + j].resize(width, height);
-		}
-		width ^= height;
-		height ^= width;
-		width ^= height;
-		height *= 2;
+	size_t height = this->m_frame_pos.height;
+	size_t width = this->m_frame_pos.width / 2;
+	// for (size_t i = this->c_level_count; i > 0; --i) {
+	for (size_t i = 0; i < this->c_level_count; ++i) {
 		for (size_t j = 0; j < 2; ++j) {
-			this->buffers[(i - 1) * buffer_iter_step + j].resize(width, height);
+			this->buffers[i * buffer_iter_step + j].resize(width, height);
 		}
 		width ^= height;
 		height ^= width;
 		width ^= height;
-		height *= 2;
-	}
-}
+		width /= 2;
 
-template <typename T, size_t alignment>
-bitmap<T> BackwardWaveletTransformer<T, alignment>::apply(const std::vector<block<T>>& input) {
-	this->unpack(input);
-	size_t width = this->buffers[0].getImgMeta().height;
-	size_t height = this->buffers[0].getImgMeta().width * 2;
-	bitmap<T> dst(width, height);
-
-	bitmap<T>* dst_collection[this->c_level_count];
-	for (size_t i = 1; i < this->c_level_count; ++i) {
-		dst_collection[i] = &(this->buffers[(i - 1) * 3 + 2]);
+		this->buffers[i * buffer_iter_step + 2].resize(width, height); // TODO: BUG: overlaps DC subband
+		width ^= height;
+		height ^= width;
+		width ^= height;
+		width /= 2;
 	}
-	dst_collection[0] = &dst;
-	for (ptrdiff_t level = 2 /*this->c_level_count - 1*/; level >= 0; --level) {
-		bitmap<T>& hout = this->buffers[level * 3 + 0];
-		bitmap<T>& lout = this->buffers[level * 3 + 1];
-		bitmap<T>& llout = this->buffers[level * 3 + 2];
-		bitmap<T>& hhout = this->buffers[this->buffers.size() - (level + 1) * 3 + 2];
-		bitmap<T>& hlout = this->buffers[this->buffers.size() - (level + 1) * 3 + 0];
-		bitmap<T>& lhout = this->buffers[this->buffers.size() - (level + 1) * 3 + 1];
-
-		// concurrent run
-		this->transform(lhout, llout, lout);
-		this->transform(hhout, hlout, hout);
-		// blocking op
-		this->transform(hout, lout, *(dst_collection[level]));
-	}
-	return dst.transpose();
 }
 
 template <typename T, size_t alignment>
 bitmap<T> BackwardWaveletTransformer<T, alignment>::apply() {
-	size_t width = this->buffers[0].getImgMeta().height;
-	size_t height = this->buffers[0].getImgMeta().width * 2;
+	size_t width = this->buffers[0].get_meta().height;
+	size_t height = this->buffers[0].get_meta().width * 2;
 	// TODO: fix rvalue reference
 	bitmap<T> dst(width, height);
 
@@ -459,13 +384,43 @@ bitmap<T> BackwardWaveletTransformer<T, alignment>::apply() {
 }
 
 template <typename T, size_t alignment>
+void BackwardWaveletTransformer<T, alignment>::set_subbands(const subbands_t<T>& subbands) {
+	// skip DC scaling as DC are decoded in a separate buffers and are
+	// scaled properly already in BPE.
+	ptrdiff_t i = 0;
+	if (this->skip_dc_scaling) {
+		this->buffers[c_LL3_offset + i] = subbands[i].transpose(); // here is implicit bitmap copy
+		i = 1;
+	}
+	for (; i < subbands.size(); ++i) {
+		this->buffers[c_LL3_offset + i] = subbands[i].transpose(); // here is implicit bitmap copy
+		this->scale.unscale(this->buffers[c_LL3_offset + i], i);
+	}
+}
+
+template <typename T, size_t alignment>
+dwtscale<T>& BackwardWaveletTransformer<T, alignment>::get_scale() {
+	return this->scale;
+}
+
+template <typename T, size_t alignment>
+bool BackwardWaveletTransformer<T, alignment>::get_skip_dc_scaling() const {
+	return this->skip_dc_scaling;
+}
+
+template <typename T, size_t alignment>
+void BackwardWaveletTransformer<T, alignment>::set_skip_dc_scaling(bool value) {
+	this->skip_dc_scaling = value;
+}
+
+template <typename T, size_t alignment>
 void BackwardWaveletTransformer<T, alignment>::transform(const bitmap<T>& hsrc, const bitmap<T>& lsrc, bitmap<T>& dst) {
-	img_meta source_meta = hsrc.getImgMeta();
-	size_t buffer_width = source_meta.width * 2;
+	img_meta dst_meta = dst.get_meta();
+	size_t buffer_width = dst_meta.height;
 	bitmap<T> dstbuffer(buffer_width, alignment, 32);
-	size_t i = 0;
-	for (; i < source_meta.height; i += alignment) {
-		for (size_t j = 0; j < alignment; ++j) {
+	ptrdiff_t i = 0;
+	for (; i < dst_meta.width; i += alignment) { // because transposed
+		for (ptrdiff_t j = 0; j < alignment; ++j) {
 			bitmap_row<T> hrow(hsrc[i + j]);
 			bitmap_row<T> lrow(lsrc[i + j]);
 			this->core.exthbwd(hrow.ptr());
@@ -474,66 +429,40 @@ void BackwardWaveletTransformer<T, alignment>::transform(const bitmap<T>& hsrc, 
 			this->core.rextlbwd(lrow.ptr() + lrow.width());
 			this->core.bwd(hrow.ptr(), lrow.ptr(), dstbuffer[j].ptr(), buffer_width / 2);
 		}
-		for (size_t k = 0; k < buffer_width; ++k) {
-			bitmap_row<T> dstrow = dst[k];
-			for (size_t j = 0; j < alignment; ++j) {
-				dstrow[i + j] = dstbuffer[j][k];
+
+		// TODO: implement constexpr if to enable the block below in 
+		// debug builds only
+		// 
+		// debug block, inverse op
+		{
+			bitmap<T> lbuffer(buffer_width / 2, alignment, 32);
+			bitmap<T> hbuffer(buffer_width / 2, alignment, 32);
+			for (ptrdiff_t j = 0; j < alignment; ++j) {
+				bitmap_row<T> source_row(dstbuffer[j]);
+				this->core.extfwd(source_row.ptr());
+				this->core.rextfwd(source_row.ptr() + source_row.width());
+				this->core.fwd(source_row.ptr(), hbuffer[j].ptr(), lbuffer[j].ptr(), buffer_width / 2);
+				this->core.corrhfwd(source_row.ptr(), hbuffer[j].ptr(), lbuffer[j].ptr());
+				this->core.corrlfwd(source_row.ptr(), hbuffer[j].ptr(), lbuffer[j].ptr());
+			}
+			ptrdiff_t row_bound = lbuffer.get_meta().width / 2;
+			if (row_bound < lsrc.get_meta().width) {
+				row_bound -= 1;
+			}
+			for (ptrdiff_t ii = 0; ii < alignment; ++ii) {
+				for (ptrdiff_t jj = 0; jj < row_bound; ++jj) {
+					if ((hsrc[i + ii][jj] != hbuffer[ii][jj]) || 
+							(lsrc[i + ii][jj] != lbuffer[ii][jj])) {
+						throw "NEQ!";
+					}
+				}
 			}
 		}
-	}
-}
 
-template <typename T, size_t alignment>
-void BackwardWaveletTransformer<T, alignment>::unpack(const std::vector<block<T>>& input) {
-	img_meta DC_loc = this->buffers[this->c_LL3_offset].getImgMeta();
-	if ((DC_loc.width * DC_loc.height) != input.size()) {
-		throw "NEQ!";
-	}
-
-	for (size_t i = 0; i < DC_loc.width; ++i) {
-		for (size_t j = 0; j < DC_loc.height; ++j) {
-			bool hitmap[64] = { false };
-			const block<T>& current = input[i * DC_loc.height + j];
-			this->buffers[this->c_LL3_offset][j][i] = current.content[0];
-			hitmap[0] = true;
-			for (size_t k = 0; k < this->c_families_count; ++k) {
-				size_t offset = 1;
-				size_t index = 0;
-				size_t size = 1;
-				size_t stride = 1;
-				this->buffers[this->c_LL3_offset + k + 1][j][i] = current.content[k + offset];
-				hitmap[k + offset] = true;
-
-				index = 0;
-				offset += 3 * size;
-				stride = 2;
-				size = stride * stride;
-				for (size_t ii = 0; ii < 2; ++ii) {
-					for (size_t jj = 0; jj < 2; ++jj) {
-						this->buffers[this->c_LL3_offset + k + 4][j * stride + jj][i * stride + ii] =
-							current.content[offset + k * size + index];
-						hitmap[offset + k * size + index] = true;
-						++index;
-					}
-				}
-
-				index = 0;
-				offset += 3 * size;
-				stride = 4;
-				size = stride * stride;
-				for (size_t ii = 0; ii < 2; ++ii) {
-					for (size_t jj = 0; jj < 2; ++jj) {
-						for (size_t iii = 0; iii < 2; ++iii) {
-							for (size_t jjj = 0; jjj < 2; ++jjj) {
-								this->buffers[this->c_LL3_offset + k + 7]
-									[j * stride + jj * 2 + jjj][i * stride + ii * 2 + iii] =
-									current.content[offset + k * size + index];
-								hitmap[offset + k * size + index] = true;
-								++index;
-							}
-						}
-					}
-				}
+		for (ptrdiff_t k = 0; k < buffer_width; ++k) {
+			bitmap_row<T> dstrow = dst[k];
+			for (ptrdiff_t j = 0; j < alignment; ++j) {
+				dstrow[i + j] = dstbuffer[j][k];
 			}
 		}
 	}

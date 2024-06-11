@@ -91,7 +91,6 @@
     <ClInclude Include="..\..\..\src\EntropyCoding\symbolstream.h" />
     <ClInclude Include="..\..\..\src\EntropyCoding\symbolstream_base.h" />
     <ClInclude Include="..\..\..\src\EntropyCoding\symbol_utils.h" />
-    <ClInclude Include="..\..\..\src\WaveletTransform\subband_scale.h" />
   </ItemGroup>
   <ItemGroup>
     <ClCompile Include="..\..\..\src\common\exception.cpp" />
@@ -99,7 +98,6 @@
     <ClCompile Include="..\..\..\src\EntropyCoding\osymbolstream.cpp" />
     <ClCompile Include="..\..\..\src\EntropyCoding\symbolstream.cpp" />
     <ClCompile Include="..\..\..\src\EntropyCoding\symbolstream_base.cpp" />
-    <ClCompile Include="..\..\..\src\WaveletTransform\subband_scale.cpp" />
     <ClCompile Include="core.cpp" />
   </ItemGroup>
   <ItemGroup>
@@ -119,6 +117,7 @@
     <None Include="..\..\..\src\WaveletTransform\bitmap.tpp" />
     <None Include="..\..\..\src\WaveletTransform\DWT.tpp" />
     <None Include="..\..\..\src\WaveletTransform\dwtcore.tpp" />
+    <None Include="..\..\..\src\WaveletTransform\dwtscale.tpp" />
     <None Include="..\..\..\src\WaveletTransform\SegmentPreCoder.tpp" />
   </ItemGroup>
   <Import Project="$(VCTargetsPath)\Microsoft.Cpp.targets" />

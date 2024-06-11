@@ -68,10 +68,15 @@ public:
 	void shrink(size_t height) noexcept;
 	bitmap<T> transpose() const;
 	void linear(T* dst, size_t length, size_t x, size_t y) const noexcept;
-	void linear(T* dst, size_t length, size_t linear_index) const noexcept;
-	bitmap_row<T> operator[](size_t index) const;
+	// void linear(T* dst, size_t length, size_t linear_index) const noexcept;
+	template <typename D>
+	void linear(D* dst, size_t length, size_t linear_index) const noexcept;
 
-	img_meta getImgMeta() const;
+	bitmap_row<T> operator[](size_t index) const;
+	bitmap& operator<<=(size_t shift_amount); // TODO: refactor into operator <<=
+	bitmap& operator>>=(size_t shift_amount); // TODO: refactor into operator >>=
+
+	img_meta get_meta() const;
 private:
 	void __reallocate();
 };
@@ -220,8 +225,10 @@ void bitmap<T, alignment>::fill(size_t width, size_t height, T* origin) {
 		// this->m_locator.width stores original width value
 		T* v_src = origin + row * this->m_locator.width;
 		T* v_dst = this->m_begin + row * this->m_locator.stride;
-		for (size_t i = 0; i < this->m_locator.width; i += alignment) {
-			v_dst[i] = v_src[i];
+		for (ptrdiff_t i = 0; i < this->m_locator.width; i += alignment) {
+			for (ptrdiff_t j = 0; j < alignment; ++j) {
+				v_dst[i+j] = v_src[i+j];
+			}
 		}
 	}
 }
@@ -336,8 +343,58 @@ void bitmap<T, alignment>::linear(T* dst, size_t length, size_t x, size_t y) con
 	}
 }
 
+// template <typename T, size_t alignment>
+// void bitmap<T, alignment>::linear(T* dst, size_t length, size_t linear_index) const noexcept {
+// 	// Requires dst to be large enough to handle *length* elements + rest of alignment unit
+// 	// at the end + should be preceded by alignment-size buffer. Otherwise blame yourself.
+// 
+// 	//size_t x = linear_index % this->m_locator.width;
+// 	size_t y = linear_index / this->m_locator.width;
+// 	// instead of modulo, all values are positive
+// 	size_t x = linear_index - (y * this->m_locator.width);
+// 
+// 	size_t row_shift = this->m_locator.width & (alignment - 1);
+// 	// need to compensate unalligned src block beginning, hence requirement for dst to be preceded
+// 	ptrdiff_t dst_shift = -((ptrdiff_t)(x & (alignment - 1)));
+// 	T* row_base = this->m_begin + y * this->m_locator.stride;
+// 	T* src = row_base + (x & (~(alignment - 1)));
+// 	T* eor = row_base + this->m_locator.width;
+// 	T* last = row_base + ((x + length) / this->m_locator.width) * this->m_locator.stride +
+// 		(x + length) % this->m_locator.width;
+// 	T* tdst = dst;
+// 
+// 	// reads src always alligned. writes dst always unalligned
+// 	do {
+// 		T* bound = std::min(eor, last);
+// 		while (src < bound) {
+// 			for (size_t i = 0; i < alignment; ++i) {
+// 				tdst[i + dst_shift] = src[i];
+// 			}
+// 			src += alignment;
+// 			tdst += alignment;
+// 		}
+// 		eor += this->m_locator.stride;
+// 		src += this->m_locator.offset * 2;
+// 
+// 		dst_shift += row_shift;
+// 		tdst -= dst_shift & alignment;
+// 		dst_shift &= alignment - 1;
+// 	} while (src < last);
+// 
+// 	// accurate dst boundary handling
+// 	for (T* eob = dst + length; eob < tdst; ++eob) {
+// 		*eob = 0;
+// 	}
+// 	tdst = dst - alignment;
+// 	for (size_t i = 0; i < alignment; ++i) {
+// 		tdst[i] = 0;
+// 	}
+// }
+
+// conversion-enabled implementation
 template <typename T, size_t alignment>
-void bitmap<T, alignment>::linear(T* dst, size_t length, size_t linear_index) const noexcept {
+template <typename D>
+void bitmap<T, alignment>::linear(D* dst, size_t length, size_t linear_index) const noexcept {
 	// Requires dst to be large enough to handle *length* elements + rest of alignment unit
 	// at the end + should be preceded by alignment-size buffer. Otherwise blame yourself.
 
@@ -354,14 +411,14 @@ void bitmap<T, alignment>::linear(T* dst, size_t length, size_t linear_index) co
 	T* eor = row_base + this->m_locator.width;
 	T* last = row_base + ((x + length) / this->m_locator.width) * this->m_locator.stride +
 		(x + length) % this->m_locator.width;
-	T* tdst = dst;
+	D* tdst = dst;
 
 	// reads src always alligned. writes dst always unalligned
 	do {
 		T* bound = std::min(eor, last);
 		while (src < bound) {
 			for (size_t i = 0; i < alignment; ++i) {
-				tdst[i + dst_shift] = src[i];
+				tdst[i + dst_shift] = static_cast<D>(src[i]);
 			}
 			src += alignment;
 			tdst += alignment;
@@ -384,8 +441,6 @@ void bitmap<T, alignment>::linear(T* dst, size_t length, size_t linear_index) co
 	}
 }
 
-// bitmap_row class template implementation
-
 template <typename T, size_t alignment>
 bitmap_row<T> bitmap<T, alignment>::operator[](size_t index) const {
 	// TODO: check urvo and if std::move is needed
@@ -393,7 +448,37 @@ bitmap_row<T> bitmap<T, alignment>::operator[](size_t index) const {
 }
 
 template <typename T, size_t alignment>
-img_meta bitmap<T, alignment>::getImgMeta() const {
+bitmap<T, alignment>& bitmap<T, alignment>::operator<<=(size_t shift_amount) {
+	for (size_t row = 0; row < this->m_locator.height; ++row) {
+		// TODO: check if counting a pointer this way relaxes memory dependencies
+		// as an alternative, v_dst += this->m_locator.stride; after the loop
+		T* v_dst = this->m_begin + row * this->m_locator.stride;
+		for (ptrdiff_t i = 0; i < this->m_locator.width; i += alignment) {
+			for (ptrdiff_t j = 0; j < alignment; ++j) {
+				v_dst[i + j] <<= shift_amount;
+			}
+		}
+	}
+	return *this;
+}
+
+template <typename T, size_t alignment>
+bitmap<T, alignment>& bitmap<T, alignment>::operator>>=(size_t shift_amount) {
+	for (size_t row = 0; row < this->m_locator.height; ++row) {
+		// TODO: check if counting a pointer this way relaxes memory dependencies
+		// as an alternative, v_dst += this->m_locator.stride; after the loop
+		T* v_dst = this->m_begin + row * this->m_locator.stride;
+		for (ptrdiff_t i = 0; i < this->m_locator.width; i += alignment) {
+			for (ptrdiff_t j = 0; j < alignment; ++j) {
+				v_dst[i + j] >>= shift_amount;
+			}
+		}
+	}
+	return *this;
+}
+
+template <typename T, size_t alignment>
+img_meta bitmap<T, alignment>::get_meta() const {
 	return this->m_locator;
 }
 
@@ -423,6 +508,8 @@ namespace std {
 		swap(first, second);
 	}
 }
+
+// bitmap_row class template implementation
 
 template <typename T, size_t alignment>
 bitmap_row<T, alignment>::bitmap_row(T* data, size_t width) : row_start(data), row_width(width) {}
@@ -464,22 +551,23 @@ size_t bitmap_row<T, alignment>::width() const {
 	return this->row_width;
 }
 
+
 // non-member functions
 template <typename T, size_t alignment>
 void overlapBitmaps(const bitmap<T, alignment>& src, bitmap<T, alignment>& dst,
 		size_t overlap_height) {
 	//TODO: implement error handling
 	[[unlikely]]
-	if (src.getImgMeta().width != dst.getImgMeta().width) {
+	if (src.get_meta().width != dst.get_meta().width) {
 		// error
 	}
 	[[unlikely]]
-	if ((src.getImgMeta().height < overlap_height) |
-		(dst.getImgMeta().height < overlap_height)) {
+	if ((src.get_meta().height < overlap_height) |
+		(dst.get_meta().height < overlap_height)) {
 		//error
 	}
 
-	ptrdiff_t src_offset_rownum = src.getImgMeta().height - overlap_height;
+	ptrdiff_t src_offset_rownum = src.get_meta().height - overlap_height;
 	for (ptrdiff_t i = 0; i < overlap_height; ++i) {
 		dst[i].assign(src[src_offset_rownum + i]);
 	}

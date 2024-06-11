@@ -16,8 +16,8 @@ struct _dwtcore_i {
 		constexpr size_t l_postpipeline_boundary = 1 * vector_step;			// TODO: check if needed
 
 		// load pipeline 
-		for (size_t i = 0; i < move_prepipeline_boundary; i += /*2 **/ vector_step) {
-			for (size_t j = 0; j < /*2 **/ vector_step; ++j /* += 2*/) {
+		for (ptrdiff_t i = 0; i < move_prepipeline_boundary; i += /*2 **/ vector_step) {
+			for (ptrdiff_t j = 0; j < /*2 **/ vector_step; ++j /* += 2*/) {
 				// move even to lowpass buffer, odd to highpass buffer
 				// Intermediate results for highpass are added to highpass
 				// buffer, but input coefficents for highpass intermediate
@@ -26,8 +26,8 @@ struct _dwtcore_i {
 				hdst[i + j] = alligned_src[((i + j) << 1) + 3];		// index -1 is never used, start from +1
 			}
 		}
-		for (size_t i = 0; i < h_prepipeline_boundary; i += vector_step) {
-			for (size_t j = 0; j < vector_step; ++j) {
+		for (ptrdiff_t i = 0; i < h_prepipeline_boundary; i += vector_step) {
+			for (ptrdiff_t j = 0; j < vector_step; ++j) {
 				T htemp = (-ldst[i + j] + ldst[i + j + 1] + ldst[i + j + 2] - ldst[i + j + 3]) >> 3;
 				hdst[i + j] -= ((ldst[i + j + 1] + ldst[i + j + 2]) + htemp + 1) >> 1;
 			}
@@ -40,11 +40,12 @@ struct _dwtcore_i {
 		T* p_hdst = hdst + h_prepipeline_boundary;
 		T const * p_lsrc = hdst;
 		T* p_ldst = ldst;
-		size_t p_count = count - vector_step;	// TODO: ensure alignment, likely need relu for correctness
+		ptrdiff_t p_count = count - vector_step;	// TODO: ensure alignment, likely need relu for correctness
 
 		// run pipeline
-		for (size_t i = 0; i < p_count; i += vector_step) {
-			for (size_t j = 0; j < vector_step; ++j) {
+		ptrdiff_t i = 0;
+		for (/*size_t i = 0*/; i < p_count; i += vector_step) {
+			for (ptrdiff_t j = 0; j < vector_step; ++j) {
 				p_move_ldst[i + j] = p_move_src[(i + j) << 1];
 				p_move_hdst[i + j] = p_move_src[((i + j) << 1) + 3];	// still start from +1
 				T htemp = (-p_hsrc[i + j] + p_hsrc[i + j + 1] + p_hsrc[i + j + 2] - p_hsrc[i + j + 3]) >> 3;
@@ -54,10 +55,8 @@ struct _dwtcore_i {
 		}
 
 		// free pipeline
-		for (size_t i = p_count; i < count; i += vector_step) {
-			for (size_t j = 0; j < vector_step; ++j) {
-				p_ldst[i + j] = p_ldst[i + j + 1] - ((-p_lsrc[i + j - 1] - p_lsrc[i + j] + 2) >> 2);
-			}
+		for (ptrdiff_t j = 0; j < vector_step; ++j) {
+			p_ldst[i + j] = p_ldst[i + j + 1] - ((-p_lsrc[i + j - 1] - p_lsrc[i + j] + 2) >> 2);
 		}
 		return;
 	}
@@ -74,19 +73,19 @@ struct _dwtcore_i {
 		T hbuffer[vector_step];
 
 		// load pipeline 
-		for (size_t j = 0; j < vector_step; ++j) {
+		for (ptrdiff_t j = 0; j < vector_step; ++j) {
 			// restores starting from 2j-2
 			dst[j] = lsrc[j - 1] + ((-hsrc[j - 2] - hsrc[j - 1] + 2) >> 2);
 		}
-		for (size_t i = vector_step; i < l_prepipeline_boundary; i += 2 * vector_step) {	// TODO: verify dst and src indexing
-			for (size_t j = 0; j < vector_step; ++j) {
+		for (ptrdiff_t i = vector_step; i < l_prepipeline_boundary; i += 2 * vector_step) {	// TODO: verify dst and src indexing
+			for (ptrdiff_t j = 0; j < vector_step; ++j) {
 				// restores starting from 2j-2
 				dst[i + j] = lsrc[i + j - 1] + ((-hsrc[i + j - 2] - hsrc[i + j - 1] + 2) >> 2);
 				dst[i + j + vector_step] = dst[i + j];
 			}
 		}
-		for (size_t i = 0; i < h_prepipeline_boundary; i += vector_step) {
-			for (size_t j = 0; j < vector_step; ++j) {
+		for (ptrdiff_t i = 0; i < h_prepipeline_boundary; i += vector_step) {
+			for (ptrdiff_t j = 0; j < vector_step; ++j) {
 				// restores starting from 2j+1
 				T htemp = (-dst[i + j] + dst[i + j + 1] + dst[i + j + 2] - dst[i + j + 3]) >> 3;
 				hbuffer[j] = hsrc[i + j] + (((dst[i + j + 1] + dst[i + j + 2]) + htemp + 1) >> 1);
@@ -100,16 +99,16 @@ struct _dwtcore_i {
 		T const * p_lsrc = hsrc + l_prepipeline_boundary;
 		T const * p_lacc = lsrc + l_prepipeline_boundary;
 		T* p_ldst = dst + l_prepipeline_boundary + vector_step;
-		size_t p_count = ((count - 1) & (~(vector_step - 1))) - vector_step;	// TODO: verify alignment
+		ptrdiff_t p_count = ((ptrdiff_t)((count - 1) & (~(vector_step - 1)))) - vector_step;	// TODO: verify alignment
 
 		// run pipeline
-		size_t i = 0, k = 0;
-		for (/*size_t i = 0, k = 0*/; i < p_count; i += vector_step, k += 2 * vector_step) {	// i is for sources, k is for dst
-			for (size_t j = vector_step; j > 0; --j) {
+		ptrdiff_t i = 0, k = 0;
+		for (/*ptrdiff_t i = 0, k = 0*/; i < p_count; i += vector_step, k += 2 * vector_step) {	// i is for sources, k is for dst
+			for (ptrdiff_t j = vector_step; j > 0; --j) {
 				p_move_dst[k + (j << 1) - 2] = p_move_hsrc[k + j - 1];		// dst + 1 - 1 == dst
 				p_move_dst[k + (j << 1) - 1] = hbuffer[j - 1];
 			}
-			for (size_t j = 0; j < vector_step; ++j) {
+			for (ptrdiff_t j = 0; j < vector_step; ++j) {
 				p_ldst[k + j] = p_lacc[i + j - 1] + ((-p_lsrc[i + j - 2] - p_lsrc[i + j - 1] + 2) >> 2);
 				p_ldst[k + j + vector_step] = p_ldst[k + j];
 				T htemp = (-p_hsrc[k + j] + p_hsrc[k + j + 1] + p_hsrc[k + j + 2] - p_hsrc[k + j + 3]) >> 3;
@@ -118,18 +117,18 @@ struct _dwtcore_i {
 		}
 
 		// free pipeline
-		for (size_t j = vector_step; j > 0; --j) {
+		for (ptrdiff_t j = vector_step; j > 0; --j) {
 			p_move_dst[k + (j << 1) - 2] = p_move_hsrc[k + j - 1];		// dst + 1 - 1 == dst
 			p_move_dst[k + (j << 1) - 1] = hbuffer[j - 1];
 		}
 
-		for (size_t j = 0; j < vector_step; ++j) {
+		for (ptrdiff_t j = 0; j < vector_step; ++j) {
 			p_ldst[k + j] = p_lacc[i + j - 1] + ((-p_lsrc[i + j - 2] - p_lsrc[i + j - 1] + 2) >> 2);
 			T htemp = (-p_hsrc[k + j] + p_hsrc[k + j + 1] + p_hsrc[k + j + 2] - p_hsrc[k + j + 3]) >> 3;
 			hbuffer[j] = p_hacc[i + j] + (((p_hsrc[k + j + 1] + p_hsrc[k + j + 2]) + htemp + 1) >> 1);
 		}
 		k += 2 * vector_step;
-		for (size_t j = vector_step; j > 0; --j) {
+		for (ptrdiff_t j = vector_step; j > 0; --j) {
 			p_move_dst[k + (j << 1) - 2] = p_move_hsrc[k + j - 1];		// dst + 1 - 1 == dst
 			p_move_dst[k + (j << 1) - 1] = hbuffer[j - 1];
 		}

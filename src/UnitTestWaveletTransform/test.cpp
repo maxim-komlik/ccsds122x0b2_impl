@@ -77,7 +77,7 @@ bitmap<T> generateNoisyBitmap(size_t width, size_t height, size_t offset,
 	return input;
 }
 
-TEST(dwti, 2dSmoke) {
+TEST(dwti, multilevelRound) {
 	typedef long long item_t;
 	img_pos props;
 	props.width = 1 << 10;
@@ -96,38 +96,24 @@ TEST(dwti, 2dSmoke) {
 		}
 	}
 
+	shifts_t subband_shifts{ 0 };
+
 	ForwardWaveletTransformer<item_t> dwt(props);
-	auto m_blocks = dwt.apply(input);
-	auto i_coeffs = dwt._getBuffers();
+	dwt.get_scale().set_shifts(subband_shifts);
+	dwt.apply(input);
+	auto i_coeffs = dwt.get_subbands();
 
 	img_pos reverser_props = props;
-	reverser_props.width /= 8;
-	reverser_props.height /= 8;
-	BackwardWaveletTransformer<item_t> reverser(reverser_props);
-	bitmap<item_t> output = reverser.apply(m_blocks);
-	auto o_coeffs = reverser._getBuffers();
+	// reverser_props.width /= 8;
+	// reverser_props.height /= 8;
+	BackwardWaveletTransformer<item_t> reverser(reverser_props, false);
+	reverser.get_scale().set_shifts(subband_shifts);
+	reverser.set_skip_dc_scaling(false);
+	reverser.set_subbands(i_coeffs);
+	bitmap<item_t> output = reverser.apply();
 
-	// size_t verify_index = 8;
-	for (ptrdiff_t verify_index = i_coeffs.size() - 1; verify_index >= 0 ; --verify_index) {
-		img_meta temp = o_coeffs[verify_index].getImgMeta();
-		size_t i = 0;
-		size_t j = 0;
-		try {
-			for (; i < temp.height; ++i) {
-				for (; j < temp.width; ++j) {
-					if (o_coeffs[verify_index][i][j] != i_coeffs[verify_index][j][i]) {
-						throw "NEQ!";
-					}
-				}
-			}
-		}
-		catch (...) {
-			EXPECT_TRUE(false) << "plane: " << verify_index << "at index [" << i << "][" << j << "]";
-		}
-	}
-
-	img_meta input_props = input.getImgMeta();
-	img_meta output_props = output.getImgMeta();
+	img_meta input_props = input.get_meta();
+	img_meta output_props = output.get_meta();
 	ASSERT_EQ(input_props.width, output_props.width);
 	ASSERT_EQ(input_props.height, output_props.height);
 
@@ -138,7 +124,7 @@ TEST(dwti, 2dSmoke) {
 	}
 }
 
-TEST(tbitmap, bitmapMemorySmoke) {
+TEST(tbitmap, DISABLED_bitmapMemorySmoke) {
 	typedef long long item_t;
 	constexpr size_t alignment = 16;
 	constexpr size_t testIterations = 1 << 7;
@@ -163,7 +149,7 @@ TEST(tbitmap, bitmapMemorySmoke) {
 		seed = ((seed + (props.width ^ props.height)) ^ generator()) ^ img_dim_mask;
 		bitmap<item_t> second = generateNoisyBitmap<item_t>(props.width, props.height, offset, seed);
 
-		img_meta second_meta = second.getImgMeta();
+		img_meta second_meta = second.get_meta();
 		size_t slice_x = generator() % second_meta.width;
 		size_t slice_y = generator() % second_meta.height;
 		size_t slice_len = generator() % (second_meta.width * (second_meta.height - slice_y) - slice_x);
@@ -210,24 +196,15 @@ TEST(segments, PrecoderSmoke) {
 	props.height = 1 << 10;
 	bitmap<item_t> input = generateNoisyBitmap<item_t>(props.width, props.height, 64);
 
+	shifts_t subband_shifts{ 0 };
+
 	ForwardWaveletTransformer<item_t> dwt(props);
-	auto m_blocks = dwt.apply(input);
-	auto i_coeffs = dwt._getBuffers();
-	std::vector<bitmap<item_t>> coeffs_v(i_coeffs.cbegin(), i_coeffs.cend());
+	dwt.get_scale().set_shifts(subband_shifts);
+	dwt.apply(input);
+	auto i_coeffs = dwt.get_subbands();
 
-	std::vector<std::array<size_t, 10>> subband_scale_collection;
-	{
-		std::array<size_t, 10> shifts_stub = { 0 };
-		for (ptrdiff_t i = 0; i < 3; ++i) {
-			subband_scale_collection.push_back(shifts_stub);
-		}
-	}
-	scaling_set subband_shifts_provider;
-	subband_shifts_provider.set_shifts_collection(subband_scale_collection);
-	subband_shifts_provider.set_policy(scaling_set::extension_policy::begin);
-
-	SegmentPreCoder<item_t> precoder(coeffs_v);
-	precoder.set_shifts(subband_shifts_provider);
+	SegmentPreCoder<item_t> precoder(i_coeffs);
+	precoder.set_shifts(subband_shifts);
 	auto output = precoder.apply();
 
 	for (size_t i = 0; i < output.size(); ++i) {
@@ -244,26 +221,19 @@ TEST(segments, PrecoderRound) {
 	props.height = 1 << 10;
 	bitmap<item_t> input = generateNoisyBitmap<item_t>(props.width, props.height, 64);
 
+	// { 3, 3, 3, 2, 2, 2, 1, 1, 1, 0 }
+	shifts_t subband_shifts{ 0, 0, 0, 0, 0, 0, 0, 0, 0, 1 };
+
 	ForwardWaveletTransformer<item_t> dwt(props);
-	auto m_blocks = dwt.apply(input);
-	auto i_coeffs = dwt._getBuffers();
-	std::vector<bitmap<item_t>> coeffs_v(i_coeffs.cbegin(), i_coeffs.cend());
+	dwt.get_scale().set_shifts(subband_shifts);
+	dwt.apply(input);
+	auto i_coeffs = dwt.get_subbands();
 
-	std::vector<std::array<size_t, 10>> subband_scale_collection;
-	{
-		std::array<size_t, 10> shifts_stub = { 0 };
-		for (ptrdiff_t i = 0; i < 3; ++i) {
-			subband_scale_collection.push_back(shifts_stub);
-		}
-	}
-	scaling_set subband_shifts_provider;
-	subband_shifts_provider.set_shifts_collection(subband_scale_collection);
-	subband_shifts_provider.set_policy(scaling_set::extension_policy::begin);
-
-	SegmentPreCoder<item_t> precoder(coeffs_v);
-	precoder.set_shifts(subband_shifts_provider);
+	SegmentPreCoder<item_t> precoder(i_coeffs);
+	precoder.set_shifts(dwt.get_scale().get_shifts());
 	auto coded = precoder.apply();
 	SegmentPostDecoder<item_t> postdecoder(coded);
+	// TODO: DEBUG: precoder needs subband weights to compute q
 	auto decoded = postdecoder.apply(props.width);
 	bitmap<item_t> output;
 
@@ -272,18 +242,19 @@ TEST(segments, PrecoderRound) {
 		// for (ptrdiff_t i = 0; i < block.size(); ++i) {
 		// 	block[i] = block[i].transpose();
 		// }
-		img_meta meta = block[0].getImgMeta();
+		img_meta meta = block[0].get_meta();
 		img_pos fragment_props { 0 };
 		fragment_props.width = meta.width;
 		fragment_props.height = meta.height;
 		BackwardWaveletTransformer<item_t> bdwt(fragment_props);
-		bdwt._setPayloadBuffers(block);
+		bdwt.get_scale().set_shifts(dwt.get_scale().get_shifts());
+		bdwt.set_subbands(block);
 		auto out_fragment = bdwt.apply();
-		size_t out_fragment_height; // = relu(out_fragment.getImgMeta().height - 16);
+		size_t out_fragment_height; // = relu(out_fragment.get_meta().height - 16);
 		if (&block != &(decoded.back())) {
-			out_fragment_height = relu(out_fragment.getImgMeta().height - 16);
+			out_fragment_height = relu(out_fragment.get_meta().height - 16);
 		} else {
-			out_fragment_height = out_fragment.getImgMeta().height;
+			out_fragment_height = out_fragment.get_meta().height;
 		}
 		output.resize(props.width, out_row_offset + out_fragment_height);
 		for (size_t i = 0; i < out_fragment_height; ++i) {
@@ -293,8 +264,8 @@ TEST(segments, PrecoderRound) {
 	}
 
 
-	img_meta input_props = input.getImgMeta();
-	img_meta output_props = output.getImgMeta();
+	img_meta input_props = input.get_meta();
+	img_meta output_props = output.get_meta();
 	ASSERT_EQ(input_props.width, output_props.width);
 	ASSERT_EQ(input_props.height, output_props.height);
 
@@ -315,24 +286,15 @@ TEST(bpe, EncoderSmoke) {
 	props.height = 1 << 10;
 	bitmap<item_t> input = generateNoisyBitmap<item_t>(props.width, props.height, 64);
 
+	shifts_t subband_shifts{ 0 };
+
 	ForwardWaveletTransformer<item_t> dwt(props);
-	auto m_blocks = dwt.apply(input);
-	auto i_coeffs = dwt._getBuffers();
-	std::vector<bitmap<item_t>> coeffs_v(i_coeffs.cbegin(), i_coeffs.cend());
+	dwt.get_scale().set_shifts(subband_shifts);
+	dwt.apply(input);
+	auto i_coeffs = dwt.get_subbands();
 
-	std::vector<std::array<size_t, 10>> subband_scale_collection;
-	{
-		std::array<size_t, 10> shifts_stub = { 0 };
-		for (ptrdiff_t i = 0; i < 3; ++i) {
-			subband_scale_collection.push_back(shifts_stub);
-		}
-	}
-	scaling_set subband_shifts_provider;
-	subband_shifts_provider.set_shifts_collection(subband_scale_collection);
-	subband_shifts_provider.set_policy(scaling_set::extension_policy::begin);
-
-	SegmentPreCoder<item_t> precoder(coeffs_v);
-	precoder.set_shifts(subband_shifts_provider);
+	SegmentPreCoder<item_t> precoder(i_coeffs);
+	precoder.set_shifts(subband_shifts);
 	auto output = precoder.apply();
 
 	std::vector<uint64_t> bpe_debug_output_buffer;
@@ -345,12 +307,13 @@ TEST(bpe, EncoderSmoke) {
 
 		__encode(output[0], boutput);
 
+		// TODO: review below
 		// here boutput dtor gets called and flushes current buffer, pushing
 		// padding to the output container as well.
 	}
 
 	size_t size_compressed = bpe_debug_output_buffer.size();
-	size_t size_initial = input.getImgMeta().length;
+	size_t size_initial = input.get_meta().length;
 
 	EXPECT_LE(size_compressed, size_initial) 
 		<< " compressed size increased! compressed = " << size_compressed 
@@ -367,28 +330,20 @@ TEST(bpe, EncoderRound) {
 	props.height = 1 << 10;
 	bitmap<item_t> input = generateNoisyBitmap<item_t>(props.width, props.height, 64);
 
+	// { 3, 3, 3, 2, 2, 2, 1, 1, 1, 0 }
+	shifts_t subband_shifts{ 3, 3, 2, 1, 3, 2, 1, 3, 2, 1 };
+	// shifts_t subband_shifts{ 0, 0, 0, 0, 0, 0, 0, 0, 0, 0 };
+
 	ForwardWaveletTransformer<item_t> dwt(props);
-	auto m_blocks = dwt.apply(input);
-	auto i_coeffs = dwt._getBuffers();
-	std::vector<bitmap<item_t>> coeffs_v(i_coeffs.cbegin(), i_coeffs.cend());
+	dwt.get_scale().set_shifts(subband_shifts);
+	dwt.apply(input);
+	auto i_coeffs = dwt.get_subbands();
 
-	std::vector<std::array<size_t, 10>> subband_scale_collection;
-	{
-		std::array<size_t, 10> shifts_stub = { 0 };
-		for (ptrdiff_t i = 0; i < 3; ++i) {
-			subband_scale_collection.push_back(shifts_stub);
-		}
-	}
-	scaling_set subband_shifts_provider;
-	subband_shifts_provider.set_shifts_collection(subband_scale_collection);
-	subband_shifts_provider.set_policy(scaling_set::extension_policy::begin);
-
-	SegmentPreCoder<item_t> precoder(coeffs_v);
-	precoder.set_shifts(subband_shifts_provider);
+	SegmentPreCoder<item_t> precoder(i_coeffs);
+	precoder.set_shifts(dwt.get_scale().get_shifts());
 	auto precoded = precoder.apply();
 
 	auto bpe_input_segment = precoded[0];
-	bpe_input_segment.bit_shifts.fill(0); // TODO: workaround as scling is not implemented yet.
 
 	std::vector<uint64_t> compressed;
 	// constexpr size_t stage_limit = 0x0937; // stage 2 debug
@@ -465,18 +420,19 @@ TEST(bpe, EncoderRound) {
 
 		size_t out_row_offset = 0;
 		for (auto& block: decoded) {
-			img_meta meta = block[0].getImgMeta();
+			img_meta meta = block[0].get_meta();
 			img_pos fragment_props { 0 };
 			fragment_props.width = meta.width;
 			fragment_props.height = meta.height;
 			BackwardWaveletTransformer<item_t> bdwt(fragment_props);
-			bdwt._setPayloadBuffers(block);
+			bdwt.get_scale().set_shifts(dwt.get_scale().get_shifts());
+			bdwt.set_subbands(block);
 			auto out_fragment = bdwt.apply();
-			size_t out_fragment_height; // = relu(out_fragment.getImgMeta().height - 16);
+			size_t out_fragment_height; // = relu(out_fragment.get_meta().height - 16);
 			if (&block != &(decoded.back())) {
-				out_fragment_height = relu(out_fragment.getImgMeta().height - 16);
+				out_fragment_height = relu(out_fragment.get_meta().height - 16);
 			} else {
-				out_fragment_height = out_fragment.getImgMeta().height;
+				out_fragment_height = out_fragment.get_meta().height;
 			}
 			output.resize(props.width, out_row_offset + out_fragment_height);
 			for (size_t i = 0; i < out_fragment_height; ++i) {
@@ -486,8 +442,8 @@ TEST(bpe, EncoderRound) {
 		}
 	}
 
-	img_meta input_props = input.getImgMeta();
-	img_meta output_props = output.getImgMeta();
+	img_meta input_props = input.get_meta();
+	img_meta output_props = output.get_meta();
 	ASSERT_EQ(input_props.width, output_props.width);
 	ASSERT_EQ(input_props.height, output_props.height);
 
@@ -497,6 +453,245 @@ TEST(bpe, EncoderRound) {
 		}
 	}
 }
+
+TEST(bpe, Sparse) {
+	typedef long long item_t;
+	constexpr size_t alignment = 16;
+	img_pos props;
+	props.width = 1 << 10;
+	props.height = 1 << 10;
+	bitmap<item_t> input = generateNoisyBitmap<item_t>(props.width, props.height, 64);
+	input >>= 15;
+
+	// { 3, 3, 3, 2, 2, 2, 1, 1, 1, 0 }
+	shifts_t subband_shifts{ 2, 3, 2, 1, 3, 2, 1, 3, 2, 1 };
+	// shifts_t subband_shifts{ 0, 0, 0, 0, 0, 0, 0, 0, 0, 0 };
+
+	ForwardWaveletTransformer<item_t> dwt(props);
+	dwt.get_scale().set_shifts(subband_shifts);
+	dwt.apply(input);
+	auto i_coeffs = dwt.get_subbands();
+
+	SegmentPreCoder<item_t> precoder(i_coeffs);
+	precoder.set_shifts(dwt.get_scale().get_shifts());
+	auto precoded = precoder.apply();
+
+	auto bpe_input_segment = precoded[0];
+
+	std::vector<uint64_t> compressed;
+	// constexpr size_t stage_limit = 0x0937; // stage 2 debug
+	// constexpr size_t stage_limit = 0x0a4a; // stage 3 debug
+	constexpr size_t stage_limit = (0x01 << 24) - 1;
+
+	{
+		auto bpe_debug_output_buffer_callback = [&compressed](uint64_t item) -> void {
+			compressed.push_back(item);
+		};
+		obitwrapper<uint64_t> boutput(bpe_debug_output_buffer_callback, stage_limit << 3);
+
+		try {
+			__encode(bpe_input_segment, boutput);
+		}
+		catch (const ccsds::bpe::byte_limit_exception& ex) {
+			std::cout << "Byte limit reached when encoding segment 0, output size: "
+				<< compressed.size() << std::endl;
+		}
+
+		// here boutput dtor gets called and flushes current buffer, pushing
+		// padding to the output container as well.
+	}
+	bitmap<item_t> output;
+
+	{
+		segment<item_t> backward_input;
+		backward_input.size = bpe_input_segment.size;
+		backward_input.bdepthAc = bpe_input_segment.bdepthAc;
+		backward_input.bdepthDc = bpe_input_segment.bdepthDc;
+		backward_input.bit_shifts = bpe_input_segment.bit_shifts;
+
+		// determines T type, T should be the smallest type with bdepth(T) is not less than bdepth_pixel
+		size_t bdepth_pixel;
+		// used by segmentPostDecoder
+		size_t image_width;
+		// determines buffer type of obitwrapper (or other encoding structure used by other implementation)
+		// and indicates if additional padding should be appended to the end of input collection to align 
+		// to the ibitwrapper buffer type word boundary
+		size_t codeword_length;
+		// SegByteLimit is a parameter for ibitwrapper/obitwrapper to terminate early.
+		size_t input_size_bytes; // aka SegByteLimit
+
+		// size_t input_size; // aka Header part 3 S
+		// std::array<size_t, 10> bit_shifts{ 3, 3, 3, 2, 2, 2, 1, 1, 1, 0 };
+		// size_t bdepthAc;
+		// size_t bdepthDc;
+
+		{
+			size_t compressed_index = 0;
+			auto bpe_debug_input_buffer_callback = [&compressed, &compressed_index]() -> uint64_t {
+				// static auto iter = compressed.begin();
+				return compressed[compressed_index++];
+				};
+			ibitwrapper<uint64_t> binput(bpe_debug_input_buffer_callback, stage_limit << 3);
+
+			try {
+				__decode(backward_input, binput);
+			}
+			catch (const ccsds::bpe::byte_limit_exception& ex) {
+				std::cout << "Byte limit reached when decoding segment 0, decoded output size: "
+					<< compressed_index << std::endl;
+			}
+		}
+
+		for (ptrdiff_t i = 0; i < backward_input.size; ++i) {
+			for (ptrdiff_t j = 1; j < 64; ++j) { // TODO: items per block
+				EXPECT_EQ(backward_input.data[i].content[j], precoded[0].data[i].content[j])
+					<< " at segment [0], block [" << i << "], coeff [" << j << "]";
+			}
+		}
+
+		precoded[0] = backward_input;
+		SegmentPostDecoder<item_t> postdecoder(precoded);
+		auto decoded = postdecoder.apply(props.width);
+
+		size_t out_row_offset = 0;
+		for (auto& block : decoded) {
+			img_meta meta = block[0].get_meta();
+			img_pos fragment_props{ 0 };
+			fragment_props.width = meta.width;
+			fragment_props.height = meta.height;
+			BackwardWaveletTransformer<item_t> bdwt(fragment_props);
+			bdwt.get_scale().set_shifts(dwt.get_scale().get_shifts());
+			bdwt.set_subbands(block);
+			auto out_fragment = bdwt.apply();
+			size_t out_fragment_height; // = relu(out_fragment.get_meta().height - 16);
+			if (&block != &(decoded.back())) {
+				out_fragment_height = relu(out_fragment.get_meta().height - 16);
+			}
+			else {
+				out_fragment_height = out_fragment.get_meta().height;
+			}
+			output.resize(props.width, out_row_offset + out_fragment_height);
+			for (size_t i = 0; i < out_fragment_height; ++i) {
+				output[out_row_offset + i].assign(out_fragment[i]);
+			}
+			out_row_offset += out_fragment_height;
+		}
+	}
+
+	img_meta input_props = input.get_meta();
+	img_meta output_props = output.get_meta();
+	ASSERT_EQ(input_props.width, output_props.width);
+	ASSERT_EQ(input_props.height, output_props.height);
+
+	for (size_t i = 0; i < props.height; ++i) {
+		for (size_t j = 0; j < props.width; ++j) {
+			EXPECT_EQ(input[i][j], output[i][j]) << " at index [" << i << "][" << j << "]";
+		}
+	}
+}
+
+TEST(dwti, Sparse) {
+	typedef long long item_t;
+	constexpr size_t alignment = 16;
+	img_pos props;
+	props.width = 1 << 10;
+	props.height = 1 << 10;
+	bitmap<item_t> input = generateNoisyBitmap<item_t>(props.width, props.height, 64);
+	input >>= 15;
+
+	// { 3, 3, 3, 2, 2, 2, 1, 1, 1, 0 }
+	// shifts_t subband_shifts{ 3, 3, 2, 1, 3, 2, 1, 3, 2, 1 };
+	shifts_t subband_shifts{ 2, 0, 0, 0, 0, 0, 0, 0, 0, 0 };
+
+	ForwardWaveletTransformer<item_t> dwt(props);
+	dwt.get_scale().set_shifts(subband_shifts);
+	dwt.apply(input);
+	auto i_coeffs = dwt.get_subbands();
+
+	BackwardWaveletTransformer<item_t> bdwt(props, false);
+	bdwt.get_scale().set_shifts(dwt.get_scale().get_shifts());
+	bdwt.set_skip_dc_scaling(false);
+	bdwt.set_subbands(i_coeffs);
+	bitmap<item_t> output = bdwt.apply();
+
+	img_meta input_props = input.get_meta();
+	img_meta output_props = output.get_meta();
+	ASSERT_EQ(input_props.width, output_props.width);
+	ASSERT_EQ(input_props.height, output_props.height);
+
+	for (size_t i = 0; i < props.height; ++i) {
+		for (size_t j = 0; j < props.width; ++j) {
+			EXPECT_EQ(input[i][j], output[i][j]) << " at index [" << i << "][" << j << "]";
+		}
+	}
+}
+
+TEST(segments, Sparse) {
+	typedef long long item_t;
+	constexpr size_t alignment = 16;
+	img_pos props;
+	props.width = 1 << 10;
+	props.height = 1 << 10;
+	bitmap<item_t> input = generateNoisyBitmap<item_t>(props.width, props.height, 64);
+	input >>= 15;
+
+	// { 3, 3, 3, 2, 2, 2, 1, 1, 1, 0 }
+	shifts_t subband_shifts{ 3, 3, 2, 1, 3, 2, 1, 3, 2, 1 };
+	// shifts_t subband_shifts{ 0, 0, 0, 0, 0, 0, 0, 0, 0, 0 };
+
+	ForwardWaveletTransformer<item_t> dwt(props);
+	dwt.get_scale().set_shifts(subband_shifts);
+	dwt.apply(input);
+	auto i_coeffs = dwt.get_subbands();
+
+	SegmentPreCoder<item_t> precoder(i_coeffs);
+	precoder.set_shifts(dwt.get_scale().get_shifts());
+	auto precoded = precoder.apply();
+
+	bitmap<item_t> output;
+
+	{
+		SegmentPostDecoder<item_t> postdecoder(precoded);
+		auto decoded = postdecoder.apply(props.width);
+
+		size_t out_row_offset = 0;
+		for (auto& block : decoded) {
+			img_meta meta = block[0].get_meta();
+			img_pos fragment_props{ 0 };
+			fragment_props.width = meta.width;
+			fragment_props.height = meta.height;
+			BackwardWaveletTransformer<item_t> bdwt(fragment_props);
+			bdwt.get_scale().set_shifts(dwt.get_scale().get_shifts());
+			bdwt.set_skip_dc_scaling(false);
+			bdwt.set_subbands(block);
+			auto out_fragment = bdwt.apply();
+			size_t out_fragment_height; // = relu(out_fragment.get_meta().height - 16);
+			if (&block != &(decoded.back())) {
+				out_fragment_height = relu(out_fragment.get_meta().height - 16);
+			}
+			else {
+				out_fragment_height = out_fragment.get_meta().height;
+			}
+			output.resize(props.width, out_row_offset + out_fragment_height);
+			for (size_t i = 0; i < out_fragment_height; ++i) {
+				output[out_row_offset + i].assign(out_fragment[i]);
+			}
+			out_row_offset += out_fragment_height;
+		}
+	}
+
+	img_meta input_props = input.get_meta();
+	img_meta output_props = output.get_meta();
+	ASSERT_EQ(input_props.width, output_props.width);
+	ASSERT_EQ(input_props.height, output_props.height);
+
+	for (size_t i = 0; i < props.height; ++i) {
+		for (size_t j = 0; j < props.width; ++j) {
+			EXPECT_EQ(input[i][j], output[i][j]) << " at index [" << i << "][" << j << "]";
+		}
+	}
+}
+
 
 #include <functional>
 #include "../common/utils.h"

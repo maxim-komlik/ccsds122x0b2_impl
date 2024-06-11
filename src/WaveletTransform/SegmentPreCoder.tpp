@@ -13,41 +13,39 @@
 template <typename T, size_t alignment = 16>
 class SegmentPreCoder {
 	using oT = sufficient_integral<T>;
-	std::array<typename bitmap<T>, 10> buffers;
-	// std::array<size_t, 10> bit_shifts{ 3, 3, 3, 2, 2, 2, 1, 1, 1, 0 };
-	scaling_set shifts;
+	// std::array<typename bitmap<T>, 10> buffers;
+	subbands_t<T> buffers;
+	shifts_t bit_shifts;
 	size_t segment_size; // or passed as a parameter to apply?
 
 	static constexpr size_t c_families_count = 3;
 	static constexpr size_t c_block_item_count = 64;
 public:
-	SegmentPreCoder(std::array<typename bitmap<T>, 10> input);
+	SegmentPreCoder(subbands_t<T> input); // take subband shifts also
 	SegmentPreCoder(std::vector<typename bitmap<T>>& input);
 	std::vector<segment<oT>> apply();
 
-	void set_shifts(scaling_set segment_shifts) {
-		this->shifts = segment_shifts;
-	}
-
+	shifts_t get_shifts() const;
+	void set_shifts(const shifts_t& shifts);
 private:
 	std::vector<segment<oT>> pack();
-	// let here compiler do necessary type conversion to avoid unsigned underflow
-	inline size_t segmentQ(ptrdiff_t bdepthDc, ptrdiff_t bdepthAc) const noexcept;
-	inline oT scale(T coeff, size_t bshift) const;
+	inline oT handle_item_pack(T coeff) const;
 };
 
 template <typename T, size_t alignment = 16>
 class SegmentPostDecoder {
+	using iT = sufficient_integral<T>;
 	std::vector<typename segment<T>> segments;
 
 	static constexpr size_t c_families_count = 3;
 public:
-	typedef std::vector<typename std::array<typename bitmap<T>, 10>> output_t;
+	typedef std::vector<subbands_t<T>> output_t;
 
-	SegmentPostDecoder(std::vector<segment<T>> input);
+	SegmentPostDecoder(std::vector<segment<iT>> input);
 	output_t apply(size_t image_width);
 private:
 	output_t unpack(size_t image_width);
+	inline T handle_item_unpack(iT coeff) const;
 };
 
 // Implementation notes:
@@ -133,20 +131,19 @@ template <typename T, size_t alignment>
 std::vector<segment<typename SegmentPreCoder<T, alignment>::oT>> SegmentPreCoder<T, alignment>::pack() {
 	// Does not pack DC coefficients into blocks, AC only
 
-	img_meta DC_loc = this->buffers[0].getImgMeta();
+	img_meta DC_loc = this->buffers[0].get_meta();
 	size_t block_count = (DC_loc.width * DC_loc.height);
 	if (this->segment_size == 0) {
 		this->segment_size = block_count;
 	}
 	size_t segment_count = (block_count + (this->segment_size - 1)) / this->segment_size;
 	std::vector<segment<oT>> output(segment_count); // implicitly calls default ctor for vector, size = 0
-	this->shifts.set_segment_count(segment_count);
 	--segment_count;
 
 	size_t segment_index = 0, block_index = 0;
 	output[segment_index].size = segment_index < segment_count ? this->segment_size : block_count;
+	output[segment_index].bit_shifts = this->bit_shifts;
 	output[segment_index].data.assign(output[segment_index].size, block<oT>());
-	output[segment_index].bit_shifts = this->shifts.get_next();
 	for (size_t i = 0; i < DC_loc.height; ++i) {
 		for (size_t j = 0; j < DC_loc.width; ++j) {
 			if (block_index >= this->segment_size) {
@@ -154,8 +151,8 @@ std::vector<segment<typename SegmentPreCoder<T, alignment>::oT>> SegmentPreCoder
 				++segment_index;
 				output[segment_index].size = segment_index < segment_count ?
 					this->segment_size : block_count % this->segment_size;
+				output[segment_index].bit_shifts = this->bit_shifts;
 				output[segment_index].data.assign(output[segment_index].size, block<oT>());
-				output[segment_index].bit_shifts = this->shifts.get_next();
 			}
 
 			block<oT>& current = output[segment_index].data[block_index];
@@ -165,7 +162,7 @@ std::vector<segment<typename SegmentPreCoder<T, alignment>::oT>> SegmentPreCoder
 				size_t size = 1;
 				size_t stride = 1;
 				current.content[k + offset] = 
-					this->scale(this->buffers[k + 1][i][j], output[segment_index].bit_shifts[k + 1]);
+					this->handle_item_pack(this->buffers[k + 1][i][j]);
 				
 				index = 0;
 				offset += 3 * size;
@@ -175,7 +172,7 @@ std::vector<segment<typename SegmentPreCoder<T, alignment>::oT>> SegmentPreCoder
 					for (size_t jj = 0; jj < 2; ++jj) {
 						T& coeff = this->buffers[k + 4][i * stride + ii][j * stride + jj];
 						current.content[offset + k * size + index] = 
-							this->scale(coeff, output[segment_index].bit_shifts[k + 4]);
+							this->handle_item_pack(coeff);
 						++index;
 					}
 				}
@@ -192,7 +189,7 @@ std::vector<segment<typename SegmentPreCoder<T, alignment>::oT>> SegmentPreCoder
 									this->buffers[k + 7]
 									[i * stride + ii * 2 + iii][j * stride + jj * 2 + jjj];
 								current.content[offset + k * size + index] =
-									this->scale(coeff, output[segment_index].bit_shifts[k + 7]);
+									this->handle_item_pack(coeff);
 								++index;
 							}
 						}
@@ -323,20 +320,22 @@ std::vector<segment<typename SegmentPreCoder<T, alignment>::oT>> SegmentPreCoder
 	}
 
 	{
-		aligned_vector<T> dc_buffer(output[0].size);
+		// aligned_vector<T> dc_buffer(output[0].size);
 		size_t dc_index = 0;
 		for (size_t i = 0; i < output.size(); ++i) {
-			dc_buffer.resize(output[i].size);
+			// dc_buffer.resize(output[i].size);
 			output[i].plainDc = aligned_vector<oT>(output[i].size);
 			output[i].quantizedDc = aligned_vector<oT>(output[i].size);
 			output[i].quantizedBdepthAc = aligned_vector<size_t>(output[i].size);
 			// oT* segmentDc = output[i].plainDc.data();
-			this->buffers[0].linear(dc_buffer.data(), output[i].size, dc_index);
-			for (ptrdiff_t ii = 0; ii < output[i].size; ii += alignment) {
-				for (ptrdiff_t jj = 0; jj < alignment; ++jj) {
-					output[i].plainDc[ii + jj] = this->scale(dc_buffer[ii + jj], output[i].bit_shifts[0]);
-				}
-			}
+			this->buffers[0].linear(output[i].plainDc.data(), output[i].size, dc_index); // TODO: think about converting scale
+			// this->buffers[0].linear(dc_buffer.data(), output[i].size, dc_index); // TODO: think about converting scale
+			// // TODO: if bitmap::linear could convert on the fly, the loop below would be not necessary
+			// for (ptrdiff_t ii = 0; ii < output[i].size; ii += alignment) {
+			// 	for (ptrdiff_t jj = 0; jj < alignment; ++jj) {
+			// 		output[i].plainDc[ii + jj] = this->scale(dc_buffer[ii + jj]);
+			// 	}
+			// }
 			output[i].bdepthDc = bdepthv<T, alignment>(output[i].plainDc.data(), output[i].size);
 
 			std::make_unsigned_t<oT> magnitude_mask_acc = 0;
@@ -363,7 +362,7 @@ std::vector<segment<typename SegmentPreCoder<T, alignment>::oT>> SegmentPreCoder
 		plainDcBuffer.resize(output[i].size);
 		bdepthAcBuffer.resize(output[i].size);
 		oT* segmentDc = output[i].plainDc.data();
-		output[i].q = this->segmentQ(output[i].bdepthDc, output[i].bdepthAc);
+		output[i].q = quant_dc(output[i].bdepthDc, output[i].bdepthAc, output[i].bit_shifts[0]);
 
 		oT mask = ~(-1 << output[i].q);
 		// for (size_t j = 0; j < output[i].size; ++j) {
@@ -471,7 +470,7 @@ std::vector<segment<typename SegmentPreCoder<T, alignment>::oT>> SegmentPreCoder
 			ptrdiff_t* diffBdipthAc = (ptrdiff_t*)output[i].quantizedBdepthAc.data();
 			ptrdiff_t* bdepthsAc = (ptrdiff_t*)bdepthAcBuffer.data();
 			diffBdipthAc[-1] = output[i].referenceBdepthAc;
-			mask = ~(-1 << bdepthAcBdepth);
+			mask = ~((-1 << bdepthAcBdepth) >> 1);
 			ptrdiff_t norm = (1 << bdepthAcBdepth) >> 1;
 			for (ptrdiff_t j = 0; j < output[i].size - 1; ++j) {
 				ptrdiff_t normalized = bdepthsAc[j] - norm;
@@ -496,32 +495,24 @@ std::vector<segment<typename SegmentPreCoder<T, alignment>::oT>> SegmentPreCoder
 }
 
 template <typename T, size_t alignment>
-size_t SegmentPreCoder<T, alignment>::segmentQ(ptrdiff_t bdepthDc, ptrdiff_t bdepthAc) const noexcept {
-	bdepthAc = (bdepthAc >> 1) + 1;
-	// avoids jumps and hints to use conditional moves here
-	if (bdepthDc - bdepthAc <= 1) {
-		bdepthAc = bdepthDc - 3;
-	}
-	if (bdepthDc - bdepthAc > 10) {
-		bdepthAc = bdepthDc - 10;
-	}
-	// result is guaranteed to be positive, implicit conversion to size_t here
-	// See 4.3.1.3
-	return std::max<decltype(bdepthAc)>(bdepthAc, 3); // TODO: Ooops, here should be custom weight instead of hardcoded
+SegmentPreCoder<T, alignment>::oT SegmentPreCoder<T, alignment>::handle_item_pack(T coeff) const {
+	return (oT)coeff;
 }
 
 template <typename T, size_t alignment>
-SegmentPreCoder<T, alignment>::oT SegmentPreCoder<T, alignment>::scale(T coeff, size_t bshift) const {
-	if constexpr (std::is_integral_v<T>) {
-		return ((oT)(coeff)) << bshift;
-	}
-	return (oT)coeff;
+void SegmentPreCoder<T, alignment>::set_shifts(const shifts_t& shifts) {
+	this->bit_shifts = shifts;
+}
+
+template <typename T, size_t alignment>
+shifts_t SegmentPreCoder<T, alignment>::get_shifts() const {
+	return this->bit_shifts;
 }
 
 // SegmentPostDecoder class template implementation
 
 template <typename T, size_t alignment>
-SegmentPostDecoder<T, alignment>::SegmentPostDecoder(std::vector<segment<T>> input): segments(input) {}
+SegmentPostDecoder<T, alignment>::SegmentPostDecoder(std::vector<segment<iT>> input): segments(input) {}
 
 template <typename T, size_t alignment>
 inline void rkdiff(T* diffData, size_t length, size_t bdepth, bool normalize = false) {
@@ -592,7 +583,6 @@ SegmentPostDecoder<T, alignment>::output_t SegmentPostDecoder<T, alignment>::app
 		}
 	}
 
-	// do unpack here
 	return this->unpack(image_width);
 }
 
@@ -606,47 +596,46 @@ SegmentPostDecoder<T, alignment>::output_t SegmentPostDecoder<T, alignment>::unp
 	// TODO: needs proper image dimension checks to comply with requirements
 	// (but checks may be performed on a previous stage)
 	img_meta ll3_meta = [](size_t _image_width) noexcept -> img_meta {
-			// limits in target image dimensions
-			constexpr size_t height_limit = 0x01 << 11;
-			constexpr size_t length_limit = 0x01 << 28;
-			img_meta target{};
-			target.width = _image_width;
-			if (_image_width < height_limit) {
-				target.height = _image_width;
+		// limits in target image dimensions
+		constexpr size_t height_limit = 0x01 << 11;
+		constexpr size_t length_limit = 0x01 << 28;
+		img_meta target{};
+		target.width = _image_width;
+		if (_image_width < height_limit) {
+			target.height = _image_width;
+		}
+		else {
+			size_t length = _image_width * _image_width;
+			if (length < length_limit) {
+				target.height = height_limit;
 			}
 			else {
-				size_t length = _image_width * _image_width;
-				if (length < length_limit) {
-					target.height = height_limit;
-				}
-				else {
-					target.height = ((length_limit / _image_width) + 
-						img_granularity - 1) & (~(img_granularity - 1));;
-				}
+				target.height = ((length_limit / _image_width) + 
+					img_granularity - 1) & (~(img_granularity - 1));;
 			}
+		}
 
-			// cast to LL3 dims
-			target.width >>= 3;
-			target.height >>= 3;
-			target.length = target.width * target.height;
-			return target;
-		}(image_width);
+		// cast to LL3 dims
+		target.width >>= 3;
+		target.height >>= 3;
+		target.length = target.width * target.height;
+		return target;
+	}(image_width);
 
-	auto init_buffers_f =
-		[](size_t width, size_t height) {
-			std::array<bitmap<T>, 10> buffers;
-			constexpr size_t c_level_count = 3;
-			constexpr size_t buffer_iter_step = 3;
-			buffers[0].resize(width, height);
-			for (size_t i = 0; i < c_level_count; ++i) {
-				for (ptrdiff_t j = 0; j < buffer_iter_step; ++j) {
-					buffers[i * buffer_iter_step + j + 1].resize(width, height);
-				}
-				width <<= 1;
-				height <<= 1;
+	auto init_buffers_f = [](size_t width, size_t height) {
+		subbands_t<T> buffers;
+		constexpr size_t c_level_count = 3;
+		constexpr size_t buffer_iter_step = 3;
+		buffers[0].resize(width, height);
+		for (size_t i = 0; i < c_level_count; ++i) {
+			for (ptrdiff_t j = 0; j < buffer_iter_step; ++j) {
+				buffers[i * buffer_iter_step + j + 1].resize(width, height);
 			}
-			return buffers;
-		};
+			width <<= 1;
+			height <<= 1;
+		}
+		return buffers;
+	};
 
 	output_t buffers_collection;
 
@@ -724,7 +713,7 @@ SegmentPostDecoder<T, alignment>::output_t SegmentPostDecoder<T, alignment>::unp
 							[(base_col_i << relu(level - 1)) +
 								((disp[1] & 0x01) * relu(level - 1)) +
 								((disp[2] & 0x01) * relu(level - 2))]
-							= this->segments[i].data[j].content[l];
+							= this->handle_item_unpack(this->segments[i].data[j].content[l]);
 					}
 				}
 
@@ -743,4 +732,9 @@ SegmentPostDecoder<T, alignment>::output_t SegmentPostDecoder<T, alignment>::unp
 	}
 
 	return buffers_collection;
+}
+
+template <typename T, size_t alignment>
+T SegmentPostDecoder<T, alignment>::handle_item_unpack(iT coeff) const {
+	return (T)coeff;
 }
