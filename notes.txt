@@ -1,25 +1,27 @@
 JPEG2000 does not use integer trasform 9/7, it uses 5/3 instead.
 Add references to open-source implementations
 
-TODO: add std::assume_alligned to functions that get pointers to alligned memory (e.g. vectorized)
-
+TODOs:
+TODO: header encoding and writing to file
 TODO: incapsulate memory allocation/alignment staff as allocator, get rid of template alignment parameter
-
+TODO: compile settings management (debug flags and other settings)
+TODO: multithreading
+TODO: Compatibility/port to cmake
+TODO: add std::assume_alligned to functions that get pointers to alligned memory (e.g. vectorized)
 TODO: port code with vectorization on pointers on C (because restrict keyword is needed)
-
-TODO: reverse operation for BPE:DC encoding
-
+TODO: ensure image dimension requirements are satisfied (width > 17, curent implementation does not work
+		correctly when width <= 64)
+TODO: session manager
+TODO: Encoding manager is necessary, it is a class that stores all possible template implementations of 
+		wavelet transform and bit plane coders
 TODO: compute vector stride using sizeof(T)
 
+// DONE
+TODO: bpe classes design
+TODO: bit stream manipulation routines utility file
+TODO: reverse operation for BPE:DC encoding
 TODO: add generic strong_assign
-
-TODO: ensure image dimension requirements are satisfied (width > 17, curent implementation does not work
-correctly when width <= 64)
-
 TODO: Different post-processing for integer and fp: scaling and rounding respectively
-
-TODO: Encoding manager is necessary, it is a class that stores all possible template implementations of 
-wavelet transform and bit plane coders
 
 
 Finally got it!!!!

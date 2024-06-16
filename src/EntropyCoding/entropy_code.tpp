@@ -1,6 +1,6 @@
 #pragma once
 
-#include "EntropyTypes.h"
+#include "entropy_types.h"
 
 template <size_t wordDepth, size_t codeOption>
 struct entropy_code;

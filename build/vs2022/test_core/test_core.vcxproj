@@ -33,10 +33,12 @@
   </ImportGroup>
   <PropertyGroup Label="UserMacros" />
   <ItemGroup>
-    <ClCompile Include="..\..\..\src\UnitTestWaveletTransform\entropy.cpp" />
-    <ClCompile Include="..\..\..\src\UnitTestWaveletTransform\test.cpp" />
+    <ClCompile Include="..\..\..\src\UnitTestWaveletTransform\extreme.cpp" />
+    <ClCompile Include="..\..\..\src\UnitTestWaveletTransform\smoke.cpp" />
+    <ClCompile Include="..\..\..\src\UnitTestWaveletTransform\static.cpp" />
   </ItemGroup>
   <ItemGroup>
+    <None Include="..\..\..\src\UnitTestWaveletTransform\test_utils.tpp" />
     <None Include="packages.config" />
   </ItemGroup>
   <ItemDefinitionGroup />

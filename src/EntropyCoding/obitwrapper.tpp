@@ -3,7 +3,7 @@
 #include <functional>
 #include <type_traits>
 
-#include "EntropyTypes.h"
+#include "entropy_types.h"
 #include "exception.h"
 
 template <typename buffer_t> 
@@ -25,29 +25,20 @@ public:
 	obitwrapper(const callback_t &callback, size_t dst_byte_limit = ((1 << 27) - 1)) 
 			: dest(callback), byte_limit(dst_byte_limit) {};
 	// obitwrapper(const callback_t &&callback) = delete;
-	~obitwrapper() {
-		// TODO: MAJOR: dtor may throw!
-		if (this->wcount < this->capacity) {
-			this->dest(this->buffer);
-		}
-	};
+	~obitwrapper() = default;
+	// The owning code has to call flush before the object
+	// is distructed to commit the buffer content.
+	// 
+	// {
+	// 	// TODO: MAJOR: dtor may throw!
+	// 	if (this->wcount < this->capacity) {
+	// 		this->dest(this->buffer);
+	// 	}
+	// };
 
 	// Nor copyable nor movable
 	obitwrapper(const obitwrapper &other) = delete;
 	obitwrapper& operator=(const obitwrapper &other) = delete;
-
-	obitwrapper& operator<<(SymbolEncoding symbol) {
-		do {
-			size_t shift = std::min(symbol.length, this->wcount);
-			this->wcount -= shift;
-			symbol.length -= shift;
-			this->buffer ^= ((~(((sbuffer_t)(-1)) << shift)) & (symbol.code >> symbol.length)) << this->wcount;
-			if (this->wcount == 0) {
-				this->flush();
-			}
-		} while (symbol.length > 0);
-		return *this;
-	}
 
 	obitwrapper& operator<<(vlw_t symbol) {
 		// requires that std::min(symbol.length, this->wcount) != capacity, that is, 

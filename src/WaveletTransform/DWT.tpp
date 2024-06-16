@@ -41,7 +41,7 @@ namespace inverse {
 #include <array>
 #include <vector>
 
-#include "./../common/core_types.h"
+#include "core_types.h"
 #include "bitmap.tpp"
 #include "dwtcore.tpp"
 #include "dwtscale.tpp"
@@ -111,6 +111,7 @@ class BackwardWaveletTransformer {
 	dwtscale<T> scale;
 
 	bool skip_dc_scaling = true;
+	bool transpose_output = false;
 
 	static constexpr size_t c_h_alignment = 8;
 	static constexpr size_t c_v_alignment = 8;
@@ -129,10 +130,11 @@ public:
 	dwtscale<T>& get_scale();
 	bool get_skip_dc_scaling() const;
 	void set_skip_dc_scaling(bool value);
+	bool get_transpose_output() const;
+	void set_transpose_output(bool value);
 
 private:
 	void transform(const bitmap<T>& hsrc, const bitmap<T>& lsrc, bitmap<T>& dst);
-	void unpack(const std::vector<block<T>>& input);
 };
 
 // ForwardWaveletTransformer class template implementation
@@ -345,7 +347,7 @@ BackwardWaveletTransformer<T, alignment>::BackwardWaveletTransformer(img_pos fra
 		width ^= height;
 		width /= 2;
 
-		this->buffers[i * buffer_iter_step + 2].resize(width, height); // TODO: BUG: overlaps DC subband
+		this->buffers[i * buffer_iter_step + 2].resize(width, height); // TODO: overlaps DC subband
 		width ^= height;
 		height ^= width;
 		width ^= height;
@@ -357,7 +359,6 @@ template <typename T, size_t alignment>
 bitmap<T> BackwardWaveletTransformer<T, alignment>::apply() {
 	size_t width = this->buffers[0].get_meta().height;
 	size_t height = this->buffers[0].get_meta().width * 2;
-	// TODO: fix rvalue reference
 	bitmap<T> dst(width, height);
 
 	bitmap<T>* dst_collection[this->c_level_count];
@@ -379,8 +380,20 @@ bitmap<T> BackwardWaveletTransformer<T, alignment>::apply() {
 		// blocking op
 		this->transform(hout, lout, *(dst_collection[level]));
 	}
+
+	// TODO: but techically this->transform transposes the output
+	// in order to pass the output to the next level bdwt. It is 
+	// possible to omit transpose there and then skip calling 
+	// transpose below, 2 trasnpose ops in a row are redundant.
+
+	// backward dwt already produces transposed output, in order to 
+	// restore original image transpose is needed. Therefore inverted
+	// logic here.
+	if (!this->transpose_output) {
+		dst = dst.transpose();
+	}
 	// TODO: fix rvalue reference, so object is moved and not copied
-	return dst.transpose();
+	return dst;
 }
 
 template <typename T, size_t alignment>
@@ -411,6 +424,16 @@ bool BackwardWaveletTransformer<T, alignment>::get_skip_dc_scaling() const {
 template <typename T, size_t alignment>
 void BackwardWaveletTransformer<T, alignment>::set_skip_dc_scaling(bool value) {
 	this->skip_dc_scaling = value;
+}
+
+template <typename T, size_t alignment>
+bool BackwardWaveletTransformer<T, alignment>::get_transpose_output() const {
+	return this->transpose_output;
+}
+
+template <typename T, size_t alignment>
+void BackwardWaveletTransformer<T, alignment>::set_transpose_output(bool value) {
+	this->transpose_output = value;
 }
 
 template <typename T, size_t alignment>

@@ -1,7 +1,8 @@
 #pragma once
 
-#include <functional>
 #include <bit>
+#include <numeric>
+#include <functional>
 
 // loop unroll staff
 
@@ -218,4 +219,11 @@ inline size_t quant_dc(ptrdiff_t bdepthDc, ptrdiff_t bdepthAc, ptrdiff_t shiftDc
 	// result is guaranteed to be positive, implicit conversion to size_t here
 	// See 4.3.1.3
 	return std::max<decltype(bdepthAc)>(bdepthAc, shiftDc);
+}
+
+template <typename T>
+std::vector<T> generate_vector_with_capacity(size_t capacity) {
+	std::vector<T> result;
+	result.reserve(capacity);
+	return result;
 }

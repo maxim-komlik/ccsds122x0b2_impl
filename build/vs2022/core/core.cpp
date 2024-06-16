@@ -804,7 +804,7 @@ void fncore()
 // 	delete [] input;
 // }
 
-// SegmentPreCoder::apply()
+// SegmentAssembler::apply()
 // size_t bufsize = (output[i].size + 3 * alignment - 1) & (~(alignment - 1));
 // output[i].quantizedDc = std::vector<T>(bufsize);
 // T* segmentDc = (T*)(((size_t)(output[i].quantizedDc.data()) + 2 * palignment - 1) 

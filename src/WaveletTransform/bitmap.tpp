@@ -68,13 +68,12 @@ public:
 	void shrink(size_t height) noexcept;
 	bitmap<T> transpose() const;
 	void linear(T* dst, size_t length, size_t x, size_t y) const noexcept;
-	// void linear(T* dst, size_t length, size_t linear_index) const noexcept;
 	template <typename D>
 	void linear(D* dst, size_t length, size_t linear_index) const noexcept;
 
 	bitmap_row<T> operator[](size_t index) const;
-	bitmap& operator<<=(size_t shift_amount); // TODO: refactor into operator <<=
-	bitmap& operator>>=(size_t shift_amount); // TODO: refactor into operator >>=
+	bitmap& operator<<=(size_t shift_amount);
+	bitmap& operator>>=(size_t shift_amount);
 
 	img_meta get_meta() const;
 private:
@@ -85,7 +84,7 @@ template <typename T, size_t alignment>
 void overlapBitmaps(const bitmap<T, alignment>& src, bitmap<T, alignment>& dst,
 	size_t overlap_height);
 
-// Implementatios section
+// Implementations section
 // bitmap class template implementation
 
 template <typename T, size_t alignment>
@@ -128,7 +127,6 @@ bitmap<T, alignment>& bitmap<T, alignment>::operator= (bitmap<T, alignment>&& ot
 	this->m_locator = std::move(other.m_locator);
 	this->m_rawdata_length = other.m_rawdata_length; // + other.m_locator.offset;
 
-	// other.m_rawdata = nullptr; // TODO: potential memory leak?
 	return *this;
 }
 
@@ -158,18 +156,18 @@ bitmap<T, alignment>::bitmap() : m_rawdata(nullptr), m_begin(nullptr), m_rawdata
 template <typename T, size_t alignment>
 bitmap<T, alignment>::bitmap(size_t width, size_t height, T* origin) {
 	this->m_locator.width = width;
-	width = (width + alignment - 1) & (~(alignment - 1));		//pdu - per data unit
-	this->m_locator.offset = alignment; 	//pdu
-	this->m_locator.stride = width + 2 * alignment; 	//pdu
+	width = (width + alignment - 1) & (~(alignment - 1));		// pdu - per data unit
+	this->m_locator.offset = alignment; 	// pdu
+	this->m_locator.stride = width + 2 * alignment; 	// pdu
 	this->m_locator.height = height;
 	this->m_locator.depth = 1;
-	this->m_locator.length = this->m_locator.height * this->m_locator.stride; 	//pdu
-	this->m_rawdata_length = this->m_locator.length + this->m_locator.offset;	//pdu
+	this->m_locator.length = this->m_locator.height * this->m_locator.stride; 	// pdu
+	this->m_rawdata_length = this->m_locator.length + this->m_locator.offset;	// pdu
 
 	this->m_rawdata = new T[this->m_rawdata_length + (alignment - 1)];	// adds multiple of sizeof(T)
 	// physical memory alignment
 	this->m_begin = ((T*)(((size_t)this->m_rawdata + (this->palignment - 1)) 
-		& (~(this->palignment - 1)))) + this->m_locator.offset;	//((T*)ppb) + pdu - per physical bytes
+		& (~(this->palignment - 1)))) + this->m_locator.offset;	// ((T*)ppb) + pdu - per physical bytes
 
 	for (size_t row = 0; row < height; ++row) {
 		// this->m_locator.width stores original width value
@@ -272,46 +270,15 @@ template <typename T, size_t alignment>
 void bitmap<T, alignment>::linear(T* dst, size_t length, size_t x, size_t y) const noexcept {
 	// Requires dst to be large enough to handle *length* elements + rest of alignment unit
 	// at the end + should be preceded by alignment-size buffer. Otherwise blame yourself.
-	
-	// size_t row_shift = this->m_locator.width & (alignment - 1);
-	// size_t allign_shift = (y * row_shift + x) & (alignment - 1);
-	// size_t row_count = (length + x) / this->m_locator.width;
-	// 
-	// size_t x_bound = std::min(this->m_locator.width - x, length);
-	// T* row_base = this->m_begin + y * this->m_locator.stride;
-	// T* src = row_base + x;
-	// for (; row_count >= 0; --row_count) {
-	// 	for (; x_bound > 0; x_bound -= alignment, dst += alignment, src += alignment) {
-	// 		for (size_t i = 0; i < alignment; ++i) {
-	// 			dst[allign_shift + i] = src[i];
-	// 		}
-	// 	}
-	// 
-	// 	allign_shift += row_shift;
-	// 	dst -= allign_shift & alignment;
-	// 	allign_shift &= alignment - 1;
-	// 
-	// 	x_bound = std::min(this->m_locator.width, length);
-	// 	row_base += this->m_locator.stride;
-	// 	src = row_base;
-	// 	length -= this->m_locator.width;
-	// }
-	// 
-	// for (; x_bound < 0; ++x_bound) {
-	// 	dst[x_bound] = 0;
-	// }
 
-
-	size_t row_shift = this->m_locator.width & (alignment - 1);	//pdu
+	size_t row_shift = this->m_locator.width & (alignment - 1);	// pdu
 	// need to compensate unalligned src block beginning, hence requirement for dst to be preceded
-	// ptrdiff_t dst_shift = -((ptrdiff_t)(x & (alignment - 1)));		//pdu
-	ptrdiff_t dst_shift = alignment - (x & (alignment - 1));	//pdu
+	ptrdiff_t dst_shift = alignment - (x & (alignment - 1));	// pdu
 	T* row_base = this->m_begin + y * this->m_locator.stride;
 	T* src = row_base + (x & (~(alignment - 1)));
 	T* eor = row_base + this->m_locator.width;
 	T* last = row_base + ((x + length) / this->m_locator.width) * this->m_locator.stride + 
 		(x + length) % this->m_locator.width;
-	// T* tdst = dst;
 	T* tdst = dst - (alignment & ((-dst_shift) >> ((sizeof(ptrdiff_t) << 3) - 1)));
 
 	// reads src always alligned. writes dst always unalligned
@@ -319,7 +286,7 @@ void bitmap<T, alignment>::linear(T* dst, size_t length, size_t x, size_t y) con
 		T* bound = std::min(eor, last);
 		while (src < bound) {
 			for (size_t i = 0; i < alignment; ++i) {
-				tdst[i + dst_shift] = src[i];	//check signess of index type
+				tdst[i + dst_shift] = src[i];	// check signess of index type
 			}
 			src += alignment;
 			tdst += alignment;
@@ -328,7 +295,6 @@ void bitmap<T, alignment>::linear(T* dst, size_t length, size_t x, size_t y) con
 		src += this->m_locator.offset * 2;
 
 		dst_shift += row_shift;
-		// tdst -= dst_shift & alignment;
 		tdst -= (~dst_shift) & alignment;
 		dst_shift &= alignment - 1;
 	} while (src < last);
@@ -342,54 +308,6 @@ void bitmap<T, alignment>::linear(T* dst, size_t length, size_t x, size_t y) con
 		tdst[i] = 0;
 	}
 }
-
-// template <typename T, size_t alignment>
-// void bitmap<T, alignment>::linear(T* dst, size_t length, size_t linear_index) const noexcept {
-// 	// Requires dst to be large enough to handle *length* elements + rest of alignment unit
-// 	// at the end + should be preceded by alignment-size buffer. Otherwise blame yourself.
-// 
-// 	//size_t x = linear_index % this->m_locator.width;
-// 	size_t y = linear_index / this->m_locator.width;
-// 	// instead of modulo, all values are positive
-// 	size_t x = linear_index - (y * this->m_locator.width);
-// 
-// 	size_t row_shift = this->m_locator.width & (alignment - 1);
-// 	// need to compensate unalligned src block beginning, hence requirement for dst to be preceded
-// 	ptrdiff_t dst_shift = -((ptrdiff_t)(x & (alignment - 1)));
-// 	T* row_base = this->m_begin + y * this->m_locator.stride;
-// 	T* src = row_base + (x & (~(alignment - 1)));
-// 	T* eor = row_base + this->m_locator.width;
-// 	T* last = row_base + ((x + length) / this->m_locator.width) * this->m_locator.stride +
-// 		(x + length) % this->m_locator.width;
-// 	T* tdst = dst;
-// 
-// 	// reads src always alligned. writes dst always unalligned
-// 	do {
-// 		T* bound = std::min(eor, last);
-// 		while (src < bound) {
-// 			for (size_t i = 0; i < alignment; ++i) {
-// 				tdst[i + dst_shift] = src[i];
-// 			}
-// 			src += alignment;
-// 			tdst += alignment;
-// 		}
-// 		eor += this->m_locator.stride;
-// 		src += this->m_locator.offset * 2;
-// 
-// 		dst_shift += row_shift;
-// 		tdst -= dst_shift & alignment;
-// 		dst_shift &= alignment - 1;
-// 	} while (src < last);
-// 
-// 	// accurate dst boundary handling
-// 	for (T* eob = dst + length; eob < tdst; ++eob) {
-// 		*eob = 0;
-// 	}
-// 	tdst = dst - alignment;
-// 	for (size_t i = 0; i < alignment; ++i) {
-// 		tdst[i] = 0;
-// 	}
-// }
 
 // conversion-enabled implementation
 template <typename T, size_t alignment>

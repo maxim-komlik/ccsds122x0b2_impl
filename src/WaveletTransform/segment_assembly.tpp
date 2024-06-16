@@ -1,28 +1,24 @@
 #pragma once
 
-// TODO: refactor include paths
-#include "core_types.h"
-#include "utils.h"
-#include "bitmap.tpp"
-#include "subband_scale.h"
-
 #include <array>
 #include <vector>
 #include <bit>
 
+#include "core_types.h"
+#include "utils.h"
+#include "bitmap.tpp"
+
 template <typename T, size_t alignment = 16>
-class SegmentPreCoder {
+class SegmentAssembler {
 	using oT = sufficient_integral<T>;
-	// std::array<typename bitmap<T>, 10> buffers;
 	subbands_t<T> buffers;
 	shifts_t bit_shifts;
-	size_t segment_size; // or passed as a parameter to apply?
+	size_t segment_size = 0; // or passed as a parameter to apply?
 
 	static constexpr size_t c_families_count = 3;
 	static constexpr size_t c_block_item_count = 64;
 public:
-	SegmentPreCoder(subbands_t<T> input); // take subband shifts also
-	SegmentPreCoder(std::vector<typename bitmap<T>>& input);
+	SegmentAssembler(subbands_t<T> input);
 	std::vector<segment<oT>> apply();
 
 	shifts_t get_shifts() const;
@@ -33,7 +29,7 @@ private:
 };
 
 template <typename T, size_t alignment = 16>
-class SegmentPostDecoder {
+class SegmentDisassembler {
 	using iT = sufficient_integral<T>;
 	std::vector<typename segment<T>> segments;
 
@@ -41,7 +37,7 @@ class SegmentPostDecoder {
 public:
 	typedef std::vector<subbands_t<T>> output_t;
 
-	SegmentPostDecoder(std::vector<segment<iT>> input);
+	SegmentDisassembler(std::vector<segment<iT>> input);
 	output_t apply(size_t image_width);
 private:
 	output_t unpack(size_t image_width);
@@ -112,23 +108,13 @@ private:
 //
 
 
-// SegmentPreCoder class template implementation
+// SegmentAssembler class template implementation
 
 template <typename T, size_t alignment>
-SegmentPreCoder<T, alignment>::SegmentPreCoder(std::array<typename bitmap<T>, 10> input) : buffers(input), segment_size(0) {}
+SegmentAssembler<T, alignment>::SegmentAssembler(subbands_t<T> input) : buffers(input), segment_size(0) {}
 
 template <typename T, size_t alignment>
-SegmentPreCoder<T, alignment>::SegmentPreCoder(std::vector<typename bitmap<T>>& input): segment_size(0) {
-	size_t basei = input.size() - this->buffers.size();
-	// TODO: validate
-
-	for (size_t i = 0; i < this->buffers.size(); ++i) {
-		this->buffers[i] = input[basei + i];
-	}
-}
-
-template <typename T, size_t alignment>
-std::vector<segment<typename SegmentPreCoder<T, alignment>::oT>> SegmentPreCoder<T, alignment>::pack() {
+std::vector<segment<typename SegmentAssembler<T, alignment>::oT>> SegmentAssembler<T, alignment>::pack() {
 	// Does not pack DC coefficients into blocks, AC only
 
 	img_meta DC_loc = this->buffers[0].get_meta();
@@ -309,10 +295,7 @@ inline void kdiff(T* input, T* output, size_t length, size_t bdepth, bool normal
 // 
 
 template<typename T, size_t alignment>
-std::vector<segment<typename SegmentPreCoder<T, alignment>::oT>> SegmentPreCoder<T, alignment>::apply() {
-	// TODO:
-	// AC values: sign bit + magnitude (see p. 4-3)
-	// TODO: perform scaling of the input depending on its type (ceiling or shifting)
+std::vector<segment<typename SegmentAssembler<T, alignment>::oT>> SegmentAssembler<T, alignment>::apply() {
 	std::vector<segment<oT>> output = this->pack();
 	for (size_t i = 1; i < this->buffers.size(); ++i) {
 		// free buffers, they are not necessary once we packed all values
@@ -320,28 +303,18 @@ std::vector<segment<typename SegmentPreCoder<T, alignment>::oT>> SegmentPreCoder
 	}
 
 	{
-		// aligned_vector<T> dc_buffer(output[0].size);
 		size_t dc_index = 0;
 		for (size_t i = 0; i < output.size(); ++i) {
-			// dc_buffer.resize(output[i].size);
 			output[i].plainDc = aligned_vector<oT>(output[i].size);
 			output[i].quantizedDc = aligned_vector<oT>(output[i].size);
 			output[i].quantizedBdepthAc = aligned_vector<size_t>(output[i].size);
-			// oT* segmentDc = output[i].plainDc.data();
-			this->buffers[0].linear(output[i].plainDc.data(), output[i].size, dc_index); // TODO: think about converting scale
-			// this->buffers[0].linear(dc_buffer.data(), output[i].size, dc_index); // TODO: think about converting scale
-			// // TODO: if bitmap::linear could convert on the fly, the loop below would be not necessary
-			// for (ptrdiff_t ii = 0; ii < output[i].size; ii += alignment) {
-			// 	for (ptrdiff_t jj = 0; jj < alignment; ++jj) {
-			// 		output[i].plainDc[ii + jj] = this->scale(dc_buffer[ii + jj]);
-			// 	}
-			// }
+			this->buffers[0].linear(output[i].plainDc.data(), output[i].size, dc_index);
 			output[i].bdepthDc = bdepthv<T, alignment>(output[i].plainDc.data(), output[i].size);
 
 			std::make_unsigned_t<oT> magnitude_mask_acc = 0;
 			for (ptrdiff_t j = 0; j < output[i].size; ++j) {
 				std::make_unsigned_t<oT> magnitude_mask = accorv<oT, alignment>(output[i].data[j].content, this->c_block_item_count);
-				output[i].quantizedBdepthAc[j] = std::bit_width(magnitude_mask) + 1; // see 4.1, p. 4-3, eq (13)
+				output[i].quantizedBdepthAc[j] = std::bit_width(magnitude_mask); // +1; // see 4.1, p. 4-3, eq (13)
 				magnitude_mask_acc |= magnitude_mask;
 			}
 			output[i].bdepthAc = std::bit_width(magnitude_mask_acc);
@@ -365,9 +338,6 @@ std::vector<segment<typename SegmentPreCoder<T, alignment>::oT>> SegmentPreCoder
 		output[i].q = quant_dc(output[i].bdepthDc, output[i].bdepthAc, output[i].bit_shifts[0]);
 
 		oT mask = ~(-1 << output[i].q);
-		// for (size_t j = 0; j < output[i].size; ++j) {
-		// 	output[i].data[j].content[0] = segmentDc[j] & mask;
-		// }
 
 		for (ptrdiff_t ii = 0; ii < output[i].size; ii += alignment) {
 			for (ptrdiff_t jj = 0; jj < alignment; ++jj) {
@@ -376,8 +346,6 @@ std::vector<segment<typename SegmentPreCoder<T, alignment>::oT>> SegmentPreCoder
 			}
 		}
 		output[i].referenceSample = segmentDc[0];
-		// TODO: see 4.3.2.2: skip kdiff if N == 1
-		// may need to move output[i].plainDc to output[i].quantizedDc and reinitialize plainDc
 
 		// PERF NOTE: call to new() contains side effects and therefore considered 
 		// serializing op. Moved to the first loop due to performance reasons.
@@ -412,8 +380,7 @@ std::vector<segment<typename SegmentPreCoder<T, alignment>::oT>> SegmentPreCoder
 		// 
 
 		size_t bdepthQDc = (output[i].bdepthDc - output[i].q) + 1;
-		// TODO: see 4.3.2.2: skip kdiff if N == 1
-		// may need to move output[i].plainDc to output[i].quantizedDc and reinitialize plainDc
+		// see 4.3.2.2: skip kdiff if N == 1
 		if (bdepthQDc > 1) {
 			oT* diffData = output[i].quantizedDc.data();
 			kdiff<oT, alignment>(segmentDc, diffData, output[i].size, bdepthQDc, false);
@@ -422,16 +389,15 @@ std::vector<segment<typename SegmentPreCoder<T, alignment>::oT>> SegmentPreCoder
 			swap(output[i].plainDc, output[i].quantizedDc);
 		}
 
-		// see 4.4 (c): N = round_up(log(1 + bdepthAc))
-		// TODO: check formulas, see bit_width and eq.21 from 4.4
+		// see 4.4, eq.21: N = round_up(log(1 + bdepthAc))
+		// std::bit_depth = 1 + round_down(log(x))
+		// 
+		// 1 + round_down(log(x)) == round_up(log(1 + x)) | for all natural x
 		size_t bdepthAcBdepth = std::bit_width(output[i].bdepthAc);
 		if (bdepthAcBdepth > 1) {
 			ptrdiff_t* bdepthsAc = (ptrdiff_t*)output[i].quantizedBdepthAc.data();
 			output[i].referenceBdepthAc = bdepthsAc[0];
-			// output[i].quantizedBdepthAc = aligned_vector<size_t>(output[i].size);
-			// ptrdiff_t* diffBdipthAc = (ptrdiff_t*)output[i].quantizedBdepthAc.data();
 			ptrdiff_t* diffBdipthAc = (ptrdiff_t*)bdepthAcBuffer.data();
-			//constexpr size_t bdepthAcBdepth = std::bit_width((sizeof(T) << 3) - 1); // bit_width(max_value)
 			kdiff<ptrdiff_t, alignment>(bdepthsAc, diffBdipthAc, output[i].size, bdepthAcBdepth, true);
 			swap(output[i].quantizedBdepthAc, bdepthAcBuffer); // do not expose temporal values to the caller
 		}
@@ -495,24 +461,24 @@ std::vector<segment<typename SegmentPreCoder<T, alignment>::oT>> SegmentPreCoder
 }
 
 template <typename T, size_t alignment>
-SegmentPreCoder<T, alignment>::oT SegmentPreCoder<T, alignment>::handle_item_pack(T coeff) const {
+SegmentAssembler<T, alignment>::oT SegmentAssembler<T, alignment>::handle_item_pack(T coeff) const {
 	return (oT)coeff;
 }
 
 template <typename T, size_t alignment>
-void SegmentPreCoder<T, alignment>::set_shifts(const shifts_t& shifts) {
+void SegmentAssembler<T, alignment>::set_shifts(const shifts_t& shifts) {
 	this->bit_shifts = shifts;
 }
 
 template <typename T, size_t alignment>
-shifts_t SegmentPreCoder<T, alignment>::get_shifts() const {
+shifts_t SegmentAssembler<T, alignment>::get_shifts() const {
 	return this->bit_shifts;
 }
 
-// SegmentPostDecoder class template implementation
+// SegmentDisassembler class template implementation
 
 template <typename T, size_t alignment>
-SegmentPostDecoder<T, alignment>::SegmentPostDecoder(std::vector<segment<iT>> input): segments(input) {}
+SegmentDisassembler<T, alignment>::SegmentDisassembler(std::vector<segment<iT>> input): segments(input) {}
 
 template <typename T, size_t alignment>
 inline void rkdiff(T* diffData, size_t length, size_t bdepth, bool normalize = false) {
@@ -536,10 +502,9 @@ inline void rkdiff(T* diffData, size_t length, size_t bdepth, bool normalize = f
 }
 
 template <typename T, size_t alignment>
-SegmentPostDecoder<T, alignment>::output_t SegmentPostDecoder<T, alignment>::apply(size_t image_width) {
+SegmentDisassembler<T, alignment>::output_t SegmentDisassembler<T, alignment>::apply(size_t image_width) {
 	for (ptrdiff_t i = 0; i < this->segments.size(); ++i) {
 		// reference sample:
-		// this->segments[i].data[0].content[0] |= this->segments[i].referenceSample << this->segments[i].q;
 		this->segments[i].data[0].content[0] = 
 			(this->segments[i].referenceSample << this->segments[i].q) | this->segments[i].plainDc[0];
 		T* diffData = this->segments[i].quantizedDc.data();
@@ -568,7 +533,6 @@ SegmentPostDecoder<T, alignment>::output_t SegmentPostDecoder<T, alignment>::app
 		if (bdepthQDc > 1) {
 			rkdiff<T, alignment>(diffData, (this->segments[i].size - 1), bdepthQDc, false);
 			for (ptrdiff_t j = 0; j < this->segments[i].size - 1; ++j) {
-				// this->segments[i].data[j + 1].content[0] |= diffData[j] << this->segments[i].q;
 				this->segments[i].data[j + 1].content[0] = 
 					(diffData[j] << this->segments[i].q) | this->segments[i].plainDc[j + 1]; // PERF NOTE: access by ptr and subscript operator
 			}
@@ -578,7 +542,6 @@ SegmentPostDecoder<T, alignment>::output_t SegmentPostDecoder<T, alignment>::app
 		if (bdepthAcBdepth > 1) {
 			ptrdiff_t* diffBdepthAc = (ptrdiff_t*)this->segments[i].quantizedBdepthAc.data();
 			diffBdepthAc[-1] = this->segments[i].referenceBdepthAc;
-			// constexpr size_t bdepthAcBdepth = std::bit_width((sizeof(T) << 3) - 1); // bit_width(max_value)
 			rkdiff<ptrdiff_t, alignment>(diffBdepthAc, (this->segments[i].size - 1), bdepthAcBdepth, true);
 		}
 	}
@@ -587,7 +550,7 @@ SegmentPostDecoder<T, alignment>::output_t SegmentPostDecoder<T, alignment>::app
 }
 
 template <typename T, size_t alignment>
-SegmentPostDecoder<T, alignment>::output_t SegmentPostDecoder<T, alignment>::unpack(size_t image_width) {
+SegmentDisassembler<T, alignment>::output_t SegmentDisassembler<T, alignment>::unpack(size_t image_width) {
 	constexpr size_t min_img_width = 17;
 	constexpr size_t img_granularity = 16;
 	image_width = std::max(image_width, min_img_width);
@@ -735,6 +698,6 @@ SegmentPostDecoder<T, alignment>::output_t SegmentPostDecoder<T, alignment>::unp
 }
 
 template <typename T, size_t alignment>
-T SegmentPostDecoder<T, alignment>::handle_item_unpack(iT coeff) const {
+T SegmentDisassembler<T, alignment>::handle_item_unpack(iT coeff) const {
 	return (T)coeff;
 }

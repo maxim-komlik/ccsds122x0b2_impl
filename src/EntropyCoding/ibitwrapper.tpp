@@ -3,7 +3,7 @@
 #include <bit>
 #include <type_traits>
 
-#include "EntropyTypes.h"
+#include "entropy_types.h"
 #include "exception.h"
 
 template <typename buffer_t> class ibitwrapper {
@@ -28,21 +28,6 @@ public:
 	// Nor copyable nor movable
 	ibitwrapper(const ibitwrapper &other) = delete;
 	ibitwrapper& operator=(const ibitwrapper &other) = delete;
-
-	ibitwrapper& operator>>(shift_params &symbol) {
-		do {
-			if (this->rcount == this->capacity) {
-				this->fill();
-			}
-			size_t shift = std::min(symbol.length, this->capacity - this->rcount);
-			symbol.code <<= shift;
-			symbol.code ^= ((~(((ubuffer_t)((sbuffer_t)(-1))) >> shift)) & (this->buffer)) >> (this->capacity - shift);
-			this->buffer <<= shift;
-			this->rcount += shift;
-			symbol.length -= shift;
-		} while (symbol.length > 0);
-		return *this;
-	}
 
 	ibitwrapper& operator>>(vlw_t& symbol) {
 		size_t length = symbol.length;
