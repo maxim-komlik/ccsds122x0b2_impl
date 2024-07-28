@@ -40,6 +40,7 @@ namespace inverse {
 
 #include <array>
 #include <vector>
+#include <utility>
 
 #include "core_types.h"
 #include "bitmap.tpp"
@@ -81,6 +82,14 @@ class ForwardWaveletTransformer {
 	static constexpr size_t c_families_count = 3;
 	static constexpr size_t c_LL3_offset = 8;
 public:
+	// TODO: MAJOR: refactor constructors. We're going to explicitly create 
+	// instances for all applicable dypes/settings in a library to later use
+	// them in a client binary. This means we cannot pass data-dependent values 
+	// as constructor options. Split constructors into constructor and 
+	// data-dependent initializer that performs necessary data-specific setup.
+	// 
+	// This is applicable to most classes in the project.
+	//
 	ForwardWaveletTransformer(img_pos frame_properties);
 
 	// TODO: takes source image as input only

@@ -81,23 +81,26 @@
     </Link>
   </ItemDefinitionGroup>
   <ItemGroup>
+    <ClInclude Include="..\..\..\src\common\constant.h" />
     <ClInclude Include="..\..\..\src\common\core_types.h" />
     <ClInclude Include="..\..\..\src\common\exception.h" />
     <ClInclude Include="..\..\..\src\common\SegmentHeaders.h" />
     <ClInclude Include="..\..\..\src\common\utils.h" />
-    <ClInclude Include="..\..\..\src\EntropyCoding\bpe_constants.h" />
+    <ClInclude Include="..\..\..\src\EntropyCoding\constant.h" />
     <ClInclude Include="..\..\..\src\EntropyCoding\entropy_types.h" />
+    <ClInclude Include="..\..\..\src\EntropyCoding\symbolbuffer.h" />
     <ClInclude Include="..\..\..\src\EntropyCoding\symbolstream.h" />
+    <ClInclude Include="..\..\..\src\WaveletTransform\constant.h" />
   </ItemGroup>
   <ItemGroup>
     <ClCompile Include="..\..\..\src\common\exception.cpp" />
+    <ClCompile Include="..\..\..\src\EntropyCoding\symbolbuffer.cpp" />
     <ClCompile Include="core.cpp" />
   </ItemGroup>
   <ItemGroup>
     <None Include="..\..\..\src\common\aligned_vector.tpp" />
     <None Include="..\..\..\src\EntropyCoding\bitplane.tpp" />
     <None Include="..\..\..\src\EntropyCoding\bpe.tpp" />
-    <None Include="..\..\..\src\EntropyCoding\bpex.tpp" />
     <None Include="..\..\..\src\EntropyCoding\entropy_code.tpp" />
     <None Include="..\..\..\src\EntropyCoding\entropy_translate.h" />
     <None Include="..\..\..\src\EntropyCoding\ibitwrapper.tpp" />

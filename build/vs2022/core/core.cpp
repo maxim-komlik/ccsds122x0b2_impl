@@ -2,7 +2,93 @@
 void fncore()
 {
 }
+// bpe.tpp
+// 
+// PMINSW x86-64: vectorized min for 16-bit words
+// several simd iterations per one loop cycle for 2+ gaggles that lays continiously
+// compute simd bitmask to reflect k_bound to invalidate simd items with index > k_bound (make max signed numbers)
+// 
+// store gpr and min simd k results in a temporal buffer. Buffer length is known before processing
+// (but we need k value ~ index rather then pre-computed length itself)
+// 
 
+// bitplane.tpp
+// 
+// template <typename T, typename obwT, size_t alignment = 16>
+// void bplane(T* data, size_t size, size_t b, obitwrapper<obwT>& ostream);
+// 
+// template <typename T, typename obwT, size_t alignment>
+// void bplane(T* data, size_t size, size_t b, obitwrapper<obwT>& ostream) {
+// 	std::array<std::make_unsigned_t<T>, alignment> masks;
+// 	std::fill(masks.begin(), masks.end(), (0x01 << b));
+// 
+// 	std::array<T, alignment> rshifts;
+// 	std::array<T, alignment> lshifts;
+// 	std::array<std::make_unsigned_t<T>, alignment> buffer;
+// 	for (ptrdiff_t i = 0; i < rshifts.size(); ++i) {
+// 		std::make_signed_t<T> relative_shift = ((std::make_signed_t<decltype(b)>)(b)) - alignment + 1 + i;
+// 		rshifts[i] = relu(relative_shift);
+// 		lshifts[i] = relu(-relative_shift);
+// 	}
+// 
+// 	std::make_unsigned_t<sufficient_integral_i<(alignment >> 3)>> serial_buffer;
+// 
+// 	for (ptrdiff_t i = 0; i < size; i += alignment) {
+// 		serial_buffer = 0;
+// 		for (ptrdiff_t j = 0; j < alignment; ++j) {
+// 			buffer[j] = (data[i + j] & masks[j]);
+// 		}
+// 		for (ptrdiff_t j = 0; j < alignment; ++j) {
+// 			// TODO: check if promotion needed to integral sufficient to hold shifted value
+// 			// TODO: compile-time checks to prevent the following
+// 			// possible data loss if alignment > (sizeof(T) << 3)
+// 			serial_buffer |= (buffer[j] << lshifts[j]) >> rshifts[j];
+// 		}
+// 		ostream << vlw_t{ alignment, serial_buffer };
+// 	}
+// }
+
+
+// bpe.tpp encodeBpeStages
+// {
+// 	// does unnecessary left shifts and cannot perform additional op with data, 
+// 	// we'd like to abs by vectors in addition. Implementation inlined below.
+// 	// maybe add template lambda as a parameter
+// 
+// 	constexpr size_t sign_bindex = (sizeof(T) << 3) - 1;
+// 	bplane_static<sign_bindex>(raw_block_data, raw_block_size, block_signs_bitwrapper, 
+// 		[](T& item) -> void { item = magnitude(item); });
+// 
+// 	// std::array<std::make_unsigned_t<T>, alignment> masks;
+// 	// std::array<T, alignment> rshifts;
+// 	// std::array<std::make_unsigned_t<T>, alignment> buffer;
+// 	// for (ptrdiff_t i = 0; i < rshifts.size(); ++i) {
+// 	// 	std::make_signed_t<T> relative_shift = ((std::make_signed_t<decltype(sign_bindex)>)(sign_bindex)) - alignment + 1 + i;
+// 	// 	masks[i] = ((size_t)(0x01) << sign_bindex);
+// 	// 	rshifts[i] = relu(relative_shift);
+// 	// }
+// 	// 
+// 	// // TODO: use of implementation details instead of interface below
+// 	// std::make_unsigned_t<sufficient_integral_i<(alignment >> 3)>> serial_buffer;
+// 	// 
+// 	// for (ptrdiff_t i = 0; i < raw_block_size; i += alignment) {
+// 	// 	serial_buffer = 0;
+// 	// 	for (ptrdiff_t j = 0; j < alignment; ++j) {
+// 	// 		buffer[j] = (raw_block_data[i + j] & masks[j]);
+// 	// 		// here is additional payload (vectorized abs)
+// 	// 		raw_block_data[i + j] = magnitude(raw_block_data[i + j]);
+// 	// 	}
+// 	// 	for (ptrdiff_t j = 0; j < alignment; ++j) {
+// 	// 		// TODO: check if promotion needed to integral sufficient to hold shifted value
+// 	// 		// TODO: compile-time checks to prevent the following
+// 	// 		// possible data loss if alignment > (sizeof(T) << 3)
+// 	// 		serial_buffer |= buffer[j] >> rshifts[j];
+// 	// 	}
+// 	// 	block_signs_bitwrapper << vlw_t{ alignment, serial_buffer };
+// 	// }
+// 	// end of inlined bplane implementation
+// 	//
+// }
 
 // SegmentPreCoder.tpp
 // template <typename T, size_t alignment>

@@ -1,6 +1,7 @@
 #pragma once
 
 #include <array>
+#include <bit>
 
 // TODO: move compile time parameters to dedicated files
 namespace dbg {
@@ -14,12 +15,30 @@ namespace dbg {
 		static constexpr uint32_t mask_stage_3 = 0x040;
 		static constexpr uint32_t mask_stage_4 = 0x080;
 
+		static constexpr uint32_t mask_validation = 0x01000;
+
 		namespace encoder {
 			static constexpr uint32_t disabled_stages = 0x00;
+
+			constexpr bool if_enabled(uint32_t mask) {
+				return (disabled_stages & mask) == 0;
+			}
+
+			constexpr bool if_disabled(uint32_t mask) {
+				return !if_enabled(mask);
+			}
 		};
 
 		namespace decoder {
 			static constexpr uint32_t disabled_stages = 0x00;
+
+			constexpr bool if_enabled(uint32_t mask) {
+				return (disabled_stages & mask) == 0;
+			}
+
+			constexpr bool if_disabled(uint32_t mask) {
+				return !if_enabled(mask);
+			}
 		};
 	};
 };
@@ -32,13 +51,38 @@ protected:
 	struct kParams {
 		T* data;
 		size_t datalength;
-		size_t bdepth;
+		ptrdiff_t bdepth;
 		T reference;
 	};
 	
 	static constexpr size_t max_subband_shift = 3;
+
 	static constexpr size_t items_per_block = 64;	// TODO: global constant as a property of a block struct
-	static constexpr size_t items_per_gaggle = 16;
+	static constexpr size_t block_size_mask = items_per_block - 1;
+	static constexpr size_t block_size_shift = std::bit_width(std::bit_ceil(items_per_block) - 1); // approx for log
+
+	static constexpr size_t items_per_gaggle = 16; // the value is assumed to be POT, see below
+	static constexpr size_t gaggle_size_mask = items_per_gaggle - 1;
+	static constexpr size_t gaggle_size_shift = std::bit_width(std::bit_ceil(items_per_gaggle) - 1); // approx for log
+
+	// entropy
+	static constexpr size_t min_vlw_length = 0;
+	static constexpr size_t max_vlw_length = 4;
+	static constexpr size_t vlw_lengths_count = 5;
+
+	static constexpr size_t min_coded_vlw_length = 2;
+	static constexpr size_t max_coded_vlw_length = max_vlw_length;
+	static constexpr size_t coded_vlw_lengths_count = 3;
+
+	static constexpr ptrdiff_t entropy_uncoded_codeoption = -1;
+
+	static constexpr size_t min_N_value = 1;
+	static constexpr size_t max_N_value = 10;
+	static constexpr ptrdiff_t k_uncoded_codeoption = -1;
+
+	static constexpr size_t symbol_types_H_codeoption = 0x02;
+	static constexpr size_t symbol_tran_H_codeoption = 0x02;
+	static constexpr size_t symbol_tran_D_codeoption = 0x01;
 
 	static constexpr size_t F_num = 3;
 	static constexpr size_t CpF_num = 1;
@@ -52,7 +96,7 @@ protected:
 	static constexpr ptrdiff_t P_index = 8;
 	static constexpr ptrdiff_t DC_index = 16;
 
-	static constexpr std::array<uint64_t, 24> family_masks = []() constexpr {
+	static constexpr std::array<uint64_t, 24> family_masks = std::invoke([]() constexpr {
 		std::array<uint64_t, 24> result{ 0 };
 
 		constexpr size_t gen_num = 2;
@@ -90,9 +134,9 @@ protected:
 		result[P_index] = ((X_mask >> 1) << (F_num * (CpF_num + HxpF_num) * X_mask_blen));
 		result[DC_index] = (uint64_t)(0x01) << ((sizeof(uint64_t) << 3) - 1);
 		return result;
-	}();
+	});
 	
-	static constexpr std::array<uint64_t, 10> bitshift_masks = []() constexpr {
+	static constexpr std::array<uint64_t, 10> bitshift_masks = std::invoke([]() constexpr {
 		std::array<uint64_t, 10> result = { 0 };
 
 		constexpr size_t bshift_G_step = 3;
@@ -108,6 +152,6 @@ protected:
 		}
 		result[bshift_DC_index] = family_masks[DC_index];
 		return result;
-	}();
+	});
 
 };

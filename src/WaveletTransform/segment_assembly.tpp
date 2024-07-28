@@ -303,11 +303,15 @@ std::vector<segment<typename SegmentAssembler<T, alignment>::oT>> SegmentAssembl
 	}
 
 	{
+		// TODO: see segment validation in bpe (kEncode requirements)
+		constexpr size_t items_per_gaggle = 16;
+		constexpr size_t k_offset_requirement = items_per_gaggle * 2;
+
 		size_t dc_index = 0;
 		for (size_t i = 0; i < output.size(); ++i) {
 			output[i].plainDc = aligned_vector<oT>(output[i].size);
-			output[i].quantizedDc = aligned_vector<oT>(output[i].size);
-			output[i].quantizedBdepthAc = aligned_vector<size_t>(output[i].size);
+			output[i].quantizedDc = aligned_vector<oT>(output[i].size, k_offset_requirement);
+			output[i].quantizedBdepthAc = aligned_vector<size_t>(output[i].size, k_offset_requirement);
 			this->buffers[0].linear(output[i].plainDc.data(), output[i].size, dc_index);
 			output[i].bdepthDc = bdepthv<T, alignment>(output[i].plainDc.data(), output[i].size);
 
@@ -379,7 +383,15 @@ std::vector<segment<typename SegmentAssembler<T, alignment>::oT>> SegmentAssembl
 		// }
 		// 
 
-		size_t bdepthQDc = (output[i].bdepthDc - output[i].q) + 1;
+		// (output[i].bdepthDc - output[i].q) can be negative because q is 
+		// computed as max(q`, BitShiftLL3) and therefore van be greater than 
+		// bdepthDc when bdepthDc is 1 due to LL3 subband being all zeroes.
+		// See bpe kEncode for details.
+		// size_t bdepthQDc = (output[i].bdepthDc - output[i].q) + 1;
+		ptrdiff_t bdepthQDc = (((ptrdiff_t)(output[i].bdepthDc)) - output[i].q) + 1; // TODO: 
+		// yet not clear why I put +1 here and why below is checked against 
+		// 'gt' 1. Check the same in decode segment chain.
+
 		// see 4.3.2.2: skip kdiff if N == 1
 		if (bdepthQDc > 1) {
 			oT* diffData = output[i].quantizedDc.data();

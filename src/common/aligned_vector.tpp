@@ -19,6 +19,8 @@ class aligned_vector {
 
 	static constexpr size_t palignment = alignment * sizeof(T);
 public:
+	using type = T;
+public:
 	~aligned_vector();
 	aligned_vector(aligned_vector&& other) noexcept;
 	aligned_vector(const aligned_vector& other);
@@ -38,6 +40,7 @@ public:
 	void fill(size_t length, T* origin);
 	void resize(size_t length);
 	size_t size() const noexcept;
+	size_t offset() const noexcept;
 	// T operator[](size_t index) const;
 	T& operator[](size_t index) const;
 	inline T* data() const;
@@ -200,6 +203,11 @@ void aligned_vector<T, alignment>::assign(T value) {
 template <typename T, size_t alignment>
 size_t aligned_vector<T, alignment>::size() const noexcept {
 	return this->m_length;
+}
+
+template <typename T, size_t alignment>
+size_t aligned_vector<T, alignment>::offset() const noexcept {
+	return this->m_offset;
 }
 
 template <typename T, size_t alignment>

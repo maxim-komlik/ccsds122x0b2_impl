@@ -1,10 +1,14 @@
 JPEG2000 does not use integer trasform 9/7, it uses 5/3 instead.
 Add references to open-source implementations
 
+Publish checklist:
+clean draft files that are not actually built/used
+
 TODOs:
 TODO: header encoding and writing to file
 TODO: incapsulate memory allocation/alignment staff as allocator, get rid of template alignment parameter
 TODO: compile settings management (debug flags and other settings)
+TODO: split constructors into constructor and data-dependent initializer (due to explicit instantiation)
 TODO: multithreading
 TODO: Compatibility/port to cmake
 TODO: add std::assume_alligned to functions that get pointers to alligned memory (e.g. vectorized)

@@ -125,7 +125,7 @@ T& strong_assign(T& dst, T src) {
 	return dst;
 }
 
-// Vectorizable alternative for abs
+// vectorizable alternative for abs
 template <typename T>
 inline std::make_unsigned_t<T> magnitude(T val) {
 	constexpr size_t bitsize = (sizeof(T) << 3) - 1;
@@ -143,6 +143,13 @@ inline T signext(T val, size_t sign_pos) {
 	T mask = ((T)(-1)) << (sign_pos - 1);
 	return (val & (~mask)) - (val & mask);
 	// return val | ((((T)(-1)) << (sign_pos - 1)) + val);
+}
+
+// vectorizable negate controlled by predicate
+template <typename T>
+inline T negpred(T dst, bool predicate) {
+	std::make_signed_t<T> spredicate = predicate;
+	return (dst ^ (-spredicate)) + spredicate;
 }
 
 // TODO: apply signed constraint (uses sign extension)
@@ -210,12 +217,15 @@ inline std::make_unsigned_t<T> accorv(const T* src, size_t length) {
 inline size_t quant_dc(ptrdiff_t bdepthDc, ptrdiff_t bdepthAc, ptrdiff_t shiftDc) noexcept {
 	bdepthAc = (bdepthAc >> 1) + 1;
 	// avoids jumps and hints to use conditional moves here
-	if (bdepthDc - bdepthAc <= 1) {
-		bdepthAc = bdepthDc - 3;
-	}
-	if (bdepthDc - bdepthAc > 10) {
-		bdepthAc = bdepthDc - 10;
-	}
+	bdepthAc = ((bdepthDc - bdepthAc) <= 1)? (bdepthDc - 3) : bdepthAc;
+	bdepthAc = ((bdepthDc - bdepthAc) > 10)? (bdepthDc - 10) : bdepthAc;
+
+	// if (bdepthDc - bdepthAc <= 1) {
+	// 	bdepthAc = bdepthDc - 3;
+	// }
+	// if (bdepthDc - bdepthAc > 10) {
+	// 	bdepthAc = bdepthDc - 10;
+	// }
 	// result is guaranteed to be positive, implicit conversion to size_t here
 	// See 4.3.1.3
 	return std::max<decltype(bdepthAc)>(bdepthAc, shiftDc);

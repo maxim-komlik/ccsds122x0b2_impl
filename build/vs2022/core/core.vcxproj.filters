@@ -63,8 +63,17 @@
     <ClInclude Include="..\..\..\src\EntropyCoding\symbolstream.h">
       <Filter>EntropyCoding\Header Files</Filter>
     </ClInclude>
-    <ClInclude Include="..\..\..\src\EntropyCoding\bpe_constants.h">
+    <ClInclude Include="..\..\..\src\EntropyCoding\symbolbuffer.h">
       <Filter>EntropyCoding\Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="..\..\..\src\common\constant.h">
+      <Filter>common\Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="..\..\..\src\EntropyCoding\constant.h">
+      <Filter>EntropyCoding\Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="..\..\..\src\WaveletTransform\constant.h">
+      <Filter>WaveletTransform\Header Files</Filter>
     </ClInclude>
   </ItemGroup>
   <ItemGroup>
@@ -75,6 +84,9 @@
       <Filter>common\Source Files</Filter>
     </ClCompile>
     <ClCompile Include="..\..\..\src\EntropyCoding\symbolstream.cpp">
+      <Filter>EntropyCoding\Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="..\..\..\src\EntropyCoding\symbolbuffer.cpp">
       <Filter>EntropyCoding\Source Files</Filter>
     </ClCompile>
   </ItemGroup>
@@ -120,9 +132,6 @@
     </None>
     <None Include="..\..\..\src\EntropyCoding\symbol_translate.h">
       <Filter>EntropyCoding\Header Files</Filter>
-    </None>
-    <None Include="..\..\..\src\EntropyCoding\bpex.tpp">
-      <Filter>EntropyCoding\Source Files</Filter>
     </None>
   </ItemGroup>
 </Project>

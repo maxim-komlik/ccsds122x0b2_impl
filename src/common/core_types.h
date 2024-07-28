@@ -3,22 +3,29 @@
 #include <array>
 #include <vector>
 
-#include ".\..\WaveletTransform\bitmap.tpp"  // TODO: refactor
+#include "WaveletTransform\bitmap.tpp"
 #include "aligned_vector.tpp"
 
+#include "constant.h"
+
 template <typename T>
-union block {
-	T content[64];
+using subbands_t = std::array<bitmap<T>, constants::dwt::subband_num>;
+
+using shifts_t = std::array<size_t, constants::dwt::subband_num>;
+
+template <typename T>
+struct block {
+	T content[constants::block::items_per_block];
 };
 
 template <typename T>
 struct segment {
 	using type = T;
 
-	size_t size;
+	size_t size;		// min value: 1
 	size_t bdepthDc;	// min value: 1
 	size_t bdepthAc; 	// min value: 0
-	size_t q;
+	size_t q;			// min value: 0
 
 	// Yet subband multiplication coefficients are not a property of 
 	// a segment but rather a property of DWT application for all 
@@ -28,7 +35,7 @@ struct segment {
 	// of different images in a single session with no need to 
 	// perform image-specific setup.
 	//
-	std::array<size_t, 10> bit_shifts { 3, 3, 3, 2, 2, 2, 1, 1, 1, 0 };
+	shifts_t bit_shifts { 3, 3, 3, 2, 2, 2, 1, 1, 1, 0 };
 
 	T referenceSample;
 	aligned_vector<T> quantizedDc;
@@ -36,18 +43,10 @@ struct segment {
 
 	// but values are in range [0-63], 6 bits is enough...
 	size_t referenceBdepthAc;
-	// aligned_vector<size_t> bdepthAcBlocks;
 	aligned_vector<size_t> quantizedBdepthAc;
 
 	std::vector<typename block<T>> data;
 };
-
-constexpr static size_t subband_num = 10;
-
-template <typename T>
-using subbands_t = std::array<bitmap<T>, subband_num>;
-
-using shifts_t = std::array<size_t, subband_num>;
 
 // // TODO: check utility below if needed/should be moved to another location
 // constexpr size_t block_index_to_buf_index(size_t l) {

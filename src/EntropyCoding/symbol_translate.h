@@ -45,11 +45,6 @@ public:
 	SymbolForwardTranslator() = default; // causes compiler not to define copy/move ctors implicitly
 	SymbolForwardTranslator& operator=(const SymbolForwardTranslator& other) = delete;
 
-	// const values for translate template parameter
-	static const size_t types_H_codeparam = 0x02;
-	static const size_t tran_H_codeparam = 0x02;
-	static const size_t tran_D_codeparam = 0x01;
-
 	template <size_t codeparam = 0>
 	void translate(dense_vlw_t& vlw) {
 		vlw.value =
@@ -96,11 +91,6 @@ public:
 	// nor copyable nor movable due to mapping member containing pointers
 	SymbolBackwardTranslator() = default; // causes compiler not to define copy/move ctors implicitly
 	SymbolBackwardTranslator& operator=(const SymbolBackwardTranslator& other) = delete;
-
-	// const values for translate template parameter
-	static const size_t types_H_codeparam = 0x02;
-	static const size_t tran_H_codeparam = 0x02;
-	static const size_t tran_D_codeparam = 0x01;
 
 	template <size_t codeparam = 0>
 	void translate(vlw_t& vlw) {

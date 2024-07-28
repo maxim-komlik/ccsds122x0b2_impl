@@ -15,14 +15,21 @@
 #include "obitwrapper.tpp"
 #include "ibitwrapper.tpp"
 #include "bitplane.tpp"
-#include "symbolstream.h"
+#include "symbolbuffer.h"
 #include "symbol_translate.h"
 #include "entropy_translate.h"
 
-#include "bpe_constants.h"
+#include "constant.h"
 
 template <typename T, size_t alignment = 16>
-class BitPlaneEncoder: private bpe_constants_helper {
+class BitPlaneEncoder: 
+		private constants::scale, 
+		private constants::block, 
+		private constants::gaggle, 
+		private constants::bpe, 
+		private constants::k, 
+		private constants::symbol,
+		private constants::entropy {
 	// inherently not copyable nor movable
 	SymbolForwardTranslator symbol_fwd_translator;
 	EntropyTranslator entropy_translator;
@@ -30,11 +37,57 @@ class BitPlaneEncoder: private bpe_constants_helper {
 	bool use_heuristic_DC = false;
 	bool use_heuristic_bdepthAc = false;
 
-	std::array<symbolstream, 3> vlwstreams{
-		symbolstream(generate_vector_with_capacity<dense_vlw_t::type>(144)),
-		symbolstream(generate_vector_with_capacity<dense_vlw_t::type>(128)),
-		symbolstream(generate_vector_with_capacity<dense_vlw_t::type>(128))
-	};
+	struct {
+		// 21 variable length encoded words per block.
+		// 3 words have maximum length = 3
+		// 18 words have maximum length = 4
+		// 
+		// max number of variable len words in the gaggle with length = 4:
+		//	18 * 16 = 288
+		// max bitlen of variable len words in the gaggle with length = 4:
+		//	288 * 4 = 1152
+		// 
+		// max number of variable len words in the gaggle with length = 3:
+		//	3 * 16 = 48
+		//	5 * 16 = 80
+		//	10 * 16 = 160
+		//	16 * 16 = 256
+		// max bitlen of variable len words in the gaggle with length = 3:
+		//	256 * 3 = 768
+		// 
+		// max number of variable len words in the gaggle with length = 2:
+		//	3 * 16 = 48
+		//	8 * 16 = 128
+		//	13 * 16 = 208
+		//	16 * 16 = 256
+		// max bitlen of variable len words in the gaggle with length = 2:
+		//	256 * 2 = 512
+		//
+
+		static constexpr size_t buffers_index_bias = 2;
+
+		// well, these buffers are not truly a class property, it is used in 2 lambdas only
+		// that are called consequently with similar parameters in the same parts of code inside 
+		// encodeBpeStages. Moved to class definition to avoid memory reallocations only.
+		// But these are temporal buffers by nature anyway.
+		// 
+		// TODO: may want to specify thread local storage for this entire object
+		std::array<symbolbuffer, coded_vlw_lengths_count> content {
+			symbolbuffer(256, 2),
+			symbolbuffer(256, 3),
+			symbolbuffer(288, 4)
+		};
+
+		inline symbolbuffer& operator[](ptrdiff_t length) {
+			return this->content[length - this->buffers_index_bias];
+		};
+
+		inline void append_vlw(dense_vlw_t& vlw) {
+			if (vlw.length >= min_coded_vlw_length) {
+				(*this)[vlw.length].append(vlw.value);
+			}
+		};
+	} entropy_buffers;
 
 public:
 	template <typename obwT>
@@ -59,82 +112,16 @@ private:
 };
 
 template <typename T>
-class BitPlaneDecoder: private bpe_constants_helper {
+class BitPlaneDecoder: 
+		private constants::scale, 
+		private constants::block, 
+		private constants::gaggle, 
+		private constants::bpe, 
+		private constants::k, 
+		private constants::symbol,
+		private constants::entropy {
 	SymbolBackwardTranslator symbol_bwd_translator;
 	EntropyTranslator entropy_translator;
-
-	static constexpr size_t max_subband_shift = 3;
-	static constexpr size_t items_per_block = 64;	// TODO: global constant as a property of a block struct
-	static constexpr size_t items_per_gaggle = 16;
-
-	static constexpr size_t F_num = 3;
-	static constexpr size_t CpF_num = 1;
-	static constexpr size_t HxpF_num = 4;
-	static constexpr ptrdiff_t D_offset = 1;
-	static constexpr ptrdiff_t C_offset = 2;
-	static constexpr ptrdiff_t G_offset = 3;
-	static constexpr ptrdiff_t Hx_offset = 4;
-	static constexpr ptrdiff_t F_step = 8;
-	static constexpr ptrdiff_t B_index = 0;
-	static constexpr ptrdiff_t P_index = 8;
-	static constexpr ptrdiff_t DC_index = 16;
-
-	static constexpr std::array<uint64_t, 24> family_masks = []() constexpr {
-		std::array<uint64_t, 24> result{ 0 };
-
-		constexpr size_t gen_num = 2;
-		constexpr ptrdiff_t C_gen_index = 0;
-		constexpr ptrdiff_t G_gen_index = 1;
-
-		// constexpr ptrdiff_t reserved_1_index = 8; // allocated to P_index
-		// constexpr ptrdiff_t reserved_2_index = 16; // allocated to DC_index
-
-		constexpr uint64_t X_mask = 0x0f;	// 4-bit mask for one group
-		constexpr size_t X_mask_blen = 4;
-
-		// for (ptrdiff_t i = (F_num - 1); i >= 0; --i) {
-		for (ptrdiff_t i = 0; i < F_num; ++i) {
-			// for (ptrdiff_t j = (gen_num - 1); j >= 0; --j) {
-			for (ptrdiff_t j = 0; j < gen_num; ++j) {
-				if (j == C_gen_index) {
-					result[i * F_step + C_offset] =
-						(X_mask << ((F_num - i - 1) * CpF_num * X_mask_blen))
-							<< (F_num * HxpF_num * X_mask_blen);
-				}
-				if (j == G_gen_index) {
-					// for (ptrdiff_t k = (HxpF_num - 1); k >= 0; --k) {
-					for (ptrdiff_t k = 0; k < HxpF_num; ++k) {
-						result[i * F_step + Hx_offset + k] =
-							(X_mask << ((HxpF_num - k - 1) * X_mask_blen))
-								<< ((F_num - i - 1) * HxpF_num * X_mask_blen);
-						result[i * F_step + G_offset] |= result[i * F_step + Hx_offset + k];
-					}
-				}
-				result[i * F_step + D_offset] |= result[i * F_step + C_offset + j];
-			}
-			result[B_index] |= result[i * F_step + D_offset];
-		}
-		result[P_index] = ((X_mask >> 1) << (F_num * (CpF_num + HxpF_num) * X_mask_blen));
-		result[DC_index] = (uint64_t)(0x01) << ((sizeof(uint64_t) << 3) - 1);
-		return result;
-	}();
-	static constexpr std::array<uint64_t, 10> bitshift_masks = []() constexpr {
-		std::array<uint64_t, 10> result = { 0 };
-
-		constexpr size_t bshift_G_step = 3;
-		constexpr size_t bshift_DC_index = 0;
-		constexpr size_t bshift_P_offset = 1;
-		constexpr size_t bshift_C_offset = bshift_P_offset + bshift_G_step;
-		constexpr size_t bshift_G_offset = bshift_P_offset + 2 * bshift_G_step;
-
-		for (size_t f = 0; f < F_num; ++f) {
-			result[bshift_P_offset + f] = (uint64_t)(family_masks[DC_index]) >> (f + 1);
-			result[bshift_C_offset + f] = family_masks[f * F_step + C_offset];
-			result[bshift_G_offset + f] = family_masks[f * F_step + G_offset];
-		}
-		result[bshift_DC_index] = family_masks[DC_index];
-		return result;
-	}();
 
 public:
 	template <typename ibwT>
@@ -157,9 +144,55 @@ private:
 template <typename T, size_t alignment>
 template <typename obwT>
 void BitPlaneEncoder<T, alignment>::encode(segment<T>& input, obitwrapper<obwT>& output) {
-	// TODO: check if needed to implement input segment validation (input.size > 1?)
+	if constexpr (dbg::bpe::encoder::if_enabled(dbg::bpe::mask_validation)) {
+		// simple validation staff
+		bool validation_error = false;
+		if (input.bdepthDc < 1) {
+			validation_error |= true;
+		}
+		if (input.size < 1) {
+			validation_error |= true;
+		}
 
-	if constexpr ((dbg::bpe::encoder::disabled_stages & dbg::bpe::mask_quant_DC) == 0) {
+		for (auto subband_shift : input.bit_shifts) {
+			if (subband_shift > max_subband_shift) {
+				validation_error |= true;
+				break;
+			}
+		}
+
+		if (input.plainDc.size() < input.size) {
+			validation_error |= true;
+		}
+		if (input.quantizedDc.size() < input.size) {
+			validation_error |= true;
+		}
+		if (input.quantizedBdepthAc.size() < input.size) {
+			validation_error |= true;
+		}
+		if (input.data.size() < input.size) {
+			validation_error |= true;
+		}
+
+		// TODO: need proper design to expose offset requirements to 
+		// the code that sets up the buffers (i.e. segment_assembly)
+		// 
+		// checks against requirement of kOptimal
+		if (input.quantizedDc.offset() < items_per_gaggle * 2) {
+			validation_error |= true;
+		}
+		if (input.quantizedBdepthAc.offset() < items_per_gaggle * 2) {
+			validation_error |= true;
+		}
+
+		if (validation_error) {
+			// TODO: handle validation error, throw exception
+			throw "validation failed.";
+		}
+	}
+
+	if constexpr (dbg::bpe::encoder::if_enabled(dbg::bpe::mask_quant_DC)) {
+	// if constexpr ((dbg::bpe::encoder::disabled_stages & dbg::bpe::mask_quant_DC) == 0) {
 		kParams quantizedDcParams = {
 			input.quantizedDc.data(),
 			input.size - 1,	// -1 because of a reference sample that is not part of the vector
@@ -169,7 +202,8 @@ void BitPlaneEncoder<T, alignment>::encode(segment<T>& input, obitwrapper<obwT>&
 		kEncode(quantizedDcParams, this->use_heuristic_DC, output);
 	}
 
-	if constexpr ((dbg::bpe::encoder::disabled_stages & dbg::bpe::mask_additional_DC) == 0) {
+	if constexpr (dbg::bpe::encoder::if_enabled(dbg::bpe::mask_additional_DC)) {
+	// if constexpr ((dbg::bpe::encoder::disabled_stages & dbg::bpe::mask_additional_DC) == 0) {
 		size_t bit_shift_LL3 = input.bit_shifts[0];
 		size_t additional_bdepth = std::max(input.bdepthAc, bit_shift_LL3);
 		if (input.q > additional_bdepth) {
@@ -178,7 +212,8 @@ void BitPlaneEncoder<T, alignment>::encode(segment<T>& input, obitwrapper<obwT>&
 	}
 	
 	if (input.bdepthAc > 0) {
-		if constexpr ((dbg::bpe::encoder::disabled_stages & dbg::bpe::mask_bdepth_AC) == 0) {
+		if constexpr (dbg::bpe::encoder::if_enabled(dbg::bpe::mask_bdepth_AC)) {
+		// if constexpr ((dbg::bpe::encoder::disabled_stages & dbg::bpe::mask_bdepth_AC) == 0) {
 			kParams quantizedBdepthAcParams = {
 				input.quantizedBdepthAc.data(),
 				input.size - 1,	// -1 because of a reference sample that is not part of the vector
@@ -187,24 +222,31 @@ void BitPlaneEncoder<T, alignment>::encode(segment<T>& input, obitwrapper<obwT>&
 			};
 			kEncode(quantizedBdepthAcParams, this->use_heuristic_bdepthAc, output);
 		}
-		encodeBpeStages(input, output); // TODO: somehow links without forward declaration
-	} // TODO: else {} check if DC data can remain uncoded otherwise
+		encodeBpeStages(input, output);
+	} // else no action needed, all DC data is encoded during addition DC encoding stage
 
-	// TODO: flush output buffer and handle fill bits in the last flashed word
-	// TODO: put obitwrapper buffer type parameter size as Header part 4 field
+	// it's caller responsibility to flush obitwrapper content after bpe encode
+	// process is finished. That will produce necessary padding bits as described 
+	// in 4.2.3.2.5. The caller may choose to fill the output stream with padding
+	// bits up to SegByteLimit.
+	// 
+	// TODO: in header encoding module:
+	// put obitwrapper buffer type parameter size as Header part 4 field
 	// CodeWordLength, see 4.2.5.2.8
-	// Current output buffer content is flashed in obitwrapper destructor
 	// See 4.2.3.2.1, 4.2.3.2.5 and 4.2.5.2.8
-	// return bpe_debug_output_buffer.size();
 }
 
 template <typename T, size_t alignment>
 template <typename D, typename obwT>
 void BitPlaneEncoder<T, alignment>::kOptimal(kParams<D> params, obitwrapper<obwT>& output_stream) {
-	constexpr size_t max_N_value = 10;
-	size_t N = params.bdepth; // N is expected to be in range [1, 10]
-	// N is a property of a whole segment. 
-	// Therefore k_bound value is the same for every gaggle in the segment
+	// Requirements:
+	// requires params.data's size to be extended to the nearest upper multiple 
+	// of (items_per_gaggle * gaggles_per_iter) [= 32] at least;
+	// requires params.bdepth to be greater than 0 (at least 1).
+
+	size_t N = params.bdepth; // N is expected to be in range [2, 10]
+	// N is a property of a whole segment. Therefore k_bound value is 
+	// the same for every gaggle in the segment
 	ptrdiff_t k_bound = ((ptrdiff_t)(N)) - 2;
 
 	// compute lengths for all gaggles for all k encoding parameters;
@@ -219,116 +261,120 @@ void BitPlaneEncoder<T, alignment>::kOptimal(kParams<D> params, obitwrapper<obwT
 	// hurt performance; in this case well-predictable if branch is needed.
 	//
 
-	constexpr size_t gaggle_len = items_per_gaggle; // refactor?
-	constexpr size_t gaggle_scale_factor = 2;
-
-	// zero placehoder for DC reference samble. 
+	// zero placehoder for DC reference sample. 
 	// zero remaining placeholders for dc elements at the end of the segmnet to extend 
-	// the last gaggle to len=16
+	// the last gaggle to len=16 (but due to reference sample index -1 the last index 
+	// is one less also)
 	{
 		params.data[-1] = 0;
-		constexpr size_t gaggle_mask = gaggle_len - 1;
-		ptrdiff_t dc_boundary = params.datalength + ((~params.datalength) & gaggle_mask);
+		ptrdiff_t dc_boundary = params.datalength | gaggle_size_mask;
+		// remember that reference sample is not counted in params.datalength
 		for (ptrdiff_t i = params.datalength; i < dc_boundary; ++i) {
 			params.data[i] = 0;
 		}
+		// and do not zero the rest part of buffer tail required by gaggles_per_iter
 	}
 
 	constexpr size_t k_simd_width = 8;
-	std::vector<std::pair<size_t, ptrdiff_t>> k_options((params.datalength >> 4) + (gaggle_scale_factor * 2)); // extended just in case
+	constexpr size_t gaggles_per_iter = 2;
+	std::vector<std::pair<size_t, ptrdiff_t>> k_options((params.datalength >> gaggle_size_shift) + 
+		(gaggles_per_iter * 2)); // extended just in case
 
 	uint_least16_t simdr_k_bound_mask[k_simd_width] = { 0 };
 	for (ptrdiff_t i = k_bound; i < k_simd_width; ++i) {
+		// fill mask values with maximum positive integer to effectuvely 
+		// disable irrelevant k options for a given N parameter later
+		// 
 		// clear sign bit to make comparison operate correctly later
 		simdr_k_bound_mask[i] = ((uint_least16_t)((ptrdiff_t)(-1))) >> 1;
 	}
+
 	constexpr uint_least16_t simdr_shift[k_simd_width] = { 1, 2, 3, 4, 5, 6, 7, 8 };
-	// requires data to have gaggle_len * gaggle_scale_factor additional elements at the end (at most)
-	for (ptrdiff_t i = 0; i < params.datalength; i += gaggle_len * gaggle_scale_factor) {
-		uint_least16_t simdr_acc[gaggle_scale_factor][k_simd_width] = { 0 };
-		uint_fast16_t gpr_acc[gaggle_scale_factor] = { 0 };
+	// constexpr std::array<uint_least16_t, k_simd_width> simdr_shift;
+	// std::iota(simdr_shift.begin(), simdr_shift.end(), 1);
+	
+	// the loop below starts from reference sample at index -1, therefore 
+	// 'le' is used to cover the very last item in params.data also
+	for (ptrdiff_t i = 0; i <= params.datalength; i += items_per_gaggle * gaggles_per_iter) {
+		uint_least16_t simdr_acc[gaggles_per_iter][k_simd_width] = { 0 };
+		uint_fast16_t gpr_acc[gaggles_per_iter] = { 0 };
 
 		// attempt to increase pipline load uniformity; repeat uniform operation blocks several times
 		// should be beneficial for branch prediction in the second block as well
-		for (ptrdiff_t j = 0; j < gaggle_scale_factor; ++j) {
-			for (ptrdiff_t ii = 0; ii < gaggle_len; ++ii) {
-				uint_fast16_t gpr = params.data[i + (j * gaggle_len) + ii - 1]; // -1 here because of reference sample
-				gpr_acc[j] += gpr;
+		for (ptrdiff_t si = 0; si < gaggles_per_iter; ++si) {
+			for (ptrdiff_t j = 0; j < items_per_gaggle; ++j) {
+				uint_fast16_t gpr = params.data[i + (si * items_per_gaggle) + j - 1]; // -1 here because of reference sample
+				gpr_acc[si] += gpr;
 				uint_least16_t simdr[k_simd_width] = { 0 };
-				for (ptrdiff_t jj = 0; jj < k_simd_width; ++jj) {
-					simdr[jj] = gpr;
-					simdr[jj] >>= simdr_shift[jj];
-					simdr_acc[j][jj] += simdr[jj];
+				for (ptrdiff_t vi = 0; vi < k_simd_width; ++vi) {
+					simdr[vi] = gpr;
+					simdr[vi] >>= simdr_shift[vi];
+					simdr_acc[si][vi] += simdr[vi];
 				}
 			}
-			for (ptrdiff_t jj = 0; jj < k_simd_width; ++jj) {
-				simdr_acc[j][jj] |= simdr_k_bound_mask[jj];
+			for (ptrdiff_t vi = 0; vi < k_simd_width; ++vi) {
+				// make results for k options exceeding k option number limit
+				// too large to become the best option (effectively disable)
+				//
+				// this assigns the largest number that can be held by the type
+				simdr_acc[si][vi] |= simdr_k_bound_mask[vi];
 			}
 		}
 
-		ptrdiff_t k_option_index = i >> 4;
-		for (ptrdiff_t j = 0; j < gaggle_scale_factor; ++j) {
+		ptrdiff_t k_option_index = i >> gaggle_size_shift;
+		for (ptrdiff_t si = 0; si < gaggles_per_iter; ++si) {
 			// There is no straitforward way to compare with uncoded option reliably due to different 
 			// uncoded stream length for the first gaggle, subsequent gaggles and the last one. 
 			// Encoded stream lengths can be compared safely on the other hand as the diff value due to
 			// additional '1' bit is the same for all k options for a given gaggle.
-			decltype(k_options)::value_type current_k = { gpr_acc[j], 0 };
+			decltype(k_options)::value_type current_k = { gpr_acc[si], 0 };
 			// hopefully this can be vectorized or at least well-predicted
-			for (ptrdiff_t jj = 0; jj < k_simd_width; ++jj) {
-				if (simdr_acc[j][jj] < current_k.first) {
-					current_k.first = simdr_acc[j][jj];
-					current_k.second = simdr_shift[jj];
+			for (ptrdiff_t vi = 0; vi < k_simd_width; ++vi) {
+				if (simdr_acc[si][vi] < current_k.first) {
+					current_k.first = simdr_acc[si][vi];
+					current_k.second = simdr_shift[vi];
 				}
 			}
-			k_options[k_option_index + j] = current_k;
+			k_options[k_option_index + si] = current_k;
 		}
-
-		// PMINSW x86-64: vectorized min for 16-bit words
-		// several simd iterations per one loop cycle for 2+ gaggles that lays continiously
-		// compute simd bitmask to reflect k_bound to invalidate simd items with index > k_bound (make max signed numbers)
-		// 
-		// store gpr and min simd k results in a temporal buffer. Buffer length is known before processing
-		// (but we need k value ~ index rather then pre-computed length itself)
-		// 
 	}
 
 	// adjust parameters for the first gaggle (see 4.3.2.8 and 4.3.2.10, figures 4-8 and 4-9)
 	{
-		size_t k_bitsize = std::bit_width(N - 1);
-		constexpr ptrdiff_t k_uncoded_opt = -1;
+		size_t k_bitsize = std::bit_width(N - 1u);
 		// take into account '1' bits inserted into the stream after the first part of the codewords
 		// to make it comparable with encoded stream lengths
-		size_t k_uncoded_len = N * gaggle_len - gaggle_len;
+		size_t k_uncoded_len = N * items_per_gaggle - items_per_gaggle;
 		size_t k_uncoded_len_first = k_uncoded_len + 1 - N; // TODO: ensure that unsigned arithmetic is not reordered
 
 		ptrdiff_t gaggle_index = 0;
 		if (k_options[gaggle_index].first >= k_uncoded_len_first) {
-			k_options[gaggle_index].second = k_uncoded_opt;
+			k_options[gaggle_index].second = k_uncoded_codeoption;
 		}
 		output_stream << vlw_t{ k_bitsize, (size_t)(k_options[gaggle_index].second) };
 		output_stream << vlw_t{ N, (size_t)(params.reference) };
 
 		ptrdiff_t i;
 		bool execute_preamble = false;
-		for (i = -1; i < ((ptrdiff_t)(params.datalength - gaggle_len)); i += gaggle_len) {
+		for (i = -1; i < ((ptrdiff_t)(params.datalength - items_per_gaggle)); i += items_per_gaggle) {
 			if (execute_preamble) {
-				gaggle_index = (i >> 4) + 1;
+				gaggle_index = (i >> gaggle_size_shift) + 1;
 				if (k_options[gaggle_index].first >= k_uncoded_len) {
-					k_options[gaggle_index].second = k_uncoded_opt;
+					k_options[gaggle_index].second = k_uncoded_codeoption;
 				}
 				output_stream << vlw_t{ k_bitsize, (size_t)(k_options[gaggle_index].second) };
 			}
 			execute_preamble = true;
 
-			if (k_options[gaggle_index].second != k_uncoded_opt) {
-				for (ptrdiff_t j = (i < 0); j < gaggle_len; ++j) {
+			if (k_options[gaggle_index].second != k_uncoded_codeoption) {
+				for (ptrdiff_t j = (i < 0); j < items_per_gaggle; ++j) {
 					output_stream << vlw_t{ (size_t)((params.data[i + j] >> k_options[gaggle_index].second) + 1), 1 };
 				}
 			} else {
 				k_options[gaggle_index].second = N;
 			}
 
-			for (ptrdiff_t j = (i < 0); j < gaggle_len; ++j) {
+			for (ptrdiff_t j = (i < 0); j < items_per_gaggle; ++j) {
 				output_stream << vlw_t{ (size_t)(k_options[gaggle_index].second), (size_t)(params.data[i + j]) };
 			}
 		}
@@ -336,15 +382,15 @@ void BitPlaneEncoder<T, alignment>::kOptimal(kParams<D> params, obitwrapper<obwT
 		ptrdiff_t last_gaggle_len = params.datalength - i;
 		size_t k_uncoded_len_last = N * last_gaggle_len - last_gaggle_len;
 		if (execute_preamble) {
-			gaggle_index = (i >> 4) + 1;
+			gaggle_index = (i >> gaggle_size_shift) + 1;
 			if (k_options[gaggle_index].first >= k_uncoded_len_last) {
-				k_options[gaggle_index].second = k_uncoded_opt;
+				k_options[gaggle_index].second = k_uncoded_codeoption;
 			}
 			output_stream << vlw_t{ k_bitsize, (size_t)(k_options[gaggle_index].second) };
 		}
 		execute_preamble = true;
 
-		if (k_options[gaggle_index].second != k_uncoded_opt) {
+		if (k_options[gaggle_index].second != k_uncoded_codeoption) {
 			for (ptrdiff_t j = (i < 0); j < last_gaggle_len; ++j) {
 				output_stream << vlw_t{ (size_t)((params.data[i + j] >> k_options[gaggle_index].second) + 1), 1 };
 			}
@@ -361,48 +407,46 @@ void BitPlaneEncoder<T, alignment>::kOptimal(kParams<D> params, obitwrapper<obwT
 template <typename T, size_t alignment>
 template <typename D, typename obwT>
 void BitPlaneEncoder<T, alignment>::kHeuristic(kParams<D> params, obitwrapper<obwT>& output_stream) {
-	size_t N = params.bdepth; // N is expected to be in range [1, 10]
-	size_t k_bitsize = std::bit_width(N - 1);
-	constexpr ptrdiff_t k_uncoded_option = -1;
-	constexpr size_t gaggle_len = 16;
-	ptrdiff_t J = 15;
+	size_t N = params.bdepth; // N is expected to be in range [2, 10]
+	size_t k_bitsize = std::bit_width(N - 1u);
+	ptrdiff_t J = items_per_gaggle - 1; // =15, first gaggle
 	for (ptrdiff_t i = 0; i < params.datalength; i += J) {
 		if (i > 0) {
-			J = std::min(gaggle_len, params.datalength - i);
+			J = std::min(items_per_gaggle, params.datalength - i);
 		}
 		size_t delta = 0;
 		for (ptrdiff_t j = 0; j < J; ++j) {
 			delta += params.data[i + j];
 		}
 
-		std::array<size_t, 3> predicates1 = {
+		std::array<size_t, 3> predicates_set_1 = {
 			delta * 64, 
 			J * 207, 
 			J * (1 << (N + 5)), 
 		};
-		std::array<size_t, 3> predicates2 = {
+		std::array<size_t, 3> predicates_set_2 = {
 			J * 23 * (1 << N), 
 			delta * 128, 
 			(delta * 128) + (J * 49), 
 		};
 
-		ptrdiff_t k = k_uncoded_option;
-		if (predicates1[0] >= predicates2[0]) {
-			k = k_uncoded_option;
-		} else if (predicates1[1] > predicates2[1]) {
+		ptrdiff_t k = k_uncoded_codeoption;
+		if (predicates_set_1[0] >= predicates_set_2[0]) {
+			k = k_uncoded_codeoption;
+		} else if (predicates_set_1[1] > predicates_set_2[1]) {
 			k = 0;
-		} else if (predicates1[2] <= predicates2[2]) {
+		} else if (predicates_set_1[2] <= predicates_set_2[2]) {
 			k = N - 2;
 		} else {
 			// TODO: check underflow/arithmetic/input values, potential UB
-			k = std::bit_width(predicates2[2] / J) - 7;
+			k = std::bit_width(predicates_set_2[2] / J) - 7;
 		}
 
 		output_stream << vlw_t{ k_bitsize, (size_t)(k) };
 		if (i == 0) {
 			output_stream << vlw_t{ N, (size_t)(params.reference) };
 		}
-		if (k != k_uncoded_option) {
+		if (k != k_uncoded_codeoption) {
 			for (ptrdiff_t j = 0; j < J; ++j) {
 				output_stream << vlw_t{ (size_t)((params.data[i + j] >> k) + 1), 1 };
 			}
@@ -418,9 +462,30 @@ void BitPlaneEncoder<T, alignment>::kHeuristic(kParams<D> params, obitwrapper<ob
 template <typename T, size_t alignment>
 template <typename D, typename obwT>
 inline void BitPlaneEncoder<T, alignment>::kEncode(kParams<D> params, bool use_heuristic, obitwrapper<obwT>& output_stream) {
-	// TODO: check if std::max is needed with 1 as a second parameter for N computation
+	// Requirements:
+	// requires params.data's size to be extended to the nearest upper multiple 
+	// of (items_per_gaggle * gaggles_per_iter) [= 32] at least [by kOptimal]
+	
+	// The adjustment below is necessary. 
+	// 
+	// params.bdepthis is guaranteed to be at least 1 for quantizedBdepthAc per 
+	// requirement that bdepthAC is greater than 0 when invoking this function; 
+	// 
+	// (bdepthDc - q`) is guaranteed to be at least 1 per q` computation 
+	// approach for quantizedDc;
+	// 
+	// but per 4.3.1.3: q = max(q`, BitShift(LL3)).
+	// In a case when the whole DC subband is all zeroes, bdepthDc is 
+	// necessarily 1 (because DC coeffs are encoded as signed integers in 
+	// 2-complement form), and q` is guaranteed to be equal to 0. 
+	// But BitShift(LL3) (aka bit_shifts[0]) may have arbitrary value in range 
+	// [0-3] (scaling zeroes results in zeroes, so bdepthDc is still 1 and the 
+	// value is still valid), that causes q to possibly have values greater 
+	// than 0. As a result, (input.bdepthDc - input.q) may be negative, and max 
+	// call below is indeed necessary.
+	//
 	// see 4.3.2.1
-	params.bdepth = std::max(params.bdepth, (decltype(params.bdepth))(1)); // N is expected to be in range [1, 10]
+	params.bdepth = std::max(params.bdepth, (decltype(params.bdepth))(min_N_value));
 	if (params.bdepth > 1) {
 		if (use_heuristic) {
 			kHeuristic(params, output_stream);
@@ -428,10 +493,10 @@ inline void BitPlaneEncoder<T, alignment>::kEncode(kParams<D> params, bool use_h
 			kOptimal(params, output_stream);
 		}
 	} else {
-		// N == 1
-		output_stream << vlw_t{ params.bdepth, (size_t)(params.reference) };
+		size_t N = params.bdepth;	// N == 1
+		output_stream << vlw_t{ N, (size_t)(params.reference) };
 		for (ptrdiff_t i = 0; i < params.datalength; ++i) {
-			output_stream << vlw_t{ params.bdepth, (size_t)(params.data[i]) };
+			output_stream << vlw_t{ N, (size_t)(params.data[i]) };
 		}
 	}
 }
@@ -472,46 +537,13 @@ void BitPlaneEncoder<T, alignment>::encodeBpeStages(segment<T>& input, obitwrapp
 
 	obitwrapper<uint64_t> block_signs_bitwrapper(block_signs_callback);
 	obitwrapper<uint64_t> current_bitplane_bitwrapper(current_bplane_callback);
-	T* raw_block_data = std::assume_aligned<(alignment * sizeof(T))>(input.data.data()->content);
-	size_t raw_block_size = input.size * items_per_block;
 
-	{
-		// does unnecessary left shifts and cannot perform additional op with data, 
-		// we'd like to abs by vectors in addition. Implementation inlined below.
-		// maybe add template lambda as a parameter
-		// bplane(input.data.data()->content, input.size * items_per_block, (sizeof(T) << 3) - 1, block_signs_bitwrapper);
+	constexpr size_t sign_bindex = (sizeof(T) << 3) - 1;
+	T* raw_block_data = std::assume_aligned<(alignment * sizeof(T))>(input.data.data()->content); // TODO: check and refactor
+	size_t raw_block_data_size = input.size * items_per_block;
 
-		constexpr size_t sign_bindex = (sizeof(T) << 3) - 1;
-		std::array<std::make_unsigned_t<T>, alignment> masks;
-		std::array<T, alignment> rshifts;
-		std::array<std::make_unsigned_t<T>, alignment> buffer;
-		for (ptrdiff_t i = 0; i < rshifts.size(); ++i) {
-			std::make_signed_t<T> relative_shift = ((std::make_signed_t<decltype(sign_bindex)>)(sign_bindex)) - alignment + 1 + i;
-			masks[i] = ((size_t)(0x01) << sign_bindex);
-			rshifts[i] = relu(relative_shift);
-		}
-
-		// TODO: use of implementation details instead of interface below
-		std::make_unsigned_t<sufficient_integral_i<(alignment >> 3)>> serial_buffer;
-
-		for (ptrdiff_t i = 0; i < raw_block_size; i += alignment) {
-			serial_buffer = 0;
-			for (ptrdiff_t j = 0; j < alignment; ++j) {
-				buffer[j] = (raw_block_data[i + j] & masks[j]);
-				// here is additional payload (vectorized abs)
-				raw_block_data[i + j] = magnitude(raw_block_data[i + j]);
-			}
-			for (ptrdiff_t j = 0; j < alignment; ++j) {
-				// TODO: check if promotion needed to integral sufficient to hold shifted value
-				// TODO: compile-time checks to prevent the following
-				// possible data loss if alignment > (sizeof(T) << 3)
-				serial_buffer |= buffer[j] >> rshifts[j];
-			}
-			block_signs_bitwrapper << vlw_t{ alignment, serial_buffer };
-		}
-		// end of inlined bplane implementation
-		//
-	}
+	bplane_static<sign_bindex>(raw_block_data, raw_block_data_size, block_signs_bitwrapper, 
+		[](T& item) -> void { item = magnitude(item); });
 
 	// 38 words total compound block context
 	struct block_bpe_meta {
@@ -535,65 +567,74 @@ void BitPlaneEncoder<T, alignment>::encodeBpeStages(segment<T>& input, obitwrapp
 	};
 
 	struct gaggle_bpe_meta {
-		std::array<ptrdiff_t, 5> entropy_codeoptions = { -1, -1, -1, -1, -1 };
-		std::array<bool, 5> code_marker_written = { true, true, false, false, false };
+		std::array<ptrdiff_t, vlw_lengths_count> entropy_codeoptions = {
+			entropy_uncoded_codeoption, 
+			entropy_uncoded_codeoption, 
+			entropy_uncoded_codeoption, 
+			entropy_uncoded_codeoption, 
+			entropy_uncoded_codeoption 
+		}; // { -1, -1, -1, -1, -1 };
+		std::array<bool, vlw_lengths_count> code_marker_written = { true, true, false, false, false };
 	};
 
 	std::vector<block_bpe_meta> block_states(input.size);
-	std::vector<gaggle_bpe_meta> gaggle_states((input.size + items_per_gaggle) >> 4);
+	std::vector<gaggle_bpe_meta> gaggle_states((input.size + items_per_gaggle) >> gaggle_size_shift);
 
-	// 21 variable length encoded words per block.
-	// 3 words have maximum length = 3
-	// 18 words have maximum length = 4
-	// 
-	// max number of variable len words in the gaggle with length = 4:
-	//	18 * 16 = 288
-	// max bitlen of variable len words in the gaggle with length = 4:
-	//	288 * 4 = 1152
-	// 
-	// max number of variable len words in the gaggle with length = 3:
-	//	3 * 16 = 48
-	//	5 * 16 = 80
-	//	10 * 16 = 160
-	//	16 * 16 = 256
-	// max bitlen of variable len words in the gaggle with length = 3:
-	//	256 * 3 = 768
-	// 
-	// max number of variable len words in the gaggle with length = 2:
-	//	3 * 16 = 48
-	//	8 * 16 = 128
-	//	13 * 16 = 208
-	//	16 * 16 = 256
-	// max bitlen of variable len words in the gaggle with length = 2:
-	//	256 * 2 = 512
-	//
+	auto compute_gaggle_wlv = [&] <bool enable_short_circuit = false> (ptrdiff_t i, size_t gaggle_len) -> void {
+		// the words not encoded further:
+		// (all computed on a dedicated signs data set)
+		// signs_P
+		// signs_C0
+		// signs_C1
+		// signs_C2
+		// signs_H00
+		// signs_H01
+		// signs_H02
+		// signs_H03
+		// signs_H10
+		// signs_H11
+		// signs_H12
+		// signs_H13
+		// signs_H20
+		// signs_H21
+		// signs_H22
+		// signs_H23
+		//
+		// the words encoded further:
+		// types_P
+		// types_C0
+		// types_C1
+		// types_C2
+		// types_H00
+		// types_H01
+		// types_H02
+		// types_H03
+		// types_H10
+		// types_H11
+		// types_H12
+		// types_H13
+		// types_H20
+		// types_H21
+		// types_H22
+		// types_H23
+		//
+		// transition words encoded further:
+		// tran_B	// but actually max len is 1, therefore never encoded. But still suits this set
+		// tran_D
+		// tran_G
+		// tran_H0
+		// tran_H1
+		// tran_H2
+		//
 
-	auto computeAccGaggleVlw = [&] <bool enable_short_circuit = false> (ptrdiff_t i, size_t gaggle_len) -> void {
-		auto& vlwstreams = this->vlwstreams;
+		// compute vlw for every block in the current gaggle
 		for (ptrdiff_t j = 0; j < gaggle_len; ++j) {
 			std::array<typename decltype(family_masks)::value_type, family_masks.size()> prepared_block = { 0 };
 			for (ptrdiff_t k = 0; k < family_masks.size(); ++k) {
 				prepared_block[k] = current_bplane[i + j] & family_masks[k];
 			}
 
-			auto addVlwToCollection = [&](dense_vlw_t& vlw) -> void {
-			// auto addVlwToCollection = [&](bpe_variadic_length_word& vlw, size_t vlw_len) -> void {
-				constexpr size_t vlwstreams_index_bias = 2;
-				size_t vlw_len = vlw.length;
-				// 
-				// PERFMARK:	TODO:
-				// Keep branch. If lambda's operator() gets inlined, then there should be
-				// enough instruction queue clocks to elide branch prediction. 
-				// // Hence explicit
-				// // function parameter for word length to avoid transitive dependincies through
-				// // vlw structure.
-				//
-				if (vlw_len >= 2) {
-					vlwstreams[vlw_len - vlwstreams_index_bias].put(vlw.value);
-				}
-			};
-
-			auto accumulateTranVlw = [&](dense_vlw_t& vlw, size_t index, bool skip = false) -> bool {
+			auto accumulate_tran_vlw = [&](dense_vlw_t& vlw, size_t index, bool skip = false) -> bool {
 				// Accumulates transition word with next signle bit. Since the word
 				// is not complete yet, the correspnding stream for length estimation
 				// is not populated, therefore the resulting symbol should be inserted
@@ -616,7 +657,7 @@ void BitPlaneEncoder<T, alignment>::encodeBpeStages(segment<T>& input, obitwrapp
 				return (((tran_val == 0) & (tran_len == 1)) | skip);
 			};
 
-			auto computeTerminalVlw = [&](dense_vlw_t& typesVlw, dense_vlw_t& signsVlw, size_t index, bool skip = false) {
+			auto compute_plain_vlw = [&](dense_vlw_t& typesVlw, dense_vlw_t& signsVlw, size_t index, bool skip = false) {
 				// All active elements that are not of type 2 (or -1) yet, mask is applicable
 				// to get values '0' and '1' of dedicated bits
 				uint64_t effective_mask = (family_masks[index] & (~bplane_mask[i + j])) & (-((int64_t)(!skip)));
@@ -625,11 +666,8 @@ void BitPlaneEncoder<T, alignment>::encodeBpeStages(segment<T>& input, obitwrapp
 				}
 
 				typesVlw = combine_bword(prepared_block[index], effective_mask);
-				// Actually the same as below, but may relief contention for a single item 
-				// in current_bplane[i + j] and use masked copy instead, that should be just
-				// used by computing transition word
-				// 
-				// ) = combine_bword(current_bplane[i + j], effective_mask);
+				// May relief contention for a single item in current_bplane[i + j] and use 
+				// masked copy instead, that should be just used by computing transition word
 				signsVlw = combine_bword(block_signs[i + j], (prepared_block[index] & effective_mask));
 
 				block_states[i + j].bplane_mask_transit |= (prepared_block[index] & effective_mask);
@@ -639,130 +677,129 @@ void BitPlaneEncoder<T, alignment>::encodeBpeStages(segment<T>& input, obitwrapp
 			// of the previous bitplane. Also allows write operations only with no need to read
 			// the old state and elide assosiated memory ops dependencies.
 			block_states[i + j].tran_B = dense_vlw_t{ 0, 0 };
-			bool skip_descendants = accumulateTranVlw(block_states[i + j].tran_B, B_index);
-			// subband scaling for P coeffs is handled in computeTerminalVlw
-			computeTerminalVlw(block_states[i + j].types_P, block_states[i + j].signs_P, P_index);
+			bool skip_descendants = accumulate_tran_vlw(block_states[i + j].tran_B, B_index);
+			// subband scaling for P coeffs is handled in compute_plain_vlw
+			compute_plain_vlw(block_states[i + j].types_P, block_states[i + j].signs_P, P_index);
 			symbol_fwd_translator.translate(block_states[i + j].types_P);
-			addVlwToCollection(block_states[i + j].types_P);
+			entropy_buffers.append_vlw(block_states[i + j].types_P);
 
 			if (!skip_descendants) {
 				block_states[i + j].tran_D = dense_vlw_t{ 0, 0 };
 				block_states[i + j].tran_G = dense_vlw_t{ 0, 0 };
-				for (ptrdiff_t k = 0; k < F_num; ++k) {
+				for (ptrdiff_t f = 0; f < F_num; ++f) {
 					// (skip = false) is implied because the case is covered by control flow dependency
 					// introduced by branch few lines above
-					bool skip_tran_Gx = accumulateTranVlw(block_states[i + j].tran_D, (k * F_step) + D_offset);
-					bool skip_tran_Hx = accumulateTranVlw(block_states[i + j].tran_G, (k * F_step) + G_offset, skip_tran_Gx);
+					bool skip_tran_Gx = accumulate_tran_vlw(block_states[i + j].tran_D, (f * F_step) + D_offset);
+					bool skip_tran_Hx = accumulate_tran_vlw(block_states[i + j].tran_G, (f * F_step) + G_offset, skip_tran_Gx);
 
 					// check bplane_skip here for child coeffs
 					bool skip_children = false;
 					if constexpr (enable_short_circuit) {
-						skip_children = !((bplane_skip & family_masks[(k * F_step) + C_offset]) == 0);
+						skip_children = !((bplane_skip & family_masks[(f * F_step) + C_offset]) == 0);
 					}
 					if (!skip_children) {
-						computeTerminalVlw(block_states[i + j].types_C[k], block_states[i + j].signs_C[k],
-							(k * F_step) + C_offset, skip_tran_Gx);
-						symbol_fwd_translator.translate(block_states[i + j].types_C[k]);
-						addVlwToCollection(block_states[i + j].types_C[k]);
+						compute_plain_vlw(block_states[i + j].types_C[f], block_states[i + j].signs_C[f],
+							(f * F_step) + C_offset, skip_tran_Gx);
+						symbol_fwd_translator.translate(block_states[i + j].types_C[f]);
+						entropy_buffers.append_vlw(block_states[i + j].types_C[f]);
 					} else {
-						block_states[i + j].types_C[k] = dense_vlw_t{ 0, 0 };
-						block_states[i + j].signs_C[k] = dense_vlw_t{ 0, 0 };
+						block_states[i + j].types_C[f] = dense_vlw_t{ 0, 0 };
+						block_states[i + j].signs_C[f] = dense_vlw_t{ 0, 0 };
 					}
 
-					block_states[i + j].tran_H[k] = dense_vlw_t{ 0, 0 };
+					block_states[i + j].tran_H[f] = dense_vlw_t{ 0, 0 };
 					// check bplane_skip here for grandchildren coeffs
 					bool skip_grandchildren = false;
 					if constexpr (enable_short_circuit) {
-						skip_grandchildren = !((bplane_skip & family_masks[(k * F_step) + G_offset]) == 0);
+						skip_grandchildren = !((bplane_skip & family_masks[(f * F_step) + G_offset]) == 0);
 					}
 					if (!skip_grandchildren) {
-						for (ptrdiff_t l = 0; l < HxpF_num; ++l) {
-							bool skip_Hx = accumulateTranVlw(block_states[i + j].tran_H[k], (k * F_step) + Hx_offset + l, skip_tran_Hx);
-							computeTerminalVlw(block_states[i + j].types_H[k][l], block_states[i + j].signs_H[k][l],
-								(k * F_step) + Hx_offset + l, skip_Hx);
-							symbol_fwd_translator.translate<decltype(symbol_fwd_translator)::types_H_codeparam>(
-								block_states[i + j].types_H[k][l]);
-							addVlwToCollection(block_states[i + j].types_H[k][l]);
+						for (ptrdiff_t k = 0; k < HxpF_num; ++k) {
+							bool skip_Hx = accumulate_tran_vlw(block_states[i + j].tran_H[f], 
+								(f * F_step) + Hx_offset + k, skip_tran_Hx);
+							compute_plain_vlw(block_states[i + j].types_H[f][k], block_states[i + j].signs_H[f][k],
+								(f * F_step) + Hx_offset + k, skip_Hx);
+							symbol_fwd_translator.translate<symbol_types_H_codeoption>(block_states[i + j].types_H[f][k]);
+							entropy_buffers.append_vlw(block_states[i + j].types_H[f][k]);
 						}
 					} else {
-						for (ptrdiff_t l = 0; l < HxpF_num; ++l) {
-							block_states[i + j].types_H[k][l] = dense_vlw_t{ 0, 0 };
-							block_states[i + j].signs_H[k][l] = dense_vlw_t{ 0, 0 };
+						for (ptrdiff_t k = 0; k < HxpF_num; ++k) {
+							block_states[i + j].types_H[f][k] = dense_vlw_t{ 0, 0 };
+							block_states[i + j].signs_H[f][k] = dense_vlw_t{ 0, 0 };
 						}
 					}
 				}
 			}
 
-			symbol_fwd_translator.translate<decltype(symbol_fwd_translator)::tran_D_codeparam>(block_states[i + j].tran_D);
-			addVlwToCollection(block_states[i + j].tran_D);
+			symbol_fwd_translator.translate<symbol_tran_D_codeoption>(block_states[i + j].tran_D);
+			entropy_buffers.append_vlw(block_states[i + j].tran_D);
 			symbol_fwd_translator.translate(block_states[i + j].tran_G);
-			addVlwToCollection(block_states[i + j].tran_G);
+			entropy_buffers.append_vlw(block_states[i + j].tran_G);
 			for (size_t k = 0; k < block_states[i + j].tran_H.size(); ++k) {
-				symbol_fwd_translator.translate<decltype(symbol_fwd_translator)::tran_H_codeparam>(block_states[i + j].tran_H[k]);
-				addVlwToCollection(block_states[i + j].tran_H[k]);
+				symbol_fwd_translator.translate<symbol_tran_H_codeoption>(block_states[i + j].tran_H[k]);
+				entropy_buffers.append_vlw(block_states[i + j].tran_H[k]);
 			}
 		}
-	};
 
-	auto computeGaggleParams = [&](ptrdiff_t gaggle_index) -> void {
-		std::array<std::pair<size_t, ptrdiff_t>, std::tuple_size_v<decltype(vlwstreams)>> optimal_code_options = { {
-			{ vlwstreams[0]._size() * 2, -1 },
-			{ vlwstreams[1]._size() * 3, -1 },
-			{ vlwstreams[2]._size() * 4, -1 }
+		// compute gaggle parameters based on block states
+		ptrdiff_t gaggle_index = i >> gaggle_size_shift;
+		std::array<std::pair<size_t, ptrdiff_t>, vlw_lengths_count> optimal_code_options = { {
+			{ 0, entropy_uncoded_codeoption }, // fictive item for null-words
+			{ 0, entropy_uncoded_codeoption }, // fictive item for one-bit words
+			{ entropy_buffers[2].bitlength(), entropy_uncoded_codeoption },
+			{ entropy_buffers[3].bitlength(), entropy_uncoded_codeoption },
+			{ entropy_buffers[4].bitlength(), entropy_uncoded_codeoption }
 		} };
 
-		// TODO: naming consistence, camel or underscores
-		auto update_optimal_code_option = [&](size_t index, size_t blen, size_t option) -> void {
+		auto update_optimal_code_option = [&](size_t vlw_len, size_t option) -> void {
 			size_t current_bitsize = 0;
-			while (vlwstreams[index]) {
-				current_bitsize += entropy_translator.word_length(vlwstreams[index].get(), blen, option);
+			while (entropy_buffers[vlw_len]) {
+				current_bitsize += entropy_translator.word_length(entropy_buffers[vlw_len].next(), vlw_len, option);
 			}
-			if (current_bitsize < optimal_code_options[index].first) {
-				optimal_code_options[index] = { current_bitsize, option };
+			if (current_bitsize < optimal_code_options[vlw_len].first) {
+				optimal_code_options[vlw_len] = { current_bitsize, option };
 			}
-			vlwstreams[index].restart();
+			entropy_buffers[vlw_len].restart();
 		};
 
-		update_optimal_code_option(0, 2, 0);
-		update_optimal_code_option(1, 3, 0);
-		update_optimal_code_option(1, 3, 1);
-		update_optimal_code_option(2, 4, 0);
-		update_optimal_code_option(2, 4, 1);
-		update_optimal_code_option(2, 4, 2);
+		update_optimal_code_option(2, 0);
+		update_optimal_code_option(3, 0);
+		update_optimal_code_option(3, 1);
+		update_optimal_code_option(4, 0);
+		update_optimal_code_option(4, 1);
+		update_optimal_code_option(4, 2);
 
-		for (ptrdiff_t k = 0; k < vlwstreams.size(); ++k) {
-			constexpr size_t codeoptions_bias = 2;
-			gaggle_states[gaggle_index].entropy_codeoptions[k + codeoptions_bias] = optimal_code_options[k].second;
-			gaggle_states[gaggle_index].code_marker_written[k + codeoptions_bias] = false;
-			vlwstreams[k].reset();
+		for (ptrdiff_t k = min_coded_vlw_length; k <= max_coded_vlw_length; ++k) {
+			gaggle_states[gaggle_index].entropy_codeoptions[k] = optimal_code_options[k].second;
+			gaggle_states[gaggle_index].code_marker_written[k] = false;
+			entropy_buffers[k].reset();
 		}
 	};
 	
-	auto translateEncodeVlw = [&](dense_vlw_t& vlw, ptrdiff_t gaggle_index) -> void {
+	auto encode_vlw = [&](dense_vlw_t& vlw, ptrdiff_t gaggle_index) -> void {
 		size_t vlw_length = vlw.length;
 		ptrdiff_t codeoption = gaggle_states[gaggle_index].entropy_codeoptions[vlw_length];
 		if (!gaggle_states[gaggle_index].code_marker_written[vlw_length]) {
 			// for word length 0 and 1 predicate is always false, should
-			// never be executed for these lengths
+			// never be executed for those lengths
 			gaggle_states[gaggle_index].code_marker_written[vlw_length] = true;
-			size_t codeoption_bitsize = std::bit_width((size_t)(vlw_length - 1)); // TODO: refactor type casts
+			size_t codeoption_bitsize = std::bit_width(vlw_length - 1u); // TODO: C++23 there should be size_t suffix instead of u
 			output << vlw_t{ codeoption_bitsize, (vlw_t::type)(codeoption) };
 		}
 		output << entropy_translator.translate(vlw, codeoption);
 	};
 
-	constexpr size_t gaggle_mask = items_per_gaggle - 1; // 0x0f
-	size_t input_size_truncated = input.size & (~gaggle_mask);
-	size_t last_gaggle_size = input.size & gaggle_mask;
+	size_t input_size_truncated = input.size & (~gaggle_size_mask);
+	size_t last_gaggle_size = input.size & gaggle_size_mask;
 
-	size_t b = input.bdepthAc - 1; // TODO: requires bdepthAc > 0; check at caller side
+	size_t b = input.bdepthAc - 1; // requires bdepthAc > 0; check at caller side
 	for (; b >= max_subband_shift; --b) {
 		if (current_bplane.empty()) {
 			// Per the loop conditions b is guaranteed to be more than or equal to 3, 
 			// that means at least 4 bitplanes are available always. 
 			size_t bplane_num_to_extract = 4;
 			// fills current_bplane container
-			bplaneEncode(raw_block_data, raw_block_size, b, bplane_num_to_extract, current_bitplane_bitwrapper);
+			bplaneEncode(raw_block_data, raw_block_data_size, b, bplane_num_to_extract, current_bitplane_bitwrapper);
 		}
 
 		// stage 0
@@ -772,67 +809,24 @@ void BitPlaneEncoder<T, alignment>::encodeBpeStages(segment<T>& input, obitwrapp
 			// => 
 			// q = 2
 			//
-			if constexpr ((dbg::bpe::encoder::disabled_stages & dbg::bpe::mask_stage_0) == 0) {
+			if constexpr (dbg::bpe::encoder::if_enabled(dbg::bpe::mask_stage_0)) {
+			// if constexpr ((dbg::bpe::encoder::disabled_stages & dbg::bpe::mask_stage_0) == 0) {
 				bplaneEncode(input.plainDc.data(), input.size, b, 1, output); // the output buffer can still not be flushed yet
 			}
 		}
 
 		// interleaving bpe stages
 		{
-			// the words not encoded further:
-			// (all computed on a dedicated signs data set)
-			// signs_P
-			// signs_C0
-			// signs_C1
-			// signs_C2
-			// signs_H00
-			// signs_H01
-			// signs_H02
-			// signs_H03
-			// signs_H10
-			// signs_H11
-			// signs_H12
-			// signs_H13
-			// signs_H20
-			// signs_H21
-			// signs_H22
-			// signs_H23
-			//
-			// the words encoded further:
-			// types_P
-			// types_C0
-			// types_C1
-			// types_C2
-			// types_H00
-			// types_H01
-			// types_H02
-			// types_H03
-			// types_H10
-			// types_H11
-			// types_H12
-			// types_H13
-			// types_H20
-			// types_H21
-			// types_H22
-			// types_H23
-			//
-			// transition words encoded further:
-			// tran_B	// but actually max len is 1, therefore never encoded. But still suits this set
-			// tran_D
-			// tran_G
-			// tran_H0
-			// tran_H1
-			// tran_H2
-			//
-
 			ptrdiff_t i = 0;
 			for (; i < input_size_truncated; i += items_per_gaggle) {
-				computeAccGaggleVlw(i, items_per_gaggle);
-				computeGaggleParams(i >> 4);
+				// TODO: PERF NOTE: here is concurrent execution optimization 
+				// opportunity. Conceptually read different memory via same
+				// references/pointers and writes to different memory addresses 
+				// (but adjacent, may need to check cache-line layout).
+				compute_gaggle_wlv(i, items_per_gaggle);
 			}
-			if (last_gaggle_size > 0) {
-				computeAccGaggleVlw(i, last_gaggle_size);
-				computeGaggleParams(i >> 4);
+			if (last_gaggle_size > 0) { // check needed because of computeGaggleParams
+				compute_gaggle_wlv(i, last_gaggle_size);
 			}
 			
 			// The code below writes the computed words to the output stream. Per 4.5.3.1.7 and 
@@ -848,74 +842,80 @@ void BitPlaneEncoder<T, alignment>::encodeBpeStages(segment<T>& input, obitwrapp
 			//
 
 			// stage 1
-			if constexpr ((dbg::bpe::encoder::disabled_stages & dbg::bpe::mask_stage_1) == 0) {
+			if constexpr (dbg::bpe::encoder::if_enabled(dbg::bpe::mask_stage_1)) {
+			// if constexpr ((dbg::bpe::encoder::disabled_stages & dbg::bpe::mask_stage_1) == 0) {
 				i = 0;
 				for (; i < input_size_truncated; i += items_per_gaggle) {
 					for (ptrdiff_t j = 0; j < items_per_gaggle; ++j) {
-						translateEncodeVlw(block_states[i + j].types_P, (i >> 4));
+						encode_vlw(block_states[i + j].types_P, (i >> gaggle_size_shift));
 						output << block_states[i + j].signs_P;
 					}
 				}
 				for (ptrdiff_t j = 0; j < last_gaggle_size; ++j) {
-					translateEncodeVlw(block_states[i + j].types_P, (i >> 4));
+					encode_vlw(block_states[i + j].types_P, (i >> gaggle_size_shift));
 					output << block_states[i + j].signs_P;
 				}
 			}
 			
 			// stage 2
-			if constexpr (((dbg::bpe::encoder::disabled_stages & dbg::bpe::mask_stage_2) == 0) || 
-					((dbg::bpe::encoder::disabled_stages & dbg::bpe::mask_stage_3) == 0)) {
+			if constexpr (dbg::bpe::encoder::if_enabled(dbg::bpe::mask_stage_2) || 
+					dbg::bpe::encoder::if_enabled(dbg::bpe::mask_stage_3)) {
+			// if constexpr (((dbg::bpe::encoder::disabled_stages & dbg::bpe::mask_stage_2) == 0) || 
+			// 		((dbg::bpe::encoder::disabled_stages & dbg::bpe::mask_stage_3) == 0)) {
 				i = 0;
 				for (; i < input_size_truncated; i += items_per_gaggle) {
 					for (ptrdiff_t j = 0; j < items_per_gaggle; ++j) {
 						output << block_states[i + j].tran_B;
-						translateEncodeVlw(block_states[i + j].tran_D, (i >> 4));
-						if constexpr ((dbg::bpe::encoder::disabled_stages & dbg::bpe::mask_stage_2) == 0) {
-							for (ptrdiff_t k = 0; k < F_num; ++k) {
-								translateEncodeVlw(block_states[i + j].types_C[k], (i >> 4));
-								output << block_states[i + j].signs_C[k];
+						encode_vlw(block_states[i + j].tran_D, (i >> gaggle_size_shift));
+						if constexpr (dbg::bpe::encoder::if_enabled(dbg::bpe::mask_stage_2)) {
+						// if constexpr ((dbg::bpe::encoder::disabled_stages & dbg::bpe::mask_stage_2) == 0) {
+							for (ptrdiff_t f = 0; f < F_num; ++f) {
+								encode_vlw(block_states[i + j].types_C[f], (i >> gaggle_size_shift));
+								output << block_states[i + j].signs_C[f];
 							}
 						}
 					}
 				}
 				for (ptrdiff_t j = 0; j < last_gaggle_size; ++j) {
 					output << block_states[i + j].tran_B;
-					translateEncodeVlw(block_states[i + j].tran_D, (i >> 4));
-					if constexpr ((dbg::bpe::encoder::disabled_stages & dbg::bpe::mask_stage_2) == 0) {
-						for (ptrdiff_t k = 0; k < F_num; ++k) {
-							translateEncodeVlw(block_states[i + j].types_C[k], (i >> 4));
-							output << block_states[i + j].signs_C[k];
+					encode_vlw(block_states[i + j].tran_D, (i >> gaggle_size_shift));
+					if constexpr (dbg::bpe::encoder::if_enabled(dbg::bpe::mask_stage_2)) {
+					// if constexpr ((dbg::bpe::encoder::disabled_stages & dbg::bpe::mask_stage_2) == 0) {
+						for (ptrdiff_t f = 0; f < F_num; ++f) {
+							encode_vlw(block_states[i + j].types_C[f], (i >> gaggle_size_shift));
+							output << block_states[i + j].signs_C[f];
 						}
 					}
 				}
 			}
 
 			// stage 3
-			if constexpr ((dbg::bpe::encoder::disabled_stages & dbg::bpe::mask_stage_3) == 0) {
+			if constexpr (dbg::bpe::encoder::if_enabled(dbg::bpe::mask_stage_3)) {
+			// if constexpr ((dbg::bpe::encoder::disabled_stages & dbg::bpe::mask_stage_3) == 0) {
 				i = 0;
 				for (; i < input_size_truncated; i += items_per_gaggle) {
 					for (ptrdiff_t j = 0; j < items_per_gaggle; ++j) {
-						translateEncodeVlw(block_states[i + j].tran_G, (i >> 4));
-						for (ptrdiff_t k = 0; k < F_num; ++k) {
-							translateEncodeVlw(block_states[i + j].tran_H[k], (i >> 4));
+						encode_vlw(block_states[i + j].tran_G, (i >> gaggle_size_shift));
+						for (ptrdiff_t f = 0; f < F_num; ++f) {
+							encode_vlw(block_states[i + j].tran_H[f], (i >> gaggle_size_shift));
 						}
-						for (ptrdiff_t k = 0; k < F_num; ++k) {
-							for (ptrdiff_t l = 0; l < HxpF_num; ++l) {
-								translateEncodeVlw(block_states[i + j].types_H[k][l], (i >> 4));
-								output << block_states[i + j].signs_H[k][l];
+						for (ptrdiff_t f = 0; f < F_num; ++f) {
+							for (ptrdiff_t k = 0; k < HxpF_num; ++k) {
+								encode_vlw(block_states[i + j].types_H[f][k], (i >> gaggle_size_shift));
+								output << block_states[i + j].signs_H[f][k];
 							}
 						}
 					}
 				}
 				for (ptrdiff_t j = 0; j < last_gaggle_size; ++j) {
-					translateEncodeVlw(block_states[i + j].tran_G, (i >> 4));
-					for (ptrdiff_t k = 0; k < F_num; ++k) {
-						translateEncodeVlw(block_states[i + j].tran_H[k], (i >> 4));
+					encode_vlw(block_states[i + j].tran_G, (i >> gaggle_size_shift));
+					for (ptrdiff_t f = 0; f < F_num; ++f) {
+						encode_vlw(block_states[i + j].tran_H[f], (i >> gaggle_size_shift));
 					}
-					for (ptrdiff_t k = 0; k < F_num; ++k) {
-						for (ptrdiff_t l = 0; l < HxpF_num; ++l) {
-							translateEncodeVlw(block_states[i + j].types_H[k][l], (i >> 4));
-							output << block_states[i + j].signs_H[k][l];
+					for (ptrdiff_t f = 0; f < F_num; ++f) {
+						for (ptrdiff_t k = 0; k < HxpF_num; ++k) {
+							encode_vlw(block_states[i + j].types_H[f][k], (i >> gaggle_size_shift));
+							output << block_states[i + j].signs_H[f][k];
 						}
 					}
 				}
@@ -924,7 +924,8 @@ void BitPlaneEncoder<T, alignment>::encodeBpeStages(segment<T>& input, obitwrapp
 			// stage 4
 			i = 0; // not really necessary, just for debugging consistency
 			for (ptrdiff_t j = 0; j < input.size; ++j) {
-				if constexpr ((dbg::bpe::encoder::disabled_stages & dbg::bpe::mask_stage_4) == 0) {
+				if constexpr (dbg::bpe::encoder::if_enabled(dbg::bpe::mask_stage_4)) {
+				// if constexpr ((dbg::bpe::encoder::disabled_stages & dbg::bpe::mask_stage_4) == 0) {
 					output << combine_bword(current_bplane[j], bplane_mask[j]);
 				}
 				bplane_mask[j] |= block_states[j].bplane_mask_transit;
@@ -950,7 +951,7 @@ void BitPlaneEncoder<T, alignment>::encodeBpeStages(segment<T>& input, obitwrapp
 		next_bplane = (b != 0);
 
 		for (ptrdiff_t i = 0; i < input.bit_shifts.size(); ++i) {
-			// PERF NOTE: will gt be predicted better than eq? Just curious
+			// PERF NOTE: will 'gt' be predicted better than 'eq'? Just curious
 			// if (input.bit_shifts[i] > b) {
 			if (input.bit_shifts[i] == (b + 1)) {
 				bplane_skip |= bitshift_masks[i];
@@ -962,7 +963,7 @@ void BitPlaneEncoder<T, alignment>::encodeBpeStages(segment<T>& input, obitwrapp
 			// the data up to the end.
 			size_t bplane_num_to_extract = b + 1;
 			// fills current_bplane container
-			bplaneEncode(raw_block_data, raw_block_size, b, bplane_num_to_extract, current_bitplane_bitwrapper);
+			bplaneEncode(raw_block_data, raw_block_data_size, b, bplane_num_to_extract, current_bitplane_bitwrapper);
 		}
 
 		// stage 0
@@ -971,7 +972,8 @@ void BitPlaneEncoder<T, alignment>::encodeBpeStages(segment<T>& input, obitwrapp
 		// with respect to the lower bound, therefore both checks should be performed; no skip is 
 		// possible due to a priori knowledge.
 		// 
-		if constexpr ((dbg::bpe::encoder::disabled_stages & dbg::bpe::mask_stage_0) == 0) {
+		if constexpr (dbg::bpe::encoder::if_enabled(dbg::bpe::mask_stage_0)) {
+		// if constexpr ((dbg::bpe::encoder::disabled_stages & dbg::bpe::mask_stage_0) == 0) {
 			if (((bplane_skip & family_masks[DC_index]) == 0) & (b < input.q)) {
 				bplaneEncode(input.plainDc.data(), input.size, b, 1, output);
 			}
@@ -979,30 +981,29 @@ void BitPlaneEncoder<T, alignment>::encodeBpeStages(segment<T>& input, obitwrapp
 
 		ptrdiff_t i = 0;
 		for (; i < input_size_truncated; i += items_per_gaggle) {
-			computeAccGaggleVlw.template operator()<true>(i, items_per_gaggle);
-			computeGaggleParams(i >> 4);
+			compute_gaggle_wlv.template operator()<true>(i, items_per_gaggle);
 		}
 		if (last_gaggle_size > 0) {
-			computeAccGaggleVlw.template operator()<true>(i, last_gaggle_size);
-			computeGaggleParams(i >> 4);
+			compute_gaggle_wlv.template operator()<true>(i, last_gaggle_size);
 		}
 
 		// stage 1
 		// 
 		// Check for complex bplane_skip field consisting of 3 independent single bit 
-		// masks for parent coeffs, therefore check for unequality instead of eq 0.
+		// masks for parent coeffs, therefore check for unequality instead of 'eq' 0.
 		//
-		if constexpr ((dbg::bpe::encoder::disabled_stages & dbg::bpe::mask_stage_1) == 0) {
+		if constexpr (dbg::bpe::encoder::if_enabled(dbg::bpe::mask_stage_1)) {
+		// if constexpr ((dbg::bpe::encoder::disabled_stages & dbg::bpe::mask_stage_1) == 0) {
+			i = 0;
 			if ((bplane_skip & family_masks[P_index]) != family_masks[P_index]) {
-				i = 0;
 				for (; i < input_size_truncated; i += items_per_gaggle) {
 					for (ptrdiff_t j = 0; j < items_per_gaggle; ++j) {
-						translateEncodeVlw(block_states[i + j].types_P, (i >> 4));
+						encode_vlw(block_states[i + j].types_P, (i >> gaggle_size_shift));
 						output << block_states[i + j].signs_P;
 					}
 				}
 				for (ptrdiff_t j = 0; j < last_gaggle_size; ++j) {
-					translateEncodeVlw(block_states[i + j].types_P, (i >> 4));
+					encode_vlw(block_states[i + j].types_P, (i >> gaggle_size_shift));
 					output << block_states[i + j].signs_P;
 				}
 			}
@@ -1015,66 +1016,72 @@ void BitPlaneEncoder<T, alignment>::encodeBpeStages(segment<T>& input, obitwrapp
 		// prediction. All words that must be skiped due to subband scaling are
 		// already zeroed.
 		//
-		if constexpr (((dbg::bpe::encoder::disabled_stages & dbg::bpe::mask_stage_2) == 0) || 
-				((dbg::bpe::encoder::disabled_stages & dbg::bpe::mask_stage_3) == 0)) {
+		if constexpr (dbg::bpe::encoder::if_enabled(dbg::bpe::mask_stage_2) || 
+				dbg::bpe::encoder::if_enabled(dbg::bpe::mask_stage_3)) {
+		// if constexpr (((dbg::bpe::encoder::disabled_stages & dbg::bpe::mask_stage_2) == 0) || 
+		// 		((dbg::bpe::encoder::disabled_stages & dbg::bpe::mask_stage_3) == 0)) {
 			i = 0;
 			for (; i < input_size_truncated; i += items_per_gaggle) {
 				for (ptrdiff_t j = 0; j < items_per_gaggle; ++j) {
 					output << block_states[i + j].tran_B;
-					translateEncodeVlw(block_states[i + j].tran_D, (i >> 4));
-					if constexpr ((dbg::bpe::encoder::disabled_stages & dbg::bpe::mask_stage_2) == 0) {
-						for (ptrdiff_t k = 0; k < F_num; ++k) {
-							translateEncodeVlw(block_states[i + j].types_C[k], (i >> 4));
-							output << block_states[i + j].signs_C[k];
+					encode_vlw(block_states[i + j].tran_D, (i >> gaggle_size_shift));
+					if constexpr (dbg::bpe::encoder::if_enabled(dbg::bpe::mask_stage_2)) {
+					// if constexpr ((dbg::bpe::encoder::disabled_stages & dbg::bpe::mask_stage_2) == 0) {
+						for (ptrdiff_t f = 0; f < F_num; ++f) {
+							encode_vlw(block_states[i + j].types_C[f], (i >> gaggle_size_shift));
+							output << block_states[i + j].signs_C[f];
 						}
 					}
 				}
 			}
 			for (ptrdiff_t j = 0; j < last_gaggle_size; ++j) {
 				output << block_states[i + j].tran_B;
-				translateEncodeVlw(block_states[i + j].tran_D, (i >> 4));
-				if constexpr ((dbg::bpe::encoder::disabled_stages & dbg::bpe::mask_stage_2) == 0) {
-					for (ptrdiff_t k = 0; k < F_num; ++k) {
-						translateEncodeVlw(block_states[i + j].types_C[k], (i >> 4));
-						output << block_states[i + j].signs_C[k];
+				encode_vlw(block_states[i + j].tran_D, (i >> gaggle_size_shift));
+				if constexpr (dbg::bpe::encoder::if_enabled(dbg::bpe::mask_stage_2)) {
+				// if constexpr ((dbg::bpe::encoder::disabled_stages & dbg::bpe::mask_stage_2) == 0) {
+					for (ptrdiff_t f = 0; f < F_num; ++f) {
+						encode_vlw(block_states[i + j].types_C[f], (i >> gaggle_size_shift));
+						output << block_states[i + j].signs_C[f];
 					}
 				}
 			}
 		}
 
 		// stage 3
-		if constexpr ((dbg::bpe::encoder::disabled_stages & dbg::bpe::mask_stage_3) == 0) {
+		if constexpr (dbg::bpe::encoder::if_enabled(dbg::bpe::mask_stage_3)) {
+		// if constexpr ((dbg::bpe::encoder::disabled_stages & dbg::bpe::mask_stage_3) == 0) {
 			i = 0;
 			for (; i < input_size_truncated; i += items_per_gaggle) {
 				for (ptrdiff_t j = 0; j < items_per_gaggle; ++j) {
-					translateEncodeVlw(block_states[i + j].tran_G, (i >> 4)); // TODO: respect bplane_skip here
-					for (ptrdiff_t k = 0; k < F_num; ++k) {
-						if ((bplane_skip & family_masks[(k * F_step) + G_offset]) == 0) {
-							translateEncodeVlw(block_states[i + j].tran_H[k], (i >> 4));
-						}
+					// (bplane_skip & family_masks[B_index]) is unlikely to equal to zero, 
+					// therefore such a check is not performed. All dependencies are taken into
+					// account and all the related words have length 0 per implementation.
+					//
+
+					encode_vlw(block_states[i + j].tran_G, (i >> gaggle_size_shift));
+					for (ptrdiff_t f = 0; f < F_num; ++f) {
+						encode_vlw(block_states[i + j].tran_H[f], (i >> gaggle_size_shift));
 					}
-					for (ptrdiff_t k = 0; k < F_num; ++k) {
-						if ((bplane_skip & family_masks[(k * F_step) + G_offset]) == 0) {
-							for (ptrdiff_t l = 0; l < HxpF_num; ++l) {
-								translateEncodeVlw(block_states[i + j].types_H[k][l], (i >> 4));
-								output << block_states[i + j].signs_H[k][l];
+					for (ptrdiff_t f = 0; f < F_num; ++f) {
+						if ((bplane_skip & family_masks[(f * F_step) + G_offset]) == 0) {
+							for (ptrdiff_t k = 0; k < HxpF_num; ++k) {
+								encode_vlw(block_states[i + j].types_H[f][k], (i >> gaggle_size_shift));
+								output << block_states[i + j].signs_H[f][k];
 							}
 						}
 					}
 				}
 			}
 			for (ptrdiff_t j = 0; j < last_gaggle_size; ++j) {
-				translateEncodeVlw(block_states[i + j].tran_G, (i >> 4));
-				for (ptrdiff_t k = 0; k < F_num; ++k) {
-					if ((bplane_skip & family_masks[(k * F_step) + G_offset]) == 0) {
-						translateEncodeVlw(block_states[i + j].tran_H[k], (i >> 4));
-					}
+				encode_vlw(block_states[i + j].tran_G, (i >> gaggle_size_shift));
+				for (ptrdiff_t f = 0; f < F_num; ++f) {
+					encode_vlw(block_states[i + j].tran_H[f], (i >> gaggle_size_shift));
 				}
-				for (ptrdiff_t k = 0; k < F_num; ++k) {
-					if ((bplane_skip & family_masks[(k * F_step) + G_offset]) == 0) {
-						for (ptrdiff_t l = 0; l < HxpF_num; ++l) {
-							translateEncodeVlw(block_states[i + j].types_H[k][l], (i >> 4));
-							output << block_states[i + j].signs_H[k][l];
+				for (ptrdiff_t f = 0; f < F_num; ++f) {
+					if ((bplane_skip & family_masks[(f * F_step) + G_offset]) == 0) {
+						for (ptrdiff_t k = 0; k < HxpF_num; ++k) {
+							encode_vlw(block_states[i + j].types_H[f][k], (i >> gaggle_size_shift));
+							output << block_states[i + j].signs_H[f][k];
 						}
 					}
 				}
@@ -1084,7 +1091,8 @@ void BitPlaneEncoder<T, alignment>::encodeBpeStages(segment<T>& input, obitwrapp
 		// stage 4
 		i = 0; // not really necessary, just for convinience during debugging
 		for (ptrdiff_t j = 0; j < input.size; ++j) {
-			if constexpr ((dbg::bpe::encoder::disabled_stages & dbg::bpe::mask_stage_4) == 0) {
+			if constexpr (dbg::bpe::encoder::if_enabled(dbg::bpe::mask_stage_4)) {
+			// if constexpr ((dbg::bpe::encoder::disabled_stages & dbg::bpe::mask_stage_4) == 0) {
 				output << combine_bword(current_bplane[j], (bplane_mask[j] & (~bplane_skip)));
 			}
 			bplane_mask[j] |= block_states[j].bplane_mask_transit;
@@ -1092,7 +1100,7 @@ void BitPlaneEncoder<T, alignment>::encodeBpeStages(segment<T>& input, obitwrapp
 		}
 
 		current_bplane.erase(current_bplane.begin(), current_bplane.begin() + input.size);
-		--b;	// formally UB
+		--b;	// formally UB when b == 0
 	} while (next_bplane);
 }
 
@@ -1122,6 +1130,7 @@ template <typename T>
 template <typename ibwT>
 void BitPlaneDecoder<T>::decode(segment<T>& output, ibitwrapper<ibwT>& input) {
 	// segment initalization
+	// TODO: check initialization logic
 	output.data = decltype(output.data)(output.size);
 	output.referenceSample = 0;
 	output.quantizedDc = aligned_vector<T>(output.size);
@@ -1129,22 +1138,23 @@ void BitPlaneDecoder<T>::decode(segment<T>& output, ibitwrapper<ibwT>& input) {
 	output.plainDc.assign(0);
 	output.referenceBdepthAc = 0;
 	output.quantizedBdepthAc = aligned_vector<size_t>(output.size);
-	// output.bdepthAcBlocks = aligned_vector<size_t>(output.size);
 
 	output.q = quant_dc(output.bdepthDc, output.bdepthAc, output.bit_shifts[0]);
 
-	if constexpr ((dbg::bpe::decoder::disabled_stages & dbg::bpe::mask_quant_DC) == 0) {
+	if constexpr (dbg::bpe::decoder::if_enabled(dbg::bpe::mask_quant_DC)) {
+	// if constexpr ((dbg::bpe::decoder::disabled_stages & dbg::bpe::mask_quant_DC) == 0) {
 		kParams quantizedDcParams = {
 			output.quantizedDc.data(),
 			output.size - 1,	// -1 because of a reference sample that is not part of the vector
 			output.bdepthDc - output.q,
-			output.referenceSample // TODO: put 0 instead
+			(decltype(output.quantizedDc)::type)(0)
 		};
 		kDecode(quantizedDcParams, input);
 		output.referenceSample = quantizedDcParams.reference;
 	}
 
-	if constexpr ((dbg::bpe::decoder::disabled_stages & dbg::bpe::mask_additional_DC) == 0) {
+	if constexpr (dbg::bpe::decoder::if_enabled(dbg::bpe::mask_additional_DC)) {
+	// if constexpr ((dbg::bpe::decoder::disabled_stages & dbg::bpe::mask_additional_DC) == 0) {
 		size_t bit_shift_LL3 = output.bit_shifts[0];
 		size_t additional_bdepth = std::max(output.bdepthAc, bit_shift_LL3);
 		if (output.q > additional_bdepth) {
@@ -1153,14 +1163,19 @@ void BitPlaneDecoder<T>::decode(segment<T>& output, ibitwrapper<ibwT>& input) {
 	}
 
 	if (output.bdepthAc > 0) {
-		if constexpr ((dbg::bpe::decoder::disabled_stages & dbg::bpe::mask_bdepth_AC) == 0) {
+		if constexpr (dbg::bpe::decoder::if_enabled(dbg::bpe::mask_bdepth_AC)) {
+		// if constexpr ((dbg::bpe::decoder::disabled_stages & dbg::bpe::mask_bdepth_AC) == 0) {
 			kParams quantizedBdepthAcParams = {
 				output.quantizedBdepthAc.data(),
 				output.size - 1,	// -1 because of a reference sample that is not part of the vector
 				std::bit_width(output.bdepthAc),
-				output.referenceBdepthAc // TODO: put 0 instead
+				(decltype(output.quantizedBdepthAc)::type)(0)
 			};
 			kDecode(quantizedBdepthAcParams, input);
+			// TODO: maybe there's a bug, check usage and actual values during encoding and decoding.
+			// Passed all current tests without assignment of the result (but shouldn't have).
+			// The line below was absent.
+			output.referenceBdepthAc = quantizedBdepthAcParams.reference;
 		}
 		decodeBpeStages(output, input);
 	}
@@ -1169,60 +1184,34 @@ void BitPlaneDecoder<T>::decode(segment<T>& output, ibitwrapper<ibwT>& input) {
 template <typename T>
 template <typename D, typename obwT>
 void BitPlaneDecoder<T>::kReverse(kParams<D>& params, ibitwrapper<obwT>& input_stream) {
-	size_t N = params.bdepth; // N is expected to be in range [1, 10]
-	constexpr size_t gaggle_len = items_per_gaggle; // refactor?
+	size_t N = params.bdepth; // N is expected to be in range [2, 10]
 
 	// adjust parameters for the first gaggle (see 4.3.2.8 and 4.3.2.10, figures 4-8 and 4-9)
-	{
-		size_t k_bitsize = std::bit_width(N - 1);
-		size_t k_uncoded_opt = ~(((ptrdiff_t)(-1)) << k_bitsize);
-		size_t current_k_opt = input_stream.extract(k_bitsize);
-		params.reference = signext(input_stream.extract(N), N);
+	size_t k_bitsize = std::bit_width(N - 1u);
+	size_t k_uncoded_opt = ~(k_uncoded_codeoption << k_bitsize);
+	size_t current_k_opt = input_stream.extract(k_bitsize);
+	params.reference = signext(input_stream.extract(N), N);
 
-		ptrdiff_t i;
-		bool current_uncoded = false;
-		bool execute_preamble = false;
-		for (i = -1; i < ((ptrdiff_t)(params.datalength - gaggle_len)); i += gaggle_len) {
-			if (execute_preamble) {
-				current_k_opt = input_stream.extract(k_bitsize);
-			}
-			execute_preamble = true;
-
-			current_uncoded = (current_k_opt == k_uncoded_opt);
-			if (!current_uncoded) {
-				for (ptrdiff_t j = (i < 0); j < gaggle_len; ++j) {
-					params.data[i + j] = input_stream.extract_next_one();
-				}
-			} else {
-				current_k_opt = N;
-			}
-
-			for (ptrdiff_t j = (i < 0); j < gaggle_len; ++j) {
-				// params.data contains unsigned items
-				vlw_t current_item{ 
-					current_k_opt, 
-					(size_t)(params.data[i + j]) & (-(!current_uncoded))
-				};
-				input_stream >> current_item;
-				params.data[i + j] = current_item.value;
-			}
-		}
-
-		ptrdiff_t last_gaggle_len = params.datalength - i;
+	ptrdiff_t i;
+	bool current_uncoded = false;
+	bool execute_preamble = false;
+	for (i = -1; i < ((ptrdiff_t)(params.datalength - items_per_gaggle)); i += items_per_gaggle) {
 		if (execute_preamble) {
 			current_k_opt = input_stream.extract(k_bitsize);
 		}
+		execute_preamble = true;
 
 		current_uncoded = (current_k_opt == k_uncoded_opt);
-		if (current_k_opt != k_uncoded_opt) {
-			for (ptrdiff_t j = (i < 0); j < last_gaggle_len; ++j) {
+		if (!current_uncoded) {
+			for (ptrdiff_t j = (i < 0); j < items_per_gaggle; ++j) {
 				params.data[i + j] = input_stream.extract_next_one();
 			}
 		} else {
 			current_k_opt = N;
 		}
 
-		for (ptrdiff_t j = (i < 0); j < last_gaggle_len; ++j) {
+		for (ptrdiff_t j = (i < 0); j < items_per_gaggle; ++j) {
+			// params.data contains unsigned items
 			vlw_t current_item{ 
 				current_k_opt, 
 				(size_t)(params.data[i + j]) & (-(!current_uncoded))
@@ -1231,14 +1220,37 @@ void BitPlaneDecoder<T>::kReverse(kParams<D>& params, ibitwrapper<obwT>& input_s
 			params.data[i + j] = current_item.value;
 		}
 	}
+
+	ptrdiff_t last_gaggle_len = params.datalength - i;
+	if (execute_preamble) {
+		current_k_opt = input_stream.extract(k_bitsize);
+	}
+
+	current_uncoded = (current_k_opt == k_uncoded_opt);
+	if (current_k_opt != k_uncoded_opt) {
+		for (ptrdiff_t j = (i < 0); j < last_gaggle_len; ++j) {
+			params.data[i + j] = input_stream.extract_next_one();
+		}
+	} else {
+		current_k_opt = N;
+	}
+
+	for (ptrdiff_t j = (i < 0); j < last_gaggle_len; ++j) {
+		vlw_t current_item{ 
+			current_k_opt, 
+			(size_t)(params.data[i + j]) & (-(!current_uncoded))
+		};
+		input_stream >> current_item;
+		params.data[i + j] = current_item.value;
+	}
 }
 
 template <typename T>
 template <typename D, typename obwT>
 inline void BitPlaneDecoder<T>::kDecode(kParams<D>& params, ibitwrapper<obwT>& input_stream) {
-	// TODO: check if std::max is needed with 1 as a second parameter for N computation
+	// See notes for BitPlaneEncoder::kEncode.
 	// see 4.3.2.1
-	params.bdepth = std::max(params.bdepth, (decltype(params.bdepth))(1)); // N is expected to be in range [1, 10]
+	params.bdepth = std::max(params.bdepth, (decltype(params.bdepth))(min_N_value));
 	if (params.bdepth > 1) {
 		kReverse(params, input_stream);
 	} else {
@@ -1263,14 +1275,6 @@ void BitPlaneDecoder<T>::decodeBpeStages(segment<T>& output, ibitwrapper<ibwT>& 
 	uint64_t bplane_skip = 0;
 	
 	struct block_bpe_meta {
-		// uint8_t types_P_len = 3;
-		// std::array<uint8_t, F_num> types_C_len = { 4, 4, 4 };
-		// std::array<std::array<uint8_t, HxpF_num>, F_num> types_H_len = { 
-		// 	{ 4, 4, 4, 4 },
-		// 	{ 4, 4, 4, 4 },
-		// 	{ 4, 4, 4, 4 }
-		// };
-
 		dense_vlw_t tran_B = { 1, 0 };
 		std::array<dense_vlw_t, F_num> tran_D = { { 
 			{ 1, 0 }, { 1, 0 }, { 1, 0 } 
@@ -1288,19 +1292,28 @@ void BitPlaneDecoder<T>::decodeBpeStages(segment<T>& output, ibitwrapper<ibwT>& 
 	};
 
 	struct gaggle_bpe_meta {
-		std::array<ptrdiff_t, 5> entropy_codeoptions = { -1, -1, -1, -1, -1 };
-		std::array<bool, 5> code_marker_processed = { true, true, false, false, false };
+		std::array<ptrdiff_t, vlw_lengths_count> entropy_codeoptions = { 
+			// first two are important and assigned -1
+			entropy_uncoded_codeoption, 
+			entropy_uncoded_codeoption, 
+			// the rest can be assigned any value because will be rewritten 
+			// by actual value extracted from input bit stream
+			entropy_uncoded_codeoption,	
+			entropy_uncoded_codeoption,	
+			entropy_uncoded_codeoption 
+		}; // { -1, -1, -1, -1, -1 };
+		std::array<bool, vlw_lengths_count> code_marker_processed = { true, true, false, false, false };
 	};
 
 	std::vector<block_bpe_meta> block_states(output.size);
-	std::vector<gaggle_bpe_meta> gaggle_states((output.size + items_per_gaggle) >> 4);
+	std::vector<gaggle_bpe_meta> gaggle_states((output.size + items_per_gaggle) >> gaggle_size_shift);
 
-	auto decodeTranslateVlw = [&](size_t vlw_length, size_t gaggle_index) -> vlw_t {
+	auto decode_vlw = [&](size_t vlw_length, size_t gaggle_index) -> vlw_t {
 		ptrdiff_t codeoption = gaggle_states[gaggle_index].entropy_codeoptions[vlw_length];
 		if (gaggle_states[gaggle_index].code_marker_processed[vlw_length] == false) {
 			gaggle_states[gaggle_index].code_marker_processed[vlw_length] = true;
-			size_t codeoption_bitsize = std::bit_width(vlw_length - 1);
-			ptrdiff_t uncoded_option = ~((-1) << codeoption_bitsize);
+			size_t codeoption_bitsize = std::bit_width(vlw_length - 1u);
+			ptrdiff_t uncoded_option = ~(((ptrdiff_t)(entropy_uncoded_codeoption)) << codeoption_bitsize);
 			codeoption = input.extract(codeoption_bitsize);
 			if (codeoption == uncoded_option) {
 				codeoption = signext(codeoption, codeoption_bitsize);
@@ -1310,11 +1323,11 @@ void BitPlaneDecoder<T>::decodeBpeStages(segment<T>& output, ibitwrapper<ibwT>& 
 		return entropy_translator.extract(input, vlw_length, codeoption);
 	};
 
-	auto decodeTypesSigns = [&]<size_t codeoption = 0>(ptrdiff_t gaggle_index, ptrdiff_t block_index, uint64_t mask) -> void {
-		ptrdiff_t i = gaggle_index << 4;
+	auto decode_plain_vlw = [&]<size_t codeoption = 0>(ptrdiff_t gaggle_index, ptrdiff_t block_index, uint64_t mask) -> void {
+		ptrdiff_t i = gaggle_index << gaggle_size_shift;
 		ptrdiff_t j = block_index;
 		size_t bitsize_types = std::popcount(mask);
-		vlw_t types = decodeTranslateVlw(bitsize_types, gaggle_index);
+		vlw_t types = decode_vlw(bitsize_types, gaggle_index);
 		symbol_bwd_translator.translate<codeoption>(types);
 		size_t bitsize_signs = std::popcount(types.value);
 		uint64_t signs = input.extract(bitsize_signs);
@@ -1325,24 +1338,7 @@ void BitPlaneDecoder<T>::decodeBpeStages(segment<T>& output, ibitwrapper<ibwT>& 
 		current_bplane[i + j] |= extracted_types;
 	};
 
-	auto decodeTran = [&]<size_t codeoption = 0>(auto & tran, ptrdiff_t gaggle_index, size_t dependency_mask = 0x0ff) -> void {
-		// size_t tran_length = 0;
-		// // The loop below sets implicit requirement on tran to be collection (provide begin() and end())
-		// // and have the contained type convertible to dense_vlw_t (that is, _vlw_t)
-		// for (dense_vlw_t item : tran) {
-		// 	tran_length += item.length;
-		// }
-		// 
-		// vlw_t tran_raw = decodeTranslateVlw(tran_length, gaggle_index);
-		// symbol_bwd_translator.translate<codeoption>(tran_raw);
-		// 
-		// // for (ptrdiff_t k = std::tuple_size_v<decltype(tran)>> - 1; k >= 0; --k) {
-		// for (ptrdiff_t k = tran.size() - 1; k >= 0; --k) {
-		// 	tran[k].value = (tran_raw.value & 0x01) & tran[k].length;
-		// 	tran_raw.value >>= tran[k].length;
-		// 	tran[k].length &= (~tran[k].value);
-		// }
-
+	auto decode_tran_vlw = [&]<size_t codeoption = 0>(auto& tran, ptrdiff_t gaggle_index, size_t dependency_mask = 0x0ff) -> void {
 		size_t tran_mask = 0;
 		// The loop below sets implicit requirement on tran to be collection (provide begin() and end())
 		// and have the contained type convertible to dense_vlw_t (that is, _vlw_t)
@@ -1352,12 +1348,11 @@ void BitPlaneDecoder<T>::decodeBpeStages(segment<T>& output, ibitwrapper<ibwT>& 
 		}
 		tran_mask &= dependency_mask;
 
-		vlw_t tran_raw = decodeTranslateVlw(std::popcount(tran_mask), gaggle_index);
+		vlw_t tran_raw = decode_vlw(std::popcount(tran_mask), gaggle_index);
 		symbol_bwd_translator.translate<codeoption>(tran_raw);
 
-		// for (ptrdiff_t k = std::tuple_size_v<decltype(tran)>> - 1; k >= 0; --k) {
 		for (ptrdiff_t k = tran.size() - 1; k >= 0; --k) {
-			size_t effective_length = (tran_mask & 0x01); // &tran[k].length;
+			size_t effective_length = (tran_mask & 0x01);
 			tran[k].value = (tran_raw.value & 0x01) & effective_length;
 			tran_raw.value >>= effective_length;
 			tran[k].length &= (~tran[k].value);
@@ -1365,9 +1360,8 @@ void BitPlaneDecoder<T>::decodeBpeStages(segment<T>& output, ibitwrapper<ibwT>& 
 		}
 	};
 
-	constexpr size_t gaggle_mask = items_per_gaggle - 1; // 0x0f
-	size_t last_gaggle_start = output.size & (~gaggle_mask);
-	size_t last_gaggle_size = output.size & gaggle_mask;
+	size_t last_gaggle_start = output.size & (~gaggle_size_mask);
+	size_t last_gaggle_size = output.size & gaggle_size_mask;
 
 	ptrdiff_t b = output.bdepthAc;
 	while (b > 0) {
@@ -1378,7 +1372,8 @@ void BitPlaneDecoder<T>::decodeBpeStages(segment<T>& output, ibitwrapper<ibwT>& 
 		}
 
 		// stage 0
-		if constexpr ((dbg::bpe::decoder::disabled_stages & dbg::bpe::mask_stage_0) == 0) {
+		if constexpr (dbg::bpe::decoder::if_enabled(dbg::bpe::mask_stage_0)) {
+		// if constexpr ((dbg::bpe::decoder::disabled_stages & dbg::bpe::mask_stage_0) == 0) {
 			if ((b <= output.q) & ((bplane_skip & family_masks[DC_index]) == 0)) {
 				bplaneDecode(output.plainDc.data(), output.size, 1, input);
 			}
@@ -1391,21 +1386,24 @@ void BitPlaneDecoder<T>::decodeBpeStages(segment<T>& output, ibitwrapper<ibwT>& 
 		ptrdiff_t i = 0;
 		for (; i < output.size; i += items_per_gaggle) {
 			// reset gaggle states here
-			gaggle_states[i >> 4].code_marker_processed = { true, true, false, false, false };
-			if constexpr ((dbg::bpe::decoder::disabled_stages & dbg::bpe::mask_stage_1) == 0) {
+			gaggle_states[i >> gaggle_size_shift].code_marker_processed = { true, true, false, false, false };
+			if constexpr (dbg::bpe::decoder::if_enabled(dbg::bpe::mask_stage_1)) {
+			// if constexpr ((dbg::bpe::decoder::disabled_stages & dbg::bpe::mask_stage_1) == 0) {
 				if ((bplane_skip & family_masks[P_index]) != family_masks[P_index]) {
 					size_t current_gaggle_size = (i == last_gaggle_start) ? last_gaggle_size : items_per_gaggle;
 					for (ptrdiff_t j = 0; j < current_gaggle_size; ++j) {
-						uint64_t types_P_extract_mask = family_masks[P_index] & (~bplane_mask[i + j]) & (~bplane_skip);
-						decodeTypesSigns((i >> 4), j, types_P_extract_mask);
+						uint64_t types_P_extract_mask = (family_masks[P_index] & (~bplane_mask[i + j])) & (~bplane_skip);
+						decode_plain_vlw((i >> gaggle_size_shift), j, types_P_extract_mask);
 					}
 				}
 			}
 		}
 		
 		// stage 2
-		if constexpr (((dbg::bpe::decoder::disabled_stages & dbg::bpe::mask_stage_2) == 0) || 
-				((dbg::bpe::decoder::disabled_stages & dbg::bpe::mask_stage_3) == 0)) {
+		if constexpr (dbg::bpe::decoder::if_enabled(dbg::bpe::mask_stage_2) || 
+				dbg::bpe::decoder::if_enabled(dbg::bpe::mask_stage_3)) {
+		// if constexpr (((dbg::bpe::decoder::disabled_stages & dbg::bpe::mask_stage_2) == 0) || 
+		// 		((dbg::bpe::decoder::disabled_stages & dbg::bpe::mask_stage_3) == 0)) {
 			i = 0;
 			for (; i < output.size; i += items_per_gaggle) {
 				size_t current_gaggle_size = (i == last_gaggle_start) ? last_gaggle_size : items_per_gaggle;
@@ -1415,27 +1413,21 @@ void BitPlaneDecoder<T>::decodeBpeStages(segment<T>& output, ibitwrapper<ibwT>& 
 					tran_B.value = input.extract(tran_B.length);
 					tran_B.length &= (~tran_B.value);
 					if (tran_B.length == 0) {
-						auto& tran_D = block_states[i + j].tran_D;
-						// TODO: so the code below became not specific to tran_G only.
-						// Even for tran_B check for bplane_skip is performed.
-						// Maybe wrap to a lambda?
-						//
 						size_t tran_D_dependency_mask = 0;
 						for (ptrdiff_t f = 0; f < F_num; ++f) {
 							tran_D_dependency_mask <<= 1;
-							// TODO: refactor predicate
-							tran_D_dependency_mask |= ((bplane_skip & family_masks[(f * F_step) + D_offset]) != family_masks[(f * F_step) + D_offset]);
+							tran_D_dependency_mask |= 
+								((bplane_skip & family_masks[(f * F_step) + D_offset]) != family_masks[(f * F_step) + D_offset]);
 						}
-						tran_D_dependency_mask = ~tran_D_dependency_mask;
-						decodeTran.template operator()<SymbolBackwardTranslator::tran_D_codeparam>(tran_D, (i >> 4), tran_D_dependency_mask);
-						decodeTran.template operator()<SymbolBackwardTranslator::tran_D_codeparam>(tran_D, (i >> 4));
-
-						if constexpr ((dbg::bpe::decoder::disabled_stages & dbg::bpe::mask_stage_2) == 0) {
-							// TODO: loop variables naming consistense
+						auto& tran_D = block_states[i + j].tran_D;
+						decode_tran_vlw.template operator()<symbol_tran_D_codeoption>(tran_D, (i >> gaggle_size_shift), tran_D_dependency_mask);
+						
+						if constexpr (dbg::bpe::decoder::if_enabled(dbg::bpe::mask_stage_2)) {
+						// if constexpr ((dbg::bpe::decoder::disabled_stages & dbg::bpe::mask_stage_2) == 0) {
 							for (ptrdiff_t f = 0; f < F_num; ++f) {
 								if ((tran_D[f].length == 0) & ((bplane_skip & family_masks[(f * F_step) + C_offset]) == 0)) {
 									uint64_t types_C_extract_mask = family_masks[(f * F_step) + C_offset] & (~bplane_mask[i + j]);
-									decodeTypesSigns((i >> 4), j, types_C_extract_mask);
+									decode_plain_vlw((i >> gaggle_size_shift), j, types_C_extract_mask);
 								}
 							}
 						}
@@ -1445,7 +1437,8 @@ void BitPlaneDecoder<T>::decodeBpeStages(segment<T>& output, ibitwrapper<ibwT>& 
 		}
 
 		// stage 3
-		if constexpr ((dbg::bpe::decoder::disabled_stages & dbg::bpe::mask_stage_3) == 0) {
+		if constexpr (dbg::bpe::decoder::if_enabled(dbg::bpe::mask_stage_3)) {
+		// if constexpr ((dbg::bpe::decoder::disabled_stages & dbg::bpe::mask_stage_3) == 0) {
 			i = 0;
 			for (; i < output.size; i += items_per_gaggle) {
 				size_t current_gaggle_size = (i == last_gaggle_start) ? last_gaggle_size : items_per_gaggle;
@@ -1455,34 +1448,36 @@ void BitPlaneDecoder<T>::decodeBpeStages(segment<T>& output, ibitwrapper<ibwT>& 
 						size_t tran_G_dependency_mask = 0;
 						for (ptrdiff_t f = 0; f < F_num; ++f) {
 							tran_G_dependency_mask <<= 1;
+							tran_G_dependency_mask |= 
+								((bplane_skip & family_masks[(f * F_step) + G_offset]) != family_masks[(f * F_step) + G_offset]);
+							// skip corresponding tran_G bit if tran_D hasn't been set yet.
+							// nasks off the least significant bit if tran_D[f].length == 1
+							tran_G_dependency_mask &= (~tran_D[f].length);
+						}
+						auto& tran_G = block_states[i + j].tran_G;
+						decode_tran_vlw(tran_G, (i >> gaggle_size_shift), tran_G_dependency_mask);
+
+						for (ptrdiff_t f = 0; f < F_num; ++f) {
 							// bplane_skip handling below works fine because grandhildren 
 							// coeffs correspond to one specific subband, different from 
-							// handling bplane_skip for composite tran words.
-							//
-							tran_G_dependency_mask |= tran_D[f].length & ((bplane_skip & family_masks[(f * F_step) + G_offset]) == 0);
-							// tran_G_dependency_mask |= tran_D[f].length;
-						}
-						tran_G_dependency_mask = ~tran_G_dependency_mask;
-
-						auto& tran_G = block_states[i + j].tran_G;
-						decodeTran(tran_G, (i >> 4), tran_G_dependency_mask);
-						for (ptrdiff_t f = 0; f < F_num; ++f) {
-							// TODO: seems like bplane_skip check below is redundant 
-							// already because handled properly when computing tran_G
+							// handling bplane_skip for other tran words which are 
+							// composite.
 							if ((tran_G[f].length == 0) & ((bplane_skip & family_masks[(f * F_step) + G_offset]) == 0)) {
 								auto& tran_Hx = block_states[i + j].tran_Hx[f];
-								decodeTran.template operator()<SymbolBackwardTranslator::tran_H_codeparam>(tran_Hx, (i >> 4));
+								decode_tran_vlw.template operator()<symbol_tran_H_codeoption>(tran_Hx, (i >> gaggle_size_shift));
 							}
 						}
 						for (ptrdiff_t f = 0; f < F_num; ++f) {
-							// TODO: seems like bplane_skip check below is redundant 
-							// already because handled properly when computing tran_G
+							// bplane_skip handling below works fine because grandhildren 
+							// coeffs correspond to one specific subband, different from 
+							// handling bplane_skip for other tran words which are 
+							// composite.
 							if ((tran_G[f].length == 0) & ((bplane_skip & family_masks[(f * F_step) + G_offset]) == 0)) {
 								auto& tran_Hx = block_states[i + j].tran_Hx[f];
 								for (ptrdiff_t k = 0; k < HxpF_num; ++k) {
 									if (tran_Hx[k].length == 0) {
 										uint64_t extract_mask = family_masks[(f * F_step) + Hx_offset + k] & (~bplane_mask[i + j]);
-										decodeTypesSigns.template operator()<SymbolBackwardTranslator::types_H_codeparam>((i >> 4), j, extract_mask);
+										decode_plain_vlw.template operator()<symbol_types_H_codeoption>((i >> gaggle_size_shift), j, extract_mask);
 									}
 								}
 							}
@@ -1495,7 +1490,8 @@ void BitPlaneDecoder<T>::decodeBpeStages(segment<T>& output, ibitwrapper<ibwT>& 
 		// stage 4
 		i = 0;
 		for (ptrdiff_t j = 0; j < output.size; ++j) {
-			if constexpr ((dbg::bpe::decoder::disabled_stages & dbg::bpe::mask_stage_4) == 0) {
+			if constexpr (dbg::bpe::decoder::if_enabled(dbg::bpe::mask_stage_4)) {
+			// if constexpr ((dbg::bpe::decoder::disabled_stages & dbg::bpe::mask_stage_4) == 0) {
 				uint64_t effective_mask = bplane_mask[j] & (~bplane_skip);
 				uint64_t block_bplane = input.extract_masked(effective_mask);
 				block_bplane = decompose_bword(block_bplane, effective_mask);
@@ -1519,12 +1515,11 @@ void BitPlaneDecoder<T>::decodeBpeStages(segment<T>& output, ibitwrapper<ibwT>& 
 	}
 
 	{
-		// TODO: maybe implement predicate as utility function in util.h
-		auto signset = [](T& dst, uint64_t predicate) -> void {
-			int64_t spredicate = (int64_t)predicate;
-			dst = (dst ^ (-spredicate)) + spredicate;
+		auto sign_acc = [](T& dst, uint64_t src) -> void {
+			// better be vectorizable, therefore branchless needed
+			dst = negpred(dst, src);
 		};
-		accumulate_bplane<uint64_t, T>(block_signs.data(), output.data.data()->content, output.size * items_per_block, signset);
+		accumulate_bplane<uint64_t, T>(block_signs.data(), output.data.data()->content, output.size * items_per_block, sign_acc);
 	}
 
 	// trick segment decoder to handle DC subband as unscaled already
@@ -1590,7 +1585,7 @@ void BitPlaneDecoder<T>::decodeBpeStages(segment<T>& output, ibitwrapper<ibwT>& 
 // 2, and tran_B for consequtive bitplanes is null per rule (1).
 // Typical value transition for tran_B from more significant bit plane to less signinficant one:
 // ['0' ->] '1' -> null
-// In general, tran_B == '1' means that there is the first AC in joint descendals set to be 
+// In general, tran_B == '1' means that there is the first AC in joint descendants set to be 
 // selected, and it's time to start tracking tran_D to understand what this AC is and when the 
 // next AC will be selected.
 // 
@@ -1621,15 +1616,15 @@ void BitPlaneDecoder<T>::decodeBpeStages(segment<T>& output, ibitwrapper<ibwT>& 
 // (the set above is ordered so that values that comes later cannot appear in the stream before 
 // the values that comes earlier in the order of the set, and vice-versa (except null, that can be 
 // the last element also))
-// tran_D indicates what descendals set has the first AC coefficient to be selected in the current
-// bitplane. While tran_B equals '0', all AC in all descendals set in the current bitplane are 
+// tran_D indicates what descendants set has the first AC coefficient to be selected in the current
+// bitplane. While tran_B equals '0', all AC in all descendants set in the current bitplane are 
 // nesessarily zeroes, therefore tran_D is not encoded when tran_B equals '0'. When tran_B is '1', 
 // one bit in tran_D necessarily has value '1', and tran_D has length 3 for that bitplane only; 
 // for the next bitplane, the length of tran_D is atmost 2; the length is decreased by the number of 
 // '1' bits in tran_D for the previous bitplane.
 // Typical transition of length for tran_D:
 // [0 ->] 3 -> [2 -> [1 ->]] 0
-// In general, bit '1' in tran_D means that there is the first AC in the corresponding descendals set 
+// In general, bit '1' in tran_D means that there is the first AC in the corresponding descendants set 
 // to be selected, and it's time to start tracking types(Ci) and tran_G to understand what this AC 
 // is and when the next AC will be selected.
 // 
@@ -1650,21 +1645,24 @@ void BitPlaneDecoder<T>::decodeBpeStages(segment<T>& output, ibitwrapper<ibwT>& 
 // previous bitplanes and the current types of the coefficients in corresponding G sets. The 
 // length of tran_G is never greater than (3 - len(tran_D, b+1)) the value inversely proportional
 // to the length of tran_D for the next bitplane. In general, length of tran_G is not decreased 
-// monotonously: it is possible that the length of tran_G can be increased in AC coefficient 
-// type transition scenario that results in type -1 (0 -> 1 -> 2 -> -1); in such case 
-// t_max(Gi, b) is defined by the type of another AC coefficient in Gi and can be evaluated to 
-// 0 or 1, meaning the length of tran_G is increased by 1 for each Gi group that satisfy this 
-// scenario (note that no other coefficient in Gi should have type 2 for this scenario to work, 
-// otherwise the length of tran_G remains the same (or decreased due to other factors)).
+// monotonously: it is possible that the length of tran_G can be increased if grandchildren
+// generation of AC coefficients for some family is selected several bitplanes earlier than 
+// grandchildren generation of another family.
 // tran_G provides hint on whether setting of corresponding '1' bit in tran_D is caused by the
 // corresponding grandchildren set coefficients. In addition, it indicates if it is needed to 
-// track an analyze tran_H words.
+// track and analyze tran_H words.
 // State transitions for tran_G are complex. Below is a scheme for possible transitions of 
 // length of tran_G:
-// +-> [0 ->] ([3 ->] | [2 ->] | [1 ->]) +
-// |            +-<---<--+        |      |
-// |            +-<---<--+-<---<--+      |
-// +<---<---<---<---<---<---<---<---<---<+
+// 
+//              {remains 3}                                       {remains 2}                                 {remains 1}
+// [0] -+-----> 1 -+-> ({goto remains 2} | 0 {end})               [0 -+->] 1 -+-> ({remains 1} | 0 {end})     [0 ->] 1 -> 0 {end}
+//      |   +------+                                          +-------+<------+
+//      |   |                                                 |    
+//      +---+-> 2 -+-> ([1 ->] {goto remains 1} | 0 {end})    +-> 2 -> [1 ->] 0 {end}
+//      | +-|------+   
+//      | | |  
+//      +-+>+-> 3 -> [2 -> [1 ->] | 1 ->] 0 {end}
+// 
 // 
 // Well, transition t_max(Gi) 2 -> -1 -> { 0, 1, 2} is not possible per specificaitons in the 
 // standard. Type -1 is assigned due to subband weight factor only, and the weight coefficient 

@@ -18,8 +18,13 @@ inline vlw_t combine_bword(T raw, T select_mask);
 template <typename T>
 inline T decompose_bword(T packed, T unpack_mask);
 
-template <typename T, typename obwT, size_t alignment = 16>
-void bplane(T* data, size_t size, size_t b, obitwrapper<obwT>& ostream);
+template <typename T, typename obwT, size_t alignment = 16, bool omit_left_shifts = false>
+void bplane(T* data, size_t size, size_t b, obitwrapper<obwT>& ostream, 
+		std::function<void(T&)> transform = [](T&) -> void {});
+
+template <size_t b, typename T, typename obwT, size_t alignment = 16>
+void bplane_static(T* data, size_t size, obitwrapper<obwT>& ostream, 
+		std::function<void(std::type_identity_t<T>&)> transform = [](T&) -> void {});
 
 template <typename T, typename obwT, size_t alignment = 16>
 void bplanev4(T* data, size_t size, size_t belder, std::array<std::reference_wrapper<obitwrapper<obwT>>, 4> ostreams);
@@ -84,10 +89,16 @@ inline T decompose_bword(T packed, T unpack_mask) {
 	return result;
 }
 
-template <typename T, typename obwT, size_t alignment>
-void bplane(T* data, size_t size, size_t b, obitwrapper<obwT>& ostream) {
+template <typename T, typename obwT, size_t alignment, bool omit_left_shifts>
+void bplane(T* data, size_t size, size_t b, obitwrapper<obwT>& ostream, 
+		std::function<void(T&)> transform) {
+	// will have to perform integral promotion on the whole vector unit 
+	// otherwise, meaning allocating additional vector registers. Or 
+	// allocating several serial buffers of sizeof(T) as an array.
+	static_assert(alignment <= (sizeof(T) << 3), 
+		"Data loss: T is not capable of holding the number of bits equal to vector size.");
 	std::array<std::make_unsigned_t<T>, alignment> masks;
-	std::fill(masks.begin(), masks.end(), (0x01 << b));
+	std::fill(masks.begin(), masks.end(), (((std::make_unsigned_t<T>)(0x01)) << b));
 
 	std::array<T, alignment> rshifts;
 	std::array<T, alignment> lshifts;
@@ -95,7 +106,9 @@ void bplane(T* data, size_t size, size_t b, obitwrapper<obwT>& ostream) {
 	for (ptrdiff_t i = 0; i < rshifts.size(); ++i) {
 		std::make_signed_t<T> relative_shift = ((std::make_signed_t<decltype(b)>)(b)) - alignment + 1 + i;
 		rshifts[i] = relu(relative_shift);
-		lshifts[i] = relu(-relative_shift);
+		if constexpr (!omit_left_shifts) {
+			lshifts[i] = relu(-relative_shift);
+		}
 	}
 
 	std::make_unsigned_t<sufficient_integral_i<(alignment >> 3)>> serial_buffer;
@@ -104,14 +117,26 @@ void bplane(T* data, size_t size, size_t b, obitwrapper<obwT>& ostream) {
 		serial_buffer = 0;
 		for (ptrdiff_t j = 0; j < alignment; ++j) {
 			buffer[j] = (data[i + j] & masks[j]);
+			if constexpr (!omit_left_shifts) {
+				buffer[j] <<= lshifts[j];
+			}
+			buffer[j] >>= rshifts[j];
+			transform(data[i + j]);
 		}
 		for (ptrdiff_t j = 0; j < alignment; ++j) {
-			// TODO: check if promotion needed to integral sufficient to hold shifted value
-			// TODO: compile-time checks to prevent the following
-			// possible data loss if alignment > (sizeof(T) << 3)
-			serial_buffer |= (buffer[j] << lshifts[j]) >> rshifts[j];
+			serial_buffer |= buffer[j];
 		}
 		ostream << vlw_t{ alignment, serial_buffer };
+	}
+}
+
+template <size_t b, typename T, typename obwT, size_t alignment>
+void bplane_static(T* data, size_t size, obitwrapper<obwT>& ostream, 
+		std::function<void(std::type_identity_t<T>&)> transform) {
+	if constexpr (b >= alignment) {
+		bplane<T, obwT, alignment, true>(data, size, b, ostream, transform);
+	} else {
+		bplane<T, obwT, alignment, false>(data, size, b, ostream, transform);
 	}
 }
 
@@ -222,6 +247,7 @@ void bplaneEncode(T* data, size_t datasize, size_t pindex, size_t pcount, obitwr
 					vobuffers[buffer_index].pop_front();
 				} else {
 					// should never happen
+					// TODO: C++23 std::unreachable();
 					throw "UB!";
 				}
 			}

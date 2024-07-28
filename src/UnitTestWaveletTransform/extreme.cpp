@@ -2,7 +2,7 @@
 
 #include "WaveletTransform/dwt.tpp"
 #include "WaveletTransform/segment_assembly.tpp"
-#include "EntropyCoding/bpex.tpp"
+#include "EntropyCoding/bpe.tpp"
 
 #include "test_utils.tpp"
 
@@ -131,9 +131,10 @@ TEST(sparse, bpeRound) {
 	auto precoded = precoder.apply();
 
 	auto bpe_input_segment = precoded[0];
-	BitPlaneXcoder<decltype(bpe_input_segment)::type> bpexcoder;
-	bpexcoder.set_use_heuristic_DC(false);
-	bpexcoder.set_use_heuristic_bdepthAc(false);
+	BitPlaneEncoder<decltype(bpe_input_segment)::type> bpeencoder;
+	bpeencoder.set_use_heuristic_DC(false);
+	bpeencoder.set_use_heuristic_bdepthAc(false);
+	BitPlaneDecoder<decltype(bpe_input_segment)::type> bpedecoder;
 
 	std::vector<uint64_t> compressed;
 	// constexpr size_t stage_limit = 0x0937; // stage 2 debug
@@ -147,7 +148,7 @@ TEST(sparse, bpeRound) {
 		obitwrapper<uint64_t> boutput(bpe_debug_output_buffer_callback, stage_limit << 3);
 
 		try {
-			bpexcoder.encode(bpe_input_segment, boutput);
+			bpeencoder.encode(bpe_input_segment, boutput);
 		}
 		catch (const ccsds::bpe::byte_limit_exception& ex) {
 			std::cout << "Byte limit reached when encoding segment 0, output size: "
@@ -189,7 +190,7 @@ TEST(sparse, bpeRound) {
 			ibitwrapper<uint64_t> binput(bpe_debug_input_buffer_callback, stage_limit << 3);
 
 			try {
-				bpexcoder.decode(backward_input, binput);
+				bpedecoder.decode(backward_input, binput);
 			}
 			catch (const ccsds::bpe::byte_limit_exception& ex) {
 				std::cout << "Byte limit reached when decoding segment 0, decoded output size: "
@@ -268,9 +269,10 @@ TEST(sparse, bpeRound_002) {
 	auto precoded = precoder.apply();
 
 	auto bpe_input_segment = precoded[0];
-	BitPlaneXcoder<decltype(bpe_input_segment)::type> bpexcoder;
-	bpexcoder.set_use_heuristic_DC(false);
-	bpexcoder.set_use_heuristic_bdepthAc(false);
+	BitPlaneEncoder<decltype(bpe_input_segment)::type> bpeencoder;
+	bpeencoder.set_use_heuristic_DC(false);
+	bpeencoder.set_use_heuristic_bdepthAc(false);
+	BitPlaneDecoder<decltype(bpe_input_segment)::type> bpedecoder;
 
 	std::vector<uint64_t> compressed;
 	// constexpr size_t stage_limit = 0x0937; // stage 2 debug
@@ -284,7 +286,7 @@ TEST(sparse, bpeRound_002) {
 		obitwrapper<uint64_t> boutput(bpe_debug_output_buffer_callback, stage_limit << 3);
 
 		try {
-			bpexcoder.encode(bpe_input_segment, boutput);
+			bpeencoder.encode(bpe_input_segment, boutput);
 		}
 		catch (const ccsds::bpe::byte_limit_exception& ex) {
 			std::cout << "Byte limit reached when encoding segment 0, output size: "
@@ -326,7 +328,7 @@ TEST(sparse, bpeRound_002) {
 			ibitwrapper<uint64_t> binput(bpe_debug_input_buffer_callback, stage_limit << 3);
 
 			try {
-				bpexcoder.decode(backward_input, binput);
+				bpedecoder.decode(backward_input, binput);
 			}
 			catch (const ccsds::bpe::byte_limit_exception& ex) {
 				std::cout << "Byte limit reached when decoding segment 0, decoded output size: "
@@ -405,9 +407,10 @@ TEST(sparse, bpeRound_003) {
 	auto precoded = precoder.apply();
 
 	auto bpe_input_segment = precoded[0];
-	BitPlaneXcoder<decltype(bpe_input_segment)::type> bpexcoder;
-	bpexcoder.set_use_heuristic_DC(false);
-	bpexcoder.set_use_heuristic_bdepthAc(false);
+	BitPlaneEncoder<decltype(bpe_input_segment)::type> bpeencoder;
+	bpeencoder.set_use_heuristic_DC(false);
+	bpeencoder.set_use_heuristic_bdepthAc(false);
+	BitPlaneDecoder<decltype(bpe_input_segment)::type> bpedecoder;
 
 	std::vector<uint64_t> compressed;
 	// constexpr size_t stage_limit = 0x0937; // stage 2 debug
@@ -421,7 +424,7 @@ TEST(sparse, bpeRound_003) {
 		obitwrapper<uint64_t> boutput(bpe_debug_output_buffer_callback, stage_limit << 3);
 
 		try {
-			bpexcoder.encode(bpe_input_segment, boutput);
+			bpeencoder.encode(bpe_input_segment, boutput);
 		}
 		catch (const ccsds::bpe::byte_limit_exception& ex) {
 			std::cout << "Byte limit reached when encoding segment 0, output size: "
@@ -463,7 +466,7 @@ TEST(sparse, bpeRound_003) {
 			ibitwrapper<uint64_t> binput(bpe_debug_input_buffer_callback, stage_limit << 3);
 
 			try {
-				bpexcoder.decode(backward_input, binput);
+				bpedecoder.decode(backward_input, binput);
 			}
 			catch (const ccsds::bpe::byte_limit_exception& ex) {
 				std::cout << "Byte limit reached when decoding segment 0, decoded output size: "

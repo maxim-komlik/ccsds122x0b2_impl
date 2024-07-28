@@ -67,6 +67,7 @@ public:
 					this->flush_word((buffer_t)(symbol.value >> symbol.length));
 				} else {
 					// infinite recursion otherwise
+					// TODO: C++23 std::unreachable
 					throw "unreachable by design!";
 				}
 			}
