@@ -21,6 +21,8 @@
 
 #include "constant.h"
 
+// TODO: why class template? has no data members dependent on template type parameter...
+// is it related to the need of explicit instantiation for library exports?
 template <typename T, size_t alignment = 16>
 class BitPlaneEncoder: 
 		private constants::scale, 
@@ -97,6 +99,10 @@ public:
 	bool get_use_heuristic_DC() const;
 	void set_use_heuristic_bdepthAc(bool value);
 	bool get_use_heuristic_bdepthAc() const;
+
+	// TODO: implement early truncation
+	void set_stop_after_DC(bool value);
+	void set_stop_at_bplane(size_t bplane_index, size_t stage_index /* = 0b11 == stage_4 */);
 private:
 	template <typename D, typename obwT>
 	void kOptimal(kParams<D> params, obitwrapper<obwT>& output_stream);

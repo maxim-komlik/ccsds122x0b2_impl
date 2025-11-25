@@ -3,14 +3,7 @@
 #include <algorithm>
 #include <vector>
 
-struct img_meta {	// per-element location
-	size_t stride;
-	size_t offset;
-	size_t width;
-	size_t height;
-	size_t depth;
-	size_t length;
-};
+#include "img_meta.h"
 
 template <typename T, size_t alignment = 16>
 class bitmap;

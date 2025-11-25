@@ -2,7 +2,7 @@
 
 #include <random>
 
-#include <WaveletTransform/bitmap.tpp>
+#include <dwt/bitmap.tpp>
 
 template <typename T>
 bitmap<T> generateNoisyBitmap(size_t width, size_t height, size_t offset,

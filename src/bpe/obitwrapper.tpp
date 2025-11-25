@@ -2,9 +2,12 @@
 
 #include <functional>
 #include <type_traits>
+#include <span>
+#include <bit>
 
 #include "entropy_types.h"
 #include "exception.h"
+#include "utils.h"
 
 template <typename buffer_t> 
 class obitwrapper {
@@ -14,15 +17,15 @@ class obitwrapper {
 	const size_t capacity = sizeof(buffer_t) << 3;
 	size_t wcount = capacity;
 
-	size_t byte_limit; // TODO: but should be capable of holding 2^27 - 1. See 4.2.3.2.1
-	size_t byte_count = 0;
+	int_least32_t byte_limit; // should be capable of holding 2^27 - 1. See 4.2.3.2.1
+	int_least32_t byte_count = 0;
 
 	typedef std::function<void(buffer_t)> callback_t;
 	callback_t dest;
 
 public:
 	using value_type = ubuffer_t;
-	obitwrapper(const callback_t &callback, size_t dst_byte_limit = ((1 << 27) - 1)) 
+	obitwrapper(const callback_t &callback, int_least32_t dst_byte_limit = ((1 << 27) - 1)) 
 			: dest(callback), byte_limit(dst_byte_limit) {};
 	// obitwrapper(const callback_t &&callback) = delete;
 	~obitwrapper() = default;
@@ -106,6 +109,78 @@ public:
 
 	bool dirty() const {
 		return (this->wcount < this->capacity);
+	}
+
+	void set_byte_limit(int_least32_t limit, int_least32_t byte_count_init = 0) {
+		this->byte_limit = limit;
+		this->byte_count += (-(this->byte_count == 0)) & byte_count_init;
+
+		[[unlikely]]
+		if (this->byte_count >= this->byte_limit) {
+			throw ccsds::bpe::byte_limit_exception();
+		}
+	}
+
+	size_t get_byte_count() const {
+		return this->byte_count();
+	}
+
+	size_t get_byte_limit() const {
+		return this->byte_limit;
+	}
+
+	void write_bytes(std::span<std::byte> data_bytes) {
+		// data_bytes are assumed to be ordered MSB first
+
+		constexpr size_t bindex_mask = ~((-1) << 3);
+		if ((data_bytes.size() > sizeof(buffer_t)) & ((this->wcount & bindex_mask) == 0)) {
+			// we're lucky and current buffer's fill counter is on byte 
+			// boundary. At least we can copy whole bytes to the buffer.
+			// 
+			// check if data_bytes.data() is aligned properly next, if so we 
+			// can copy whole words (maybe reversing order of bytes if 
+			// environment is not big-endian (input is string and supposed to 
+			// be organized in big-endian manner)
+
+			ptrdiff_t index = 0;
+			while (this->dirty()) {
+				(*this) << vlw_t{ 8, data_bytes[index]};
+				++index;
+			}
+
+			constexpr size_t alignment_mask = alignof(buffer_t) - 1;
+			bool word_aligned = ((data_bytes.data() + index) & alignment_mask) == 0;
+			while (index < (((ptrdiff_t)data_bytes.size()) - sizeof(buffer_t))) {
+				bytes_view<buffer_t> buffer_word;
+
+				// can reasonably be well-predicted
+				if (word_aligned) {
+					buffer_word.compound = *(reinterpret_cast<buffer_t*>(data_bytes.data() + index));
+					index += sizeof(buffer_t);
+				} else {
+					for (ptrdiff_t i = 0; i < sizeof(buffer_t); ++i) {
+						buffer_word[i] = data_bytes[index];
+						++index;
+					}
+				}
+
+				// this gonna be the only endiannes-dependent code in the whole
+				// obitwrapper
+				if constexpr (std::endian::native != std::endian::little) {
+					buffer_word.compound = byteswap(buffer_word.compound);
+				}
+				this->flush_word(buffer_word.compound);
+			}
+
+			while (index != data_bytes.size()) {
+				(*this) << vlw_t{ 8, data_bytes[index]};
+				++index;
+			}
+		} else {
+			for (std::byte item : data_bytes) {
+				(*this) << vlw_t{ 8, item };
+			}
+		}
 	}
 
 private:

@@ -10,10 +10,10 @@
     <Filter Include="common\Source Files">
       <UniqueIdentifier>{0802e53a-b1f5-4f71-b2a4-e39462d96ba6}</UniqueIdentifier>
     </Filter>
-    <Filter Include="EntropyCoding">
+    <Filter Include="bpe">
       <UniqueIdentifier>{f6cc20ba-e55c-4cc3-9982-ef06d3d1647d}</UniqueIdentifier>
     </Filter>
-    <Filter Include="WaveletTransform">
+    <Filter Include="dwt">
       <UniqueIdentifier>{8b5833a9-308c-4a2a-a325-2ed6b1604528}</UniqueIdentifier>
     </Filter>
     <Filter Include="common\librarian">
@@ -31,17 +31,26 @@
       <UniqueIdentifier>{67DA6AB6-F800-4c08-8B7A-83BB121AAD01}</UniqueIdentifier>
       <Extensions>rc;ico;cur;bmp;dlg;rc2;rct;bin;rgs;gif;jpg;jpeg;jpe;resx;tiff;tif;png;wav;mfcribbon-ms</Extensions>
     </Filter>
-    <Filter Include="EntropyCoding\Header Files">
+    <Filter Include="bpe\Header Files">
       <UniqueIdentifier>{b31fc1d2-5b8e-4a81-a3f3-a08566470b96}</UniqueIdentifier>
     </Filter>
-    <Filter Include="EntropyCoding\Source Files">
+    <Filter Include="bpe\Source Files">
       <UniqueIdentifier>{544593c9-d8ba-4f89-b576-d4a06020c1d7}</UniqueIdentifier>
     </Filter>
-    <Filter Include="WaveletTransform\Header Files">
+    <Filter Include="dwt\Header Files">
       <UniqueIdentifier>{545c8414-39ce-4576-8f37-be9dc36ec5d5}</UniqueIdentifier>
     </Filter>
-    <Filter Include="WaveletTransform\Source Files">
+    <Filter Include="dwt\Source Files">
       <UniqueIdentifier>{19c6e003-5f14-4675-9830-a22d4d283db0}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="io">
+      <UniqueIdentifier>{8e19e6eb-0010-4c7e-bcf2-e4ae6dce2535}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="io\Header Files">
+      <UniqueIdentifier>{e5cfe2fe-062e-4602-85d2-e9cf96e0f8a9}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="io\Source Files">
+      <UniqueIdentifier>{19c6f66f-4665-4b45-9d0b-024d69c0adc4}</UniqueIdentifier>
     </Filter>
   </ItemGroup>
   <ItemGroup>
@@ -54,26 +63,62 @@
     <ClInclude Include="..\..\..\src\common\exception.h">
       <Filter>common\Header Files</Filter>
     </ClInclude>
-    <ClInclude Include="..\..\..\src\EntropyCoding\entropy_types.h">
-      <Filter>EntropyCoding\Header Files</Filter>
+    <ClInclude Include="..\..\..\src\bpe\entropy_types.h">
+      <Filter>bpe\Header Files</Filter>
     </ClInclude>
     <ClInclude Include="..\..\..\src\common\SegmentHeaders.h">
       <Filter>common\Header Files</Filter>
     </ClInclude>
-    <ClInclude Include="..\..\..\src\EntropyCoding\symbolstream.h">
-      <Filter>EntropyCoding\Header Files</Filter>
+    <ClInclude Include="..\..\..\src\bpe\symbolstream.h">
+      <Filter>bpe\Header Files</Filter>
     </ClInclude>
-    <ClInclude Include="..\..\..\src\EntropyCoding\symbolbuffer.h">
-      <Filter>EntropyCoding\Header Files</Filter>
+    <ClInclude Include="..\..\..\src\bpe\symbolbuffer.h">
+      <Filter>bpe\Header Files</Filter>
     </ClInclude>
     <ClInclude Include="..\..\..\src\common\constant.h">
       <Filter>common\Header Files</Filter>
     </ClInclude>
-    <ClInclude Include="..\..\..\src\EntropyCoding\constant.h">
-      <Filter>EntropyCoding\Header Files</Filter>
+    <ClInclude Include="..\..\..\src\bpe\constant.h">
+      <Filter>bpe\Header Files</Filter>
     </ClInclude>
-    <ClInclude Include="..\..\..\src\WaveletTransform\constant.h">
-      <Filter>WaveletTransform\Header Files</Filter>
+    <ClInclude Include="..\..\..\src\dwt\constant.h">
+      <Filter>dwt\Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="..\..\..\src\io\file_proto.h">
+      <Filter>io\Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="..\..\..\src\io\headers.h">
+      <Filter>io\Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="..\..\..\src\io\session_context.h">
+      <Filter>io\Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="..\..\..\src\io\sink.h">
+      <Filter>io\Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="..\..\..\src\io\memory_sink.h">
+      <Filter>io\Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="..\..\..\src\io\file_sink.h">
+      <Filter>io\Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="..\..\..\src\io\ccsds_protocol.h">
+      <Filter>io\Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="..\..\..\src\io\bitfield.h">
+      <Filter>io\Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="..\..\..\src\dwt\img_meta.h">
+      <Filter>dwt\Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="..\..\..\src\io\io_contexts.h">
+      <Filter>io\Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="..\..\..\src\io\io_settings.h">
+      <Filter>io\Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="..\..\..\src\io\tasking.h">
+      <Filter>io\Header Files</Filter>
     </ClInclude>
   </ItemGroup>
   <ItemGroup>
@@ -83,55 +128,64 @@
     <ClCompile Include="..\..\..\src\common\exception.cpp">
       <Filter>common\Source Files</Filter>
     </ClCompile>
-    <ClCompile Include="..\..\..\src\EntropyCoding\symbolstream.cpp">
-      <Filter>EntropyCoding\Source Files</Filter>
+    <ClCompile Include="..\..\..\src\bpe\symbolstream.cpp">
+      <Filter>bpe\Source Files</Filter>
     </ClCompile>
-    <ClCompile Include="..\..\..\src\EntropyCoding\symbolbuffer.cpp">
-      <Filter>EntropyCoding\Source Files</Filter>
+    <ClCompile Include="..\..\..\src\bpe\symbolbuffer.cpp">
+      <Filter>bpe\Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="..\..\..\src\io\proto.cpp">
+      <Filter>io\Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="..\..\..\src\core\core.cpp">
+      <Filter>common\librarian\Source Files</Filter>
     </ClCompile>
   </ItemGroup>
   <ItemGroup>
-    <None Include="..\..\..\src\WaveletTransform\bitmap.tpp">
-      <Filter>WaveletTransform\Source Files</Filter>
+    <None Include="..\..\..\src\dwt\bitmap.tpp">
+      <Filter>dwt\Source Files</Filter>
     </None>
-    <None Include="..\..\..\src\WaveletTransform\dwt.tpp">
-      <Filter>WaveletTransform\Source Files</Filter>
+    <None Include="..\..\..\src\dwt\dwt.tpp">
+      <Filter>dwt\Source Files</Filter>
     </None>
-    <None Include="..\..\..\src\WaveletTransform\dwtcore.tpp">
-      <Filter>WaveletTransform\Source Files</Filter>
+    <None Include="..\..\..\src\dwt\dwtcore.tpp">
+      <Filter>dwt\Source Files</Filter>
     </None>
-    <None Include="..\..\..\src\EntropyCoding\ibitwrapper.tpp">
-      <Filter>EntropyCoding\Source Files</Filter>
+    <None Include="..\..\..\src\bpe\ibitwrapper.tpp">
+      <Filter>bpe\Source Files</Filter>
     </None>
-    <None Include="..\..\..\src\EntropyCoding\obitwrapper.tpp">
-      <Filter>EntropyCoding\Source Files</Filter>
+    <None Include="..\..\..\src\bpe\obitwrapper.tpp">
+      <Filter>bpe\Source Files</Filter>
     </None>
-    <None Include="..\..\..\src\EntropyCoding\entropy_code.tpp">
-      <Filter>EntropyCoding\Source Files</Filter>
+    <None Include="..\..\..\src\bpe\entropy_code.tpp">
+      <Filter>bpe\Source Files</Filter>
     </None>
-    <None Include="..\..\..\src\EntropyCoding\symbol_code.tpp">
-      <Filter>EntropyCoding\Source Files</Filter>
+    <None Include="..\..\..\src\bpe\symbol_code.tpp">
+      <Filter>bpe\Source Files</Filter>
     </None>
     <None Include="..\..\..\src\common\aligned_vector.tpp">
       <Filter>common\Source Files</Filter>
     </None>
-    <None Include="..\..\..\src\WaveletTransform\dwtscale.tpp">
-      <Filter>WaveletTransform\Source Files</Filter>
+    <None Include="..\..\..\src\dwt\dwtscale.tpp">
+      <Filter>dwt\Source Files</Filter>
     </None>
-    <None Include="..\..\..\src\WaveletTransform\segment_assembly.tpp">
-      <Filter>WaveletTransform\Source Files</Filter>
+    <None Include="..\..\..\src\dwt\segment_assembly.tpp">
+      <Filter>dwt\Source Files</Filter>
     </None>
-    <None Include="..\..\..\src\EntropyCoding\bitplane.tpp">
-      <Filter>EntropyCoding\Source Files</Filter>
+    <None Include="..\..\..\src\bpe\bitplane.tpp">
+      <Filter>bpe\Source Files</Filter>
     </None>
-    <None Include="..\..\..\src\EntropyCoding\bpe.tpp">
-      <Filter>EntropyCoding\Source Files</Filter>
+    <None Include="..\..\..\src\bpe\bpe.tpp">
+      <Filter>bpe\Source Files</Filter>
     </None>
-    <None Include="..\..\..\src\EntropyCoding\entropy_translate.h">
-      <Filter>EntropyCoding\Header Files</Filter>
+    <None Include="..\..\..\src\bpe\entropy_translate.h">
+      <Filter>bpe\Header Files</Filter>
     </None>
-    <None Include="..\..\..\src\EntropyCoding\symbol_translate.h">
-      <Filter>EntropyCoding\Header Files</Filter>
+    <None Include="..\..\..\src\bpe\symbol_translate.h">
+      <Filter>bpe\Header Files</Filter>
+    </None>
+    <None Include="..\..\..\src\io\endian.tpp">
+      <Filter>io\Source Files</Filter>
     </None>
   </ItemGroup>
 </Project>

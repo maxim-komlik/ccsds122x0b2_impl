@@ -6,7 +6,7 @@
 #include <functional>
 
 #include "utils.h"
-#include "EntropyCoding/bpe.tpp"
+#include "bpe/bpe.tpp"
 
 TEST(experimental, DISABLED_quantizationValueCheck) {
 	typedef ptrdiff_t item_t;
@@ -126,6 +126,30 @@ TEST(experimental, DISABLED_quantizationValueCheck) {
 	EXPECT_EQ(diffs.size(), 0);
 }
 
-#include "WaveletTransform/dwt.tpp"
-#include "WaveletTransform/segment_assembly.tpp"
+#include "dwt/dwt.tpp"
+#include "dwt/segment_assembly.tpp"
 #include "test_utils.tpp"
+
+#include "io/ccsds_protocol.h"
+
+TEST(compile, io) {
+	typedef long long item_t;
+	constexpr size_t alignment = 16;
+	img_pos props;
+	props.width = 1 << 10;
+	props.height = 1 << 10;
+	bitmap<item_t> input = generateNoisyBitmap<item_t>(props.width, props.height, 64);
+
+	shifts_t subband_shifts{ 0 };
+
+	ForwardWaveletTransformer<item_t> dwt(props);
+	dwt.get_scale().set_shifts(subband_shifts);
+	dwt.apply(input);
+	auto i_coeffs = dwt.get_subbands();
+
+	SegmentAssembler<item_t> precoder(i_coeffs);
+	precoder.set_shifts(subband_shifts);
+	auto output = precoder.apply();
+
+	ccsds_protocol protocol(output[0], 0);
+}

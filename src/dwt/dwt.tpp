@@ -46,24 +46,12 @@ namespace inverse {
 #include "bitmap.tpp"
 #include "dwtcore.tpp"
 #include "dwtscale.tpp"
-
-struct img_pos {
-	size_t x;
-	size_t x_step;
-	size_t y;
-	size_t y_step;
-	size_t z;
-	size_t z_step;
-	size_t x_stride;
-	size_t width;
-	size_t y_stride;
-	size_t height;
-	size_t z_stride;
-	size_t depth;
-};
+#include "img_meta.h"
 
 template <typename T, size_t alignment = 16>
 class ForwardWaveletTransformer {
+	// buffers are allocated in the order below:
+	// H1, L1, LL1, H2, L2, LL2, H3, L3, LL3, HL3, LH3, HH3, HL2, LH2, HH2, HL1, LH1, HH
 	std::array<typename bitmap<T>, 18> buffers;
 	std::array<img_meta, 3> current_frames;
 	dwtcore<T> core;
@@ -171,6 +159,7 @@ ForwardWaveletTransformer<T, alignment>::ForwardWaveletTransformer(img_pos frame
 		width ^= height;
 		height /= 2;
 		this->buffers[i * buffer_iter_step + 2].resize(width, height);
+
 		for (size_t j = 0; j < 3; ++j) {
 			this->buffers[this->buffers.size() - (i + 1) * buffer_iter_step + j].resize(width, height);
 		}
@@ -188,7 +177,7 @@ void ForwardWaveletTransformer<T, alignment>::apply(bitmap<T>& source) {
 		& (~(this->c_h_alignment - 1));
 	if (source.get_meta().width < this->m_src_meta.width) {
 		for (size_t i = 0; i < this->m_src_meta.height; ++i) {
-			bitmap_row<T> source_row = source[i];
+			bitmap_row<T> source_row = source[i]; // this necessiates non-const parameter
 			size_t start_index = source.get_meta().width;
 			for (size_t j = start_index; j < this->m_src_meta.width + 1; ++j) {
 				source_row[j] = source_row[start_index - 1];
@@ -196,7 +185,7 @@ void ForwardWaveletTransformer<T, alignment>::apply(bitmap<T>& source) {
 		}
 	}
 	// size_t level = 0;
-	bitmap<T>* src = &source;
+	bitmap<T>* src = &source; // const?
 	for (ptrdiff_t level = 0; level < this->c_level_count; ++level) {
 		bitmap<T>& hout = this->buffers[level * 3 + 0];
 		bitmap<T>& lout = this->buffers[level * 3 + 1];
@@ -216,6 +205,9 @@ void ForwardWaveletTransformer<T, alignment>::apply(bitmap<T>& source) {
 
 template <typename T, size_t alignment>
 subbands_t<T> ForwardWaveletTransformer<T, alignment>::get_subbands() {
+	// buffers are allocated in the order below in return value:
+	// LL3, HL3, LH3, HH3, HL2, LH2, HH2, HL1, LH1, HH1
+
 	// TODO: Check if possible to omit default-initialization and 
 	// move-initialize members of output variable directly
 	// [because aggregate initialization copy-initializes elements]

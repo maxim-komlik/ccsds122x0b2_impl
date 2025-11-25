@@ -1740,3 +1740,162 @@ void fncore()
 // 			current_bplane.erase(current_bplane.begin(), current_bplane.begin() + input.size);
 // 		}
 // 	}
+
+// file_proto.h
+// 
+// 	// TODO: seems like bit fields are useless when defining
+// 	// protocol structures because behavior is much implementation
+// 	// defined and there will be different results in different 
+// 	// implementations
+// 	// 
+// struct proto_header {
+// 	uint64_t seg_size : 64;						// 0-3f		actual segment size in bytes
+// 	unsigned int headers_offset : 8;			// 40-47	segment header offset
+// 	unsigned int protocol_marker : 8;			// 48-4f	protocol marker
+// 	unsigned int protocol_version_major : 4;	// 50-53	protocol version
+// 	unsigned int protocol_version_minon : 4;	// 54-57	protocol version
+// 	unsigned int reserved001 : 16;				// 58-67	reserved, may be used for protocol params
+// 
+// 	uint8_t headers_area[19];					// 68-ff	header encoding space, maximum 19 bytes
+// };
+//
+
+// bitfield.h
+// 
+// class bitfield_impl {
+// protected:
+// 	struct bitfield_allocation {
+// 		ptrdiff_t offset;
+// 		size_t width;
+// 	};
+// 
+// 	template <typename T>
+// 	void set_bitfield(uint8_t* data, bitfield_allocation balloc, T value) {
+// 		// bufferized implementation, performs excessive writes (dependent
+// 		// on the size of T type). Requires both little-endian and big-endian
+// 		// implementations as depends on byte order in T type. Assuming the 
+// 		// function is inlined and balloc parameter is likely constexpr, many 
+// 		// values may be known at compile time, and excessive writes may be 
+// 		// optimized away by compiler. Loops can be effectuvely unrolled as 
+// 		// constexpr arguments are used for loop condition.
+// 		// 
+// 
+// 		// TODO: unsigned constraint for T value
+// 		using uT = std::make_unsigned_t<T>;		// but T is meant to be unsigned anyway...
+// 		using sT = std::make_signed_t<T>;
+// 
+// 		union bytes_view {
+// 			uT compound;
+// 			uint8_t[sizeof(uT)] bytes;
+// 		};
+// 
+// 		constexpr size_t bindex_mask = ~((-1) << 3);
+// 
+// 		bytes_view value_bv{ .compound = value };
+// 		bytes_view mask_bv{ .compound = ~((sT)(-1) << balloc.width) };
+// 
+// 		size_t balign_shift = (balloc.offset - balloc.width) & bindex_mask;
+// 		value_bv.compound = std::rotl(value_bv.compound, balign_shift);
+// 		mask_bv.compound = std::rotl(mask_bv.compound, balign_shift);
+// 
+// 		ptrdiff_t data_offset = (balloc.offset + balloc.width) - ((sizeof(uT) + 1) << 3);
+// 		data_offset <<= 3;
+// 
+// 		if constexpr (std::endian::native != std::endian::big) {
+// 			// little-endian implementaion considered as default
+// 			uint16_t mask_msb = mask_bv.bytes[sizeof(uT) - 1];
+// 			mask_msb <<= balign_shift;
+// 
+// 			uint8_t mask_byte = mask_msb >> ((sizeof(uint16_t) - 1) << 3);
+// 			uint8_t value_byte = value_bv.bytes[0];
+// 
+// 			data[data_offset] = (data[data_offset] & (~mask_byte)) ^ (value_byte & mask_byte);
+// 			++data_offset;
+// 
+// 			for (ptrdiff_t i = sizeof(uT) - 1; i >= 0; --i) {
+// 				mask_byte = mask_bv.bytes[i];
+// 				value_byte = value_bv.bytes[i];
+// 
+// 				data[data_offset] = (data[data_offset] & (~mask_byte)) ^ (value_byte & mask_byte);
+// 				++data_offset;
+// 			}
+// 		} else {
+// 			uint16_t mask_msb = mask_bv.bytes[0];
+// 			mask_msb <<= balign_shift;
+// 
+// 			uint8_t mask_byte = mask_msb >> ((sizeof(uint16_t) - 1) << 3);
+// 			uint8_t value_byte = value_bv.bytes[sizeof(uT) - 1];
+// 
+// 			data[data_offset] = (data[data_offset] & (~mask_byte)) ^ (value_byte & mask_byte);
+// 			++data_offset;
+// 
+// 			for (ptrdiff_t i = 0; i < sizeof(uT); ++i) {
+// 				mask_byte = mask_bv.bytes[i];
+// 				value_byte = value_bv.bytes[i];
+// 
+// 				data[data_offset] = (data[data_offset] & (~mask_byte)) ^ (value_byte & mask_byte);
+// 				++data_offset;
+// 			}
+// 		}
+// 
+// 		// |.+.....|	offset
+// 		// |...+...|	width
+// 		//			 -= 2		=> mask rotl 2
+// 		// 
+// 		// 
+// 		// |.....*.|	offset
+// 		// |...+...|	width
+// 		//			 -= 6		=> mask rotl 6
+// 		// 
+// 	}
+// 
+// 
+// 	template <typename T>
+// 	void set_bitfield_min_writes(uint8_t* data, bitfield_allocation balloc, T value) {
+// 		// straight-forward implementation, general loop iteration for any 
+// 		// byte position, endiannes-agnostic. Utilizes shifts heavily. Uses
+// 		// std::min function.
+// 		// 
+// 		// bitfield processed starting from the elder bit at position
+// 		// (balloc.width - 1), byte by byte, keeping other bits unchanged, 
+// 		// amount of memory writes is minimal.
+// 		//
+// 
+// 		constexpr size_t bindex_mask = ~((-1) << 3);
+// 
+// 		while (balloc.width != 0) {
+// 			ptrdiff_t byte_index = balloc.offset >> 3;
+// 			size_t mask_width = std::min((size_t)(((~balloc.offset) & bindex_mask) + 1), balloc.width);
+// 			size_t mask_offset = ((balloc.offset & bindex_mask) + 1) - mask_width;
+// 
+// 			uint8_t mask_byte = (~((-1) << mask_width)) << mask_offset;
+// 			uint8_t value_byte = (value >> (balloc.width - mask_width)) << mask_offset;
+// 
+// 			data[byte_index] = (data[byte_index] & (~mask_byte)) ^ (value_byte & mask_byte);
+// 
+// 			balloc.offset += mask_width;
+// 			balloc.width -= mask_width;
+// 		}
+// 
+// 		//		  offset+                                    field_end+                   
+// 		//	|.......|...+...|.......|.......|.......|.......|.......|.+.....|.......|
+// 		//
+// 		// field_end = offset + width
+// 		//
+// 	}
+// 
+// 	template <size_t N>
+// 	consteval static size_t bitfield_size(const std::array<bitfield_allocation, N>& fields) {
+// 		constexpr size_t bindex_mask = ~((-1) << 3);
+// 		return ((fields.back().offset + fields.back().width) + bindex_mask) >> 3;
+// 	}
+// };
+// 
+// std::apply(
+// 	[&max_offset_allocated](const auto& ... args) constexpr -> void {
+// 		unroll<false, UnrollFoldType::left>::apply(
+// 			[&max_offset_allocated]<size_t index>(auto item) constexpr -> void {
+// 				size_t field_msb_offset = item.alloc.offset + item.alloc.width;
+// 				max_offset_allocated = std::max(max_offset_allocated, field_msb_offset);
+// 			}, args... );
+// 	}, bitfield_traits<Derived>::fields);

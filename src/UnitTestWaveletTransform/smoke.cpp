@@ -1,7 +1,7 @@
 #include "gtest/gtest.h"
 
-#include "WaveletTransform/dwt.tpp"
-#include "WaveletTransform/dwtcore.tpp"
+#include "dwt/dwt.tpp"
+#include "dwt/dwtcore.tpp"
 
 #include "test_utils.tpp"
 
@@ -170,7 +170,7 @@ TEST(tbitmap, DISABLED_bitmapMemorySmoke) {
 	}
 }
 
-#include "WaveletTransform/segment_assembly.tpp"
+#include "dwt/segment_assembly.tpp"
 
 TEST(segments, EncoderSmoke) {
 	typedef long long item_t;
@@ -259,7 +259,7 @@ TEST(segments, EncoderRound) {
 	}
 }
 
-#include "EntropyCoding/bpe.tpp"
+#include "bpe/bpe.tpp"
 
 TEST(bpe, EncoderSmoke) {
 	typedef long long item_t;

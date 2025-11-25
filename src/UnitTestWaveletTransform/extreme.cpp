@@ -1,8 +1,8 @@
 #include "gtest/gtest.h"
 
-#include "WaveletTransform/dwt.tpp"
-#include "WaveletTransform/segment_assembly.tpp"
-#include "EntropyCoding/bpe.tpp"
+#include "dwt/dwt.tpp"
+#include "dwt/segment_assembly.tpp"
+#include "bpe/bpe.tpp"
 
 #include "test_utils.tpp"
 
