@@ -2,12 +2,12 @@
 
 #include <array>
 
-#include "core_types.h"
+#include "core_types.hpp"
 #include "bitmap.tpp"
 #include "dwtcore.tpp"
 #include "dwtscale.tpp"
 #include "img_meta.h"
-#include "constant.h"
+#include "constant.hpp"
 
 template <typename T, size_t alignment = 16>
 class ForwardWaveletTransformer: private constants::dwt {

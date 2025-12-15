@@ -2,7 +2,7 @@
 
 #include <bit>
 
-#include "common/constant.h"
+#include "common/constant.hpp"
 
 // TODO: move dbg parameters to dedicated files
 namespace dbg {

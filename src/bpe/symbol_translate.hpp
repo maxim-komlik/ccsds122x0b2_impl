@@ -3,7 +3,7 @@
 #include <array>
 #include <tuple>
 
-#include "entropy_types.h"
+#include "entropy_types.hpp"
 #include "symbol_code.tpp"
 
 struct SymbolForwardTranslator {

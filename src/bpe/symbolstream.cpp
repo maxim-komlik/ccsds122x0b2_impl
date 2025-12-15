@@ -1,8 +1,8 @@
-#include "symbolstream.h"
+#include "symbolstream.hpp"
 
 #include <vector>
 
-#include "entropy_types.h"
+#include "entropy_types.hpp"
 
 symbolstream::symbolstream(std::vector<content_t>&& src) :
 		content(std::move(src)), size(0), next_read_index(0) { }

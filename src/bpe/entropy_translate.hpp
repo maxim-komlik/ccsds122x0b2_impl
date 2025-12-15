@@ -3,7 +3,7 @@
 #include <array>
 #include <tuple>
 
-#include "entropy_types.h"
+#include "entropy_types.hpp"
 #include "entropy_code.tpp"
 #include "ibitwrapper.tpp"
 

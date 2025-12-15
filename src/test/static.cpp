@@ -5,7 +5,7 @@
 #include <vector>
 #include <functional>
 
-#include "utils.h"
+#include "utils.hpp"
 #include "bpe/bpe.tpp"
 
 TEST(experimental, DISABLED_quantizationValueCheck) {
@@ -130,7 +130,7 @@ TEST(experimental, DISABLED_quantizationValueCheck) {
 #include "dwt/segment_assembly.hpp"
 #include "test_utils.tpp"
 
-#include "io/ccsds_protocol.h"
+#include "io/ccsds_protocol.hpp"
 
 TEST(compile, io) {
 	typedef long long item_t;

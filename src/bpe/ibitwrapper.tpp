@@ -3,8 +3,8 @@
 #include <bit>
 #include <type_traits>
 
-#include "entropy_types.h"
-#include "exception.h"
+#include "entropy_types.hpp"
+#include "exception.hpp"
 
 template <typename buffer_t> class ibitwrapper {
 	typedef typename std::make_unsigned<buffer_t>::type ubuffer_t;

@@ -1,8 +1,8 @@
-#include "symbolbuffer.h"
+#include "symbolbuffer.hpp"
 
 #include <vector>
 
-#include "entropy_types.h"
+#include "entropy_types.hpp"
 
 symbolbuffer::symbolbuffer(size_t max_symbol_count, size_t symbol_size) : 
 		next_read_index(0), size_of_symbol(symbol_size) {

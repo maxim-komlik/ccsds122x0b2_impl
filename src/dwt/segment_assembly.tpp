@@ -4,9 +4,9 @@
 #include <memory>
 
 #include "bitmap.tpp"
-#include "core_types.h"
-#include "utils.h"
-#include "dwt/constant.h"
+#include "core_types.hpp"
+#include "utils.hpp"
+#include "dwt/constant.hpp"
 
 
 template <typename T, size_t alignment = 16>

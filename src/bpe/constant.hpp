@@ -3,7 +3,7 @@
 #include <array>
 #include <functional>
 
-#include "common/constant.h"
+#include "common/constant.hpp"
 
 // TODO: move dbg parameters to dedicated files
 namespace dbg {

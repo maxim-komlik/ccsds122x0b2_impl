@@ -7,19 +7,19 @@
 #include <numeric>
 #include <type_traits>
 
-#include "core_types.h"
-#include "utils.h"
+#include "core_types.hpp"
+#include "utils.hpp"
 
 #include "aligned_vector.tpp"
 
 #include "obitwrapper.tpp"
 #include "ibitwrapper.tpp"
 #include "bitplane.tpp"
-#include "symbolbuffer.h"
-#include "symbol_translate.h"
-#include "entropy_translate.h"
+#include "symbolbuffer.hpp"
+#include "symbol_translate.hpp"
+#include "entropy_translate.hpp"
 
-#include "constant.h"
+#include "constant.hpp"
 
 // TODO: why class template? has no data members dependent on template type parameter...
 // is it related to the need of explicit instantiation for library exports?

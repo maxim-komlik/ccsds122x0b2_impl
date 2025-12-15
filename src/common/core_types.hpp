@@ -6,7 +6,7 @@
 #include "dwt\bitmap.tpp"
 #include "aligned_vector.tpp"
 
-#include "constant.h"
+#include "constant.hpp"
 
 // TODO: move subbands_t to dwt types header
 template <typename T>

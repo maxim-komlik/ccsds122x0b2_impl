@@ -2,7 +2,7 @@
 
 #include <vector>
 
-#include "entropy_types.h"
+#include "entropy_types.hpp"
 
 class symbolbuffer {
 	using content_t = dense_vlw_t::type;

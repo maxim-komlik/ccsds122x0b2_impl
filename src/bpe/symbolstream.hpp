@@ -2,7 +2,7 @@
 
 #include <vector>
 
-#include "entropy_types.h"
+#include "entropy_types.hpp"
 
 class symbolstream {
 	using content_t = dense_vlw_t::type; // TODO: review type dependency

@@ -5,8 +5,8 @@
 #include <bit>
 #include <functional>
 
-#include "utils.h"
-#include "entropy_types.h"
+#include "utils.hpp"
+#include "entropy_types.hpp"
 #include "obitwrapper.tpp"
 #include "ibitwrapper.tpp"
 
