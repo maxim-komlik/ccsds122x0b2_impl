@@ -51,6 +51,19 @@ struct _dwtcore_i {
 				T htemp = (-p_hsrc[i + j] + p_hsrc[i + j + 1] + p_hsrc[i + j + 2] - p_hsrc[i + j + 3]) >> 3;
 				p_hdst[i + j] -= ((p_hsrc[i + j + 1] + p_hsrc[i + j + 2]) + htemp + 1) >> 1;
 				p_ldst[i + j] = p_ldst[i + j + 1] - ((-p_lsrc[i + j - 1] - p_lsrc[i + j] + 2) >> 2);
+				// TODO: code { p_lsrc[i + j - 1] } in the line above is the reason why corrlfwd
+				// is needed: p_lsrc[-1] == ldst[-1] is never initialized, and therefore computation 
+				// result value is not defined. Why dont just write { hdst[-1] = hdst[0] } before 
+				// the main loop? It's just one memory move, although non-vectorized.
+				// 
+				// well, first two 2 rows of hdst content is expected to be allocated on vector 
+				// registers by the moment the main loop begins. Still it is not clear how -1 
+				// index access is meant to be performed. Vector cross-register right circular shift 
+				// by one item (then the last item is moved to index 0, or just dropped and 
+				// never used if non-circular shift is used)? But then the shifted-out value has 
+				// to be transferred across sequential vector register loads somehow, probably using 
+				// gpr if register pressure allows that
+				//
 			}
 		}
 
@@ -62,6 +75,7 @@ struct _dwtcore_i {
 	}
 
 	void bwd(T const * hsrc, T const * lsrc, T* dst, size_t count) {
+		// writes to dst [0, +48], reades from hsrc [min(31), 
 		constexpr size_t vector_step = 1 << 4;
 		constexpr size_t move_prepipeline_boundary = 0 * vector_step;		// TODO: check if needed
 		constexpr size_t h_prepipeline_boundary = 1 * vector_step;
@@ -136,9 +150,9 @@ struct _dwtcore_i {
 	}
 
 	inline void extfwd(T* begining) {
-		begining[-1] = begining[1];
+		begining[-1] = begining[1]; // TODO: source index -1 is never used? no need to copy?
 		begining[-2] = begining[2];
-		begining[-4] = begining[4];
+		begining[-4] = begining[4]; // TODO: source index -4 is never used? no need to copy?
 	}
 
 	inline void rextfwd(T* ending) {
@@ -183,6 +197,44 @@ struct _dwtcore<T, true> {
 
 template <typename T>
 using dwtcore = typename _dwtcore<T, std::is_integral<T>::value>::type;
+
+namespace forward {
+	template <typename T = double>
+	constexpr T h[] = {
+		0.852698679009,
+		0.377402855613,
+		-0.110624404418,
+		-0.023849465020,
+		0.037828455507
+	};
+
+	template <typename T = double>
+	constexpr T g[] = {
+		-0.788485616406,
+		0.418092273222,
+		0.040689417609,
+		-0.064538882629
+	};
+}
+
+namespace inverse {
+	template <typename T = double>
+	constexpr T q[] = {
+		0.788485616406,
+		0.418092273222,
+		-0.040689417609,
+		-0.064538882629
+	};
+
+	template <typename T = double>
+	constexpr T p[] = {
+		-0.852698679009,
+		0.377402855613,
+		0.110624404418,
+		-0.023849465020,
+		-0.037828455507
+	};
+}
 
 namespace target {
 	template <typename T = unsigned int>

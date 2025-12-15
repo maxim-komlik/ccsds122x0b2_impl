@@ -45,7 +45,7 @@ private:
 
 public:
 	// nor copyable nor movable due to mapping member containing pointers
-	EntropyTranslator() = default; // causes compiler not to define copy/move ctors implicitly
+	EntropyTranslator() = default; // causes compiler not to define copy/move ctors implicitly // TODO: why?
 	EntropyTranslator& operator=(const EntropyTranslator& other) = delete;
 
 	// check if needed

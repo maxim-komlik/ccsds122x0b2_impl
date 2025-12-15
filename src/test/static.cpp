@@ -126,8 +126,8 @@ TEST(experimental, DISABLED_quantizationValueCheck) {
 	EXPECT_EQ(diffs.size(), 0);
 }
 
-#include "dwt/dwt.tpp"
-#include "dwt/segment_assembly.tpp"
+#include "dwt/dwt.hpp"
+#include "dwt/segment_assembly.hpp"
 #include "test_utils.tpp"
 
 #include "io/ccsds_protocol.h"
@@ -142,14 +142,13 @@ TEST(compile, io) {
 
 	shifts_t subband_shifts{ 0 };
 
-	ForwardWaveletTransformer<item_t> dwt(props);
+	ForwardWaveletTransformer<item_t> dwt;
 	dwt.get_scale().set_shifts(subband_shifts);
-	dwt.apply(input);
-	auto i_coeffs = dwt.get_subbands();
+	auto i_coeffs = dwt.apply(input);
 
-	SegmentAssembler<item_t> precoder(i_coeffs);
+	SegmentAssembler<item_t> precoder;
 	precoder.set_shifts(subband_shifts);
-	auto output = precoder.apply();
+	auto output = precoder.apply(std::move(i_coeffs));
 
-	ccsds_protocol protocol(output[0], 0);
+	ccsds_protocol protocol(*(output[0]), 0);
 }

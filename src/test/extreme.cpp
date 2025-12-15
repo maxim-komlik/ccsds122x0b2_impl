@@ -1,7 +1,7 @@
 #include "gtest/gtest.h"
 
-#include "dwt/dwt.tpp"
-#include "dwt/segment_assembly.tpp"
+#include "dwt/dwt.hpp"
+#include "dwt/segment_assembly.hpp"
 #include "bpe/bpe.tpp"
 
 #include "test_utils.tpp"
@@ -19,16 +19,14 @@ TEST(sparse, dwtiRound) {
 	// shifts_t subband_shifts{ 3, 3, 2, 1, 3, 2, 1, 3, 2, 1 };
 	shifts_t subband_shifts{ 2, 0, 0, 0, 0, 0, 0, 0, 0, 0 };
 
-	ForwardWaveletTransformer<item_t> dwt(props);
+	ForwardWaveletTransformer<item_t> dwt;
 	dwt.get_scale().set_shifts(subband_shifts);
-	dwt.apply(input);
-	auto i_coeffs = dwt.get_subbands();
+	auto i_coeffs = dwt.apply(input);
 
-	BackwardWaveletTransformer<item_t> bdwt(props, false);
+	BackwardWaveletTransformer<item_t> bdwt;
 	bdwt.get_scale().set_shifts(dwt.get_scale().get_shifts());
 	bdwt.set_skip_dc_scaling(false);
-	bdwt.set_subbands(i_coeffs);
-	bitmap<item_t> output = bdwt.apply();
+	bitmap<item_t> output = bdwt.apply(i_coeffs);
 
 	img_meta input_props = input.get_meta();
 	img_meta output_props = output.get_meta();
@@ -55,20 +53,20 @@ TEST(sparse, segmentsRound) {
 	shifts_t subband_shifts{ 3, 3, 2, 1, 3, 2, 1, 3, 2, 1 };
 	// shifts_t subband_shifts{ 0, 0, 0, 0, 0, 0, 0, 0, 0, 0 };
 
-	ForwardWaveletTransformer<item_t> dwt(props);
+	ForwardWaveletTransformer<item_t> dwt;
 	dwt.get_scale().set_shifts(subband_shifts);
-	dwt.apply(input);
-	auto i_coeffs = dwt.get_subbands();
+	auto i_coeffs = dwt.apply(input);
 
-	SegmentAssembler<item_t> precoder(i_coeffs);
+	SegmentAssembler<item_t> precoder;
 	precoder.set_shifts(dwt.get_scale().get_shifts());
-	auto precoded = precoder.apply();
+	auto precoded = precoder.apply(std::move(i_coeffs));
 
 	bitmap<item_t> output;
 
 	{
-		SegmentDisassembler<item_t> postdecoder(precoded);
-		auto decoded = postdecoder.apply(props.width);
+		SegmentDisassembler<item_t> postdecoder;
+		postdecoder.set_image_width(props.width);
+		auto decoded = postdecoder.apply(std::move(precoded));
 
 		size_t out_row_offset = 0;
 		for (auto& block : decoded) {
@@ -76,11 +74,10 @@ TEST(sparse, segmentsRound) {
 			img_pos fragment_props{ 0 };
 			fragment_props.width = meta.width;
 			fragment_props.height = meta.height;
-			BackwardWaveletTransformer<item_t> bdwt(fragment_props);
+			BackwardWaveletTransformer<item_t> bdwt;
 			bdwt.get_scale().set_shifts(dwt.get_scale().get_shifts());
 			bdwt.set_skip_dc_scaling(false);
-			bdwt.set_subbands(block);
-			auto out_fragment = bdwt.apply();
+			auto out_fragment = bdwt.apply(block);
 			size_t out_fragment_height; // = relu(out_fragment.get_meta().height - 16);
 			if (&block != &(decoded.back())) {
 				out_fragment_height = relu(out_fragment.get_meta().height - 16);
@@ -121,16 +118,15 @@ TEST(sparse, bpeRound) {
 	shifts_t subband_shifts{ 2, 3, 2, 1, 3, 2, 1, 3, 2, 1 };
 	// shifts_t subband_shifts{ 0, 0, 0, 0, 0, 0, 0, 0, 0, 0 };
 
-	ForwardWaveletTransformer<item_t> dwt(props);
+	ForwardWaveletTransformer<item_t> dwt;
 	dwt.get_scale().set_shifts(subband_shifts);
-	dwt.apply(input);
-	auto i_coeffs = dwt.get_subbands();
+	auto i_coeffs = dwt.apply(input);
 
-	SegmentAssembler<item_t> precoder(i_coeffs);
+	SegmentAssembler<item_t> precoder;
 	precoder.set_shifts(dwt.get_scale().get_shifts());
-	auto precoded = precoder.apply();
+	auto precoded = precoder.apply(std::move(i_coeffs));
 
-	auto bpe_input_segment = precoded[0];
+	auto bpe_input_segment = *(precoded[0]);
 	BitPlaneEncoder<decltype(bpe_input_segment)::type> bpeencoder;
 	bpeencoder.set_use_heuristic_DC(false);
 	bpeencoder.set_use_heuristic_bdepthAc(false);
@@ -200,14 +196,15 @@ TEST(sparse, bpeRound) {
 
 		for (ptrdiff_t i = 0; i < backward_input.size; ++i) {
 			for (ptrdiff_t j = 1; j < 64; ++j) { // TODO: items per block
-				EXPECT_EQ(backward_input.data[i].content[j], precoded[0].data[i].content[j])
+				EXPECT_EQ(backward_input.data[i].content[j], precoded[0]->data[i].content[j])
 					<< " at segment [0], block [" << i << "], coeff [" << j << "]";
 			}
 		}
 
-		precoded[0] = backward_input;
-		SegmentDisassembler<item_t> postdecoder(precoded);
-		auto decoded = postdecoder.apply(props.width);
+		*(precoded[0]) = backward_input;
+		SegmentDisassembler<item_t> postdecoder;
+		postdecoder.set_image_width(props.width);
+		auto decoded = postdecoder.apply(std::move(precoded));
 
 		size_t out_row_offset = 0;
 		for (auto& block : decoded) {
@@ -215,10 +212,9 @@ TEST(sparse, bpeRound) {
 			img_pos fragment_props{ 0 };
 			fragment_props.width = meta.width;
 			fragment_props.height = meta.height;
-			BackwardWaveletTransformer<item_t> bdwt(fragment_props);
+			BackwardWaveletTransformer<item_t> bdwt;
 			bdwt.get_scale().set_shifts(dwt.get_scale().get_shifts());
-			bdwt.set_subbands(block);
-			auto out_fragment = bdwt.apply();
+			auto out_fragment = bdwt.apply(block);
 			size_t out_fragment_height; // = relu(out_fragment.get_meta().height - 16);
 			if (&block != &(decoded.back())) {
 				out_fragment_height = relu(out_fragment.get_meta().height - 16);
@@ -259,16 +255,15 @@ TEST(sparse, bpeRound_002) {
 	// shifts_t subband_shifts{ 2, 3, 2, 1, 3, 2, 1, 3, 2, 1 };
 	shifts_t subband_shifts{ 0, 0, 0, 0, 0, 0, 0, 0, 0, 0 };
 
-	ForwardWaveletTransformer<item_t> dwt(props);
+	ForwardWaveletTransformer<item_t> dwt;
 	dwt.get_scale().set_shifts(subband_shifts);
-	dwt.apply(input);
-	auto i_coeffs = dwt.get_subbands();
+	auto i_coeffs = dwt.apply(input);
 
-	SegmentAssembler<item_t> precoder(i_coeffs);
+	SegmentAssembler<item_t> precoder;
 	precoder.set_shifts(dwt.get_scale().get_shifts());
-	auto precoded = precoder.apply();
+	auto precoded = precoder.apply(std::move(i_coeffs));
 
-	auto bpe_input_segment = precoded[0];
+	auto bpe_input_segment = *(precoded[0]);
 	BitPlaneEncoder<decltype(bpe_input_segment)::type> bpeencoder;
 	bpeencoder.set_use_heuristic_DC(false);
 	bpeencoder.set_use_heuristic_bdepthAc(false);
@@ -338,14 +333,15 @@ TEST(sparse, bpeRound_002) {
 
 		for (ptrdiff_t i = 0; i < backward_input.size; ++i) {
 			for (ptrdiff_t j = 1; j < 64; ++j) { // TODO: items per block
-				EXPECT_EQ(backward_input.data[i].content[j], precoded[0].data[i].content[j])
+				EXPECT_EQ(backward_input.data[i].content[j], precoded[0]->data[i].content[j])
 					<< " at segment [0], block [" << i << "], coeff [" << j << "]";
 			}
 		}
 
-		precoded[0] = backward_input;
-		SegmentDisassembler<item_t> postdecoder(precoded);
-		auto decoded = postdecoder.apply(props.width);
+		*(precoded[0]) = backward_input;
+		SegmentDisassembler<item_t> postdecoder;
+		postdecoder.set_image_width(props.width);
+		auto decoded = postdecoder.apply(std::move(precoded));
 
 		size_t out_row_offset = 0;
 		for (auto& block : decoded) {
@@ -353,10 +349,9 @@ TEST(sparse, bpeRound_002) {
 			img_pos fragment_props{ 0 };
 			fragment_props.width = meta.width;
 			fragment_props.height = meta.height;
-			BackwardWaveletTransformer<item_t> bdwt(fragment_props);
+			BackwardWaveletTransformer<item_t> bdwt;
 			bdwt.get_scale().set_shifts(dwt.get_scale().get_shifts());
-			bdwt.set_subbands(block);
-			auto out_fragment = bdwt.apply();
+			auto out_fragment = bdwt.apply(block);
 			size_t out_fragment_height; // = relu(out_fragment.get_meta().height - 16);
 			if (&block != &(decoded.back())) {
 				out_fragment_height = relu(out_fragment.get_meta().height - 16);
@@ -397,16 +392,15 @@ TEST(sparse, bpeRound_003) {
 	// shifts_t subband_shifts{ 2, 3, 2, 1, 3, 2, 1, 3, 2, 1 };
 	shifts_t subband_shifts{ 0, 0, 0, 0, 0, 0, 0, 0, 0, 0 };
 
-	ForwardWaveletTransformer<item_t> dwt(props);
+	ForwardWaveletTransformer<item_t> dwt;
 	dwt.get_scale().set_shifts(subband_shifts);
-	dwt.apply(input);
-	auto i_coeffs = dwt.get_subbands();
+	auto i_coeffs = dwt.apply(input);
 
-	SegmentAssembler<item_t> precoder(i_coeffs);
+	SegmentAssembler<item_t> precoder;
 	precoder.set_shifts(dwt.get_scale().get_shifts());
-	auto precoded = precoder.apply();
+	auto precoded = precoder.apply(std::move(i_coeffs));
 
-	auto bpe_input_segment = precoded[0];
+	auto bpe_input_segment = *(precoded[0]);
 	BitPlaneEncoder<decltype(bpe_input_segment)::type> bpeencoder;
 	bpeencoder.set_use_heuristic_DC(false);
 	bpeencoder.set_use_heuristic_bdepthAc(false);
@@ -476,14 +470,15 @@ TEST(sparse, bpeRound_003) {
 
 		for (ptrdiff_t i = 0; i < backward_input.size; ++i) {
 			for (ptrdiff_t j = 1; j < 64; ++j) { // TODO: items per block
-				EXPECT_EQ(backward_input.data[i].content[j], precoded[0].data[i].content[j])
+				EXPECT_EQ(backward_input.data[i].content[j], precoded[0]->data[i].content[j])
 					<< " at segment [0], block [" << i << "], coeff [" << j << "]";
 			}
 		}
 
-		precoded[0] = backward_input;
-		SegmentDisassembler<item_t> postdecoder(precoded);
-		auto decoded = postdecoder.apply(props.width);
+		*(precoded[0]) = backward_input;
+		SegmentDisassembler<item_t> postdecoder;
+		postdecoder.set_image_width(props.width);
+		auto decoded = postdecoder.apply(std::move(precoded));
 
 		size_t out_row_offset = 0;
 		for (auto& block : decoded) {
@@ -491,10 +486,9 @@ TEST(sparse, bpeRound_003) {
 			img_pos fragment_props{ 0 };
 			fragment_props.width = meta.width;
 			fragment_props.height = meta.height;
-			BackwardWaveletTransformer<item_t> bdwt(fragment_props);
+			BackwardWaveletTransformer<item_t> bdwt;
 			bdwt.get_scale().set_shifts(dwt.get_scale().get_shifts());
-			bdwt.set_subbands(block);
-			auto out_fragment = bdwt.apply();
+			auto out_fragment = bdwt.apply(block);
 			size_t out_fragment_height; // = relu(out_fragment.get_meta().height - 16);
 			if (&block != &(decoded.back())) {
 				out_fragment_height = relu(out_fragment.get_meta().height - 16);

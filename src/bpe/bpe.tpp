@@ -25,7 +25,7 @@
 // is it related to the need of explicit instantiation for library exports?
 template <typename T, size_t alignment = 16>
 class BitPlaneEncoder: 
-		private constants::scale, 
+		// private constants::scale, // TODO: and not sure if private inheritance for block and gaggle is appropriate here
 		private constants::block, 
 		private constants::gaggle, 
 		private constants::bpe, 
@@ -119,7 +119,7 @@ private:
 
 template <typename T>
 class BitPlaneDecoder: 
-		private constants::scale, 
+	// private constants::scale, // TODO: and not sure if private inheritance for block and gaggle is appropriate here
 		private constants::block, 
 		private constants::gaggle, 
 		private constants::bpe, 
@@ -161,7 +161,7 @@ void BitPlaneEncoder<T, alignment>::encode(segment<T>& input, obitwrapper<obwT>&
 		}
 
 		for (auto subband_shift : input.bit_shifts) {
-			if (subband_shift > max_subband_shift) {
+			if (subband_shift > constants::subband::max_scale_shift) {
 				validation_error |= true;
 				break;
 			}
@@ -799,7 +799,7 @@ void BitPlaneEncoder<T, alignment>::encodeBpeStages(segment<T>& input, obitwrapp
 	size_t last_gaggle_size = input.size & gaggle_size_mask;
 
 	size_t b = input.bdepthAc - 1; // requires bdepthAc > 0; check at caller side
-	for (; b >= max_subband_shift; --b) {
+	for (; b >= constants::subband::max_scale_shift; --b) {
 		if (current_bplane.empty()) {
 			// Per the loop conditions b is guaranteed to be more than or equal to 3, 
 			// that means at least 4 bitplanes are available always. 

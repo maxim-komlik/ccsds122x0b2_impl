@@ -33,12 +33,14 @@
   </ImportGroup>
   <PropertyGroup Label="UserMacros" />
   <ItemGroup>
-    <ClCompile Include="..\..\..\src\UnitTestWaveletTransform\extreme.cpp" />
-    <ClCompile Include="..\..\..\src\UnitTestWaveletTransform\smoke.cpp" />
-    <ClCompile Include="..\..\..\src\UnitTestWaveletTransform\static.cpp" />
+    <ClCompile Include="..\..\..\src\test\compliance.cpp" />
+    <ClCompile Include="..\..\..\src\test\extreme.cpp" />
+    <ClCompile Include="..\..\..\src\test\functional\dwt_fragments.cpp" />
+    <ClCompile Include="..\..\..\src\test\smoke.cpp" />
+    <ClCompile Include="..\..\..\src\test\static.cpp" />
   </ItemGroup>
   <ItemGroup>
-    <None Include="..\..\..\src\UnitTestWaveletTransform\test_utils.tpp" />
+    <None Include="..\..\..\src\test\test_utils.tpp" />
     <None Include="packages.config" />
   </ItemGroup>
   <ItemDefinitionGroup />

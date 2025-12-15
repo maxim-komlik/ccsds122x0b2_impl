@@ -3,15 +3,16 @@
 #include <array>
 #include <vector>
 
-#include "WaveletTransform\bitmap.tpp"
+#include "dwt\bitmap.tpp"
 #include "aligned_vector.tpp"
 
 #include "constant.h"
 
+// TODO: move subbands_t to dwt types header
 template <typename T>
-using subbands_t = std::array<bitmap<T>, constants::dwt::subband_num>;
+using subbands_t = std::array<bitmap<T>, constants::subband::subbands_per_img>;
 
-using shifts_t = std::array<size_t, constants::dwt::subband_num>;
+using shifts_t = std::array<size_t, constants::subband::subbands_per_img>;
 
 template <typename T>
 struct block {

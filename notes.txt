@@ -27,6 +27,7 @@ TODO: reverse operation for BPE:DC encoding
 TODO: add generic strong_assign
 TODO: Different post-processing for integer and fp: scaling and rounding respectively
 
+H1, L1, LL1, H2, L2, LL2, H3, L3, LL3, HL3, LH3, HH3, HL2, LH2, HH2, HL1, LH1, HH
 
 Finally got it!!!!
 Well, there is a gaggle that contains of 16 blocks. Each block has a set of words computed. Starting 

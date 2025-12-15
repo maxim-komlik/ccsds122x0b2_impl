@@ -180,13 +180,14 @@ void swap(aligned_vector<T, alignment>& first, aligned_vector<T, alignment>& sec
 	swap(first.m_rawdata_length, second.m_rawdata_length);
 }
 
-namespace std {
-	template <typename T, size_t alignment>
-	void swap(aligned_vector<T, alignment>& first, aligned_vector<T, alignment>& second) noexcept {
-		// swap(first, second); // will cause recursion as the current namespace std:: will be searched first
-		first.swap(second);
-	}
-}
+// C++20 prohibits providing specialization for function templates in std namespace
+// namespace std {
+// 	template <typename T, size_t alignment>
+// 	void swap(aligned_vector<T, alignment>& first, aligned_vector<T, alignment>& second) noexcept {
+// 		// swap(first, second); // will cause recursion as the current namespace std:: will be searched first
+// 		first.swap(second);
+// 	}
+// }
 
 template <typename T, size_t alignment>
 void aligned_vector<T, alignment>::assign(T value) {
