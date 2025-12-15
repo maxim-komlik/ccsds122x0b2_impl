@@ -54,70 +54,85 @@
     </Filter>
   </ItemGroup>
   <ItemGroup>
-    <ClInclude Include="..\..\..\src\common\core_types.h">
+    <ClInclude Include="..\..\..\src\common\core_types.hpp">
       <Filter>common\Header Files</Filter>
     </ClInclude>
-    <ClInclude Include="..\..\..\src\common\utils.h">
+    <ClInclude Include="..\..\..\src\common\utils.hpp">
       <Filter>common\Header Files</Filter>
     </ClInclude>
-    <ClInclude Include="..\..\..\src\common\exception.h">
+    <ClInclude Include="..\..\..\src\common\exception.hpp">
       <Filter>common\Header Files</Filter>
     </ClInclude>
-    <ClInclude Include="..\..\..\src\bpe\entropy_types.h">
+    <ClInclude Include="..\..\..\src\bpe\entropy_types.hpp">
       <Filter>bpe\Header Files</Filter>
     </ClInclude>
     <ClInclude Include="..\..\..\src\common\SegmentHeaders.h">
       <Filter>common\Header Files</Filter>
     </ClInclude>
-    <ClInclude Include="..\..\..\src\bpe\symbolstream.h">
+    <ClInclude Include="..\..\..\src\bpe\symbolstream.hpp">
       <Filter>bpe\Header Files</Filter>
     </ClInclude>
-    <ClInclude Include="..\..\..\src\bpe\symbolbuffer.h">
+    <ClInclude Include="..\..\..\src\bpe\symbolbuffer.hpp">
       <Filter>bpe\Header Files</Filter>
     </ClInclude>
-    <ClInclude Include="..\..\..\src\common\constant.h">
+    <ClInclude Include="..\..\..\src\common\constant.hpp">
       <Filter>common\Header Files</Filter>
     </ClInclude>
-    <ClInclude Include="..\..\..\src\bpe\constant.h">
+    <ClInclude Include="..\..\..\src\bpe\constant.hpp">
       <Filter>bpe\Header Files</Filter>
     </ClInclude>
-    <ClInclude Include="..\..\..\src\dwt\constant.h">
+    <ClInclude Include="..\..\..\src\dwt\constant.hpp">
       <Filter>dwt\Header Files</Filter>
     </ClInclude>
-    <ClInclude Include="..\..\..\src\io\file_proto.h">
+    <ClInclude Include="..\..\..\src\io\file_proto.hpp">
       <Filter>io\Header Files</Filter>
     </ClInclude>
-    <ClInclude Include="..\..\..\src\io\headers.h">
+    <ClInclude Include="..\..\..\src\io\headers.hpp">
       <Filter>io\Header Files</Filter>
     </ClInclude>
-    <ClInclude Include="..\..\..\src\io\session_context.h">
+    <ClInclude Include="..\..\..\src\io\session_context.hpp">
       <Filter>io\Header Files</Filter>
     </ClInclude>
-    <ClInclude Include="..\..\..\src\io\sink.h">
+    <ClInclude Include="..\..\..\src\io\sink.hpp">
       <Filter>io\Header Files</Filter>
     </ClInclude>
-    <ClInclude Include="..\..\..\src\io\memory_sink.h">
+    <ClInclude Include="..\..\..\src\io\memory_sink.hpp">
       <Filter>io\Header Files</Filter>
     </ClInclude>
-    <ClInclude Include="..\..\..\src\io\file_sink.h">
+    <ClInclude Include="..\..\..\src\io\file_sink.hpp">
       <Filter>io\Header Files</Filter>
     </ClInclude>
-    <ClInclude Include="..\..\..\src\io\ccsds_protocol.h">
+    <ClInclude Include="..\..\..\src\io\ccsds_protocol.hpp">
       <Filter>io\Header Files</Filter>
     </ClInclude>
-    <ClInclude Include="..\..\..\src\io\bitfield.h">
+    <ClInclude Include="..\..\..\src\io\bitfield.hpp">
       <Filter>io\Header Files</Filter>
     </ClInclude>
     <ClInclude Include="..\..\..\src\dwt\img_meta.h">
       <Filter>dwt\Header Files</Filter>
     </ClInclude>
-    <ClInclude Include="..\..\..\src\io\io_contexts.h">
+    <ClInclude Include="..\..\..\src\io\io_contexts.hpp">
       <Filter>io\Header Files</Filter>
     </ClInclude>
-    <ClInclude Include="..\..\..\src\io\io_settings.h">
+    <ClInclude Include="..\..\..\src\io\io_settings.hpp">
       <Filter>io\Header Files</Filter>
     </ClInclude>
-    <ClInclude Include="..\..\..\src\io\tasking.h">
+    <ClInclude Include="..\..\..\src\io\tasking.hpp">
+      <Filter>io\Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="..\..\..\src\dwt\dwt.hpp">
+      <Filter>dwt\Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="..\..\..\src\dwt\segment_assembly.hpp">
+      <Filter>dwt\Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="..\..\..\src\bpe\entropy_translate.hpp">
+      <Filter>bpe\Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="..\..\..\src\bpe\symbol_translate.hpp">
+      <Filter>bpe\Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="..\..\..\src\io\constant.hpp">
       <Filter>io\Header Files</Filter>
     </ClInclude>
   </ItemGroup>
@@ -139,6 +154,12 @@
     </ClCompile>
     <ClCompile Include="..\..\..\src\core\core.cpp">
       <Filter>common\librarian\Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="..\..\..\src\dwt\dwt.cpp">
+      <Filter>dwt\Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="..\..\..\src\dwt\segment_assembly.cpp">
+      <Filter>dwt\Source Files</Filter>
     </ClCompile>
   </ItemGroup>
   <ItemGroup>
@@ -177,12 +198,6 @@
     </None>
     <None Include="..\..\..\src\bpe\bpe.tpp">
       <Filter>bpe\Source Files</Filter>
-    </None>
-    <None Include="..\..\..\src\bpe\entropy_translate.h">
-      <Filter>bpe\Header Files</Filter>
-    </None>
-    <None Include="..\..\..\src\bpe\symbol_translate.h">
-      <Filter>bpe\Header Files</Filter>
     </None>
     <None Include="..\..\..\src\io\endian.tpp">
       <Filter>io\Source Files</Filter>

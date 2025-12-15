@@ -10,7 +10,7 @@
 // TODO: check bit order in bitfields regarding to members defeninition order
 // TODO: check out default value initialization (maybe C++20)
 
-// Members aredefine in order:
+// Members are defined in order:
 //	starting from most-significant bits at the top of the definition 
 //	ending with least-significant bits at the bottom of the definition
 // In standard notation: from bit 0 (MSb) to bit N-1 (LSb)
