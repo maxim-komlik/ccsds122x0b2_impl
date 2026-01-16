@@ -2,6 +2,11 @@
 
 #include <bit>
 
+enum class dwt_type_t {
+	idwt,
+	fdwt
+};
+
 namespace constants {
 	// TODO: there's a naming issue: constants classes have the same names as corresponding data
 	// types; when both names are available in the scope hiding/shadowing is involved.

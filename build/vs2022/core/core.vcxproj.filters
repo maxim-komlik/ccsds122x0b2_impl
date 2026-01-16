@@ -52,6 +52,12 @@
     <Filter Include="io\Source Files">
       <UniqueIdentifier>{19c6f66f-4665-4b45-9d0b-024d69c0adc4}</UniqueIdentifier>
     </Filter>
+    <Filter Include="common\librarian\Source Files\samples">
+      <UniqueIdentifier>{a51e6dd3-c952-4285-9557-cb4318665af7}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="common\Header Files\experimental">
+      <UniqueIdentifier>{7798298b-2ab7-4295-8730-c34c09a71eb1}</UniqueIdentifier>
+    </Filter>
   </ItemGroup>
   <ItemGroup>
     <ClInclude Include="..\..\..\src\common\core_types.hpp">
@@ -135,6 +141,24 @@
     <ClInclude Include="..\..\..\src\io\constant.hpp">
       <Filter>io\Header Files</Filter>
     </ClInclude>
+    <ClInclude Include="..\..\..\src\core\compression.hpp">
+      <Filter>common\librarian\Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="..\..\..\src\common\compressor_types.hpp">
+      <Filter>common\Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="..\..\..\src\core\io.hpp">
+      <Filter>common\librarian\Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="..\..\..\src\io\memory_protocol.hpp">
+      <Filter>io\Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="..\..\..\src\common\experimental\weak_memory_sync.hpp">
+      <Filter>common\Header Files\experimental</Filter>
+    </ClInclude>
+    <ClInclude Include="..\..\..\src\common\experimental\weak_sync_mutex.hpp">
+      <Filter>common\Header Files\experimental</Filter>
+    </ClInclude>
   </ItemGroup>
   <ItemGroup>
     <ClCompile Include="core.cpp">
@@ -161,6 +185,15 @@
     <ClCompile Include="..\..\..\src\dwt\segment_assembly.cpp">
       <Filter>dwt\Source Files</Filter>
     </ClCompile>
+    <ClCompile Include="..\..\..\src\core\compression.cpp">
+      <Filter>common\librarian\Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="..\..\..\src\core\io.cpp">
+      <Filter>common\librarian\Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="..\..\..\src\io\ccsds_protocol.cpp">
+      <Filter>io\Source Files</Filter>
+    </ClCompile>
   </ItemGroup>
   <ItemGroup>
     <None Include="..\..\..\src\dwt\bitmap.tpp">
@@ -173,9 +206,6 @@
       <Filter>dwt\Source Files</Filter>
     </None>
     <None Include="..\..\..\src\bpe\ibitwrapper.tpp">
-      <Filter>bpe\Source Files</Filter>
-    </None>
-    <None Include="..\..\..\src\bpe\obitwrapper.tpp">
       <Filter>bpe\Source Files</Filter>
     </None>
     <None Include="..\..\..\src\bpe\entropy_code.tpp">
@@ -201,6 +231,12 @@
     </None>
     <None Include="..\..\..\src\io\endian.tpp">
       <Filter>io\Source Files</Filter>
+    </None>
+    <None Include="..\..\..\src\core\samples\routines.tpp">
+      <Filter>common\librarian\Source Files\samples</Filter>
+    </None>
+    <None Include="..\..\..\src\bpe\obitwrapper.tpp">
+      <Filter>bpe\Source Files</Filter>
     </None>
   </ItemGroup>
 </Project>

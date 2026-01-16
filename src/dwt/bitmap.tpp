@@ -314,6 +314,18 @@ void bitmap<T, alignment>::append(const bitmap<T, alignment>& src) {
 
 template <typename T, size_t alignment>
 void bitmap<T, alignment>::resize(size_t width, size_t height) {
+	bool subframe = (width <= this->m_locator.width) & (height <=  this->m_locator.height);
+	if (subframe) {
+		// change only logical dimensions, don't change layout parameters. This 
+		// preserves the current bitmap data, involves no allocations
+		// 
+		// but what about offset?
+		//
+		this->m_locator.width = width;
+		this->m_locator.height = height;
+		return;
+	}
+
 	this->m_locator.width = width;
 	width = (width + alignment - 1) & (~(alignment - 1));
 	this->m_locator.offset = alignment;

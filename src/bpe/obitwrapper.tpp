@@ -26,18 +26,12 @@ class obitwrapper {
 public:
 	using value_type = ubuffer_t;
 	obitwrapper(const callback_t &callback, int_least32_t dst_byte_limit = ((1 << 27) - 1)) 
-			: dest(callback), byte_limit(dst_byte_limit) {};
-	// obitwrapper(const callback_t &&callback) = delete;
+			: dest(callback), byte_limit(dst_byte_limit) {}
+
 	~obitwrapper() = default;
 	// The owning code has to call flush before the object
 	// is distructed to commit the buffer content.
 	// 
-	// {
-	// 	// TODO: MAJOR: dtor may throw!
-	// 	if (this->wcount < this->capacity) {
-	// 		this->dest(this->buffer);
-	// 	}
-	// };
 
 	// Nor copyable nor movable
 	obitwrapper(const obitwrapper &other) = delete;
@@ -93,7 +87,7 @@ public:
 		[[unlikely]]
 		if (this->dirty()) {
 			// check above guarantees no overflow will happen due to length == bitlen(buffer_t)
-			(*this) << vlw_t{ sizeof(word) << 3, word };
+			(*this) << vlw_t{ sizeof(word) << 3, static_cast<vlw_t::type>(word) };
 		} else {
 			this->__store_item(word);
 		}
@@ -103,7 +97,7 @@ public:
 		return this->wcount;
 	}
 
-	constexpr size_t bcapacity() {
+	constexpr size_t bcapacity() const {
 		return (sizeof(buffer_t) << 3);
 	}
 
@@ -112,8 +106,21 @@ public:
 	}
 
 	void set_byte_limit(int_least32_t limit, int_least32_t byte_count_init = 0) {
+		// byte limit is multiple of sizeof(buffer_t), see 4.2.3.2.1
+		bool valid = true;
+		valid &= (limit > 0);
+		valid &= (limit & (sizeof(buffer_t) - 1)) == 0;
+		valid &= !((this->byte_count > 0) & (byte_count_init != 0));
+		if (!valid) {
+			// TODO: error handling
+		}
+		// and do not put restrictions on byte count value, so that caller can query 
+		// byte_limit and byte_count values and compute difference when handling 
+		// early termination; negative byte count is also permitted.
+
 		this->byte_limit = limit;
-		this->byte_count += (-(this->byte_count == 0)) & byte_count_init;
+		// this->byte_count += (-(this->byte_count <= 0)) & byte_count_init;
+		this->byte_count = (this->byte_count <= 0) ? byte_count_init : this->byte_count;
 
 		[[unlikely]]
 		if (this->byte_count >= this->byte_limit) {
@@ -122,7 +129,7 @@ public:
 	}
 
 	size_t get_byte_count() const {
-		return this->byte_count();
+		return this->byte_count;
 	}
 
 	size_t get_byte_limit() const {
@@ -144,13 +151,13 @@ public:
 
 			ptrdiff_t index = 0;
 			while (this->dirty()) {
-				(*this) << vlw_t{ 8, data_bytes[index]};
+				(*this) << vlw_t{ 8, static_cast<vlw_t::type>(data_bytes[index]) };
 				++index;
 			}
 
 			constexpr size_t alignment_mask = alignof(buffer_t) - 1;
-			bool word_aligned = ((data_bytes.data() + index) & alignment_mask) == 0;
-			while (index < (((ptrdiff_t)data_bytes.size()) - sizeof(buffer_t))) {
+			bool word_aligned = (((size_t)(data_bytes.data() + index)) & alignment_mask) == 0;
+			while (index < (data_bytes.size() - sizeof(buffer_t))) {	// subtraction never underflows here
 				bytes_view<buffer_t> buffer_word;
 
 				// can reasonably be well-predicted
@@ -159,7 +166,7 @@ public:
 					index += sizeof(buffer_t);
 				} else {
 					for (ptrdiff_t i = 0; i < sizeof(buffer_t); ++i) {
-						buffer_word[i] = data_bytes[index];
+						buffer_word.bytes[i] = data_bytes[index];
 						++index;
 					}
 				}
@@ -167,18 +174,23 @@ public:
 				// this gonna be the only endiannes-dependent code in the whole
 				// obitwrapper
 				if constexpr (std::endian::native != std::endian::little) {
+					// TODO: but should we care about endiannes if we write raw bytes? If 
+					// byte span is obtained from some other span with bigger underlying 
+					// trivial type, compound type size may not match with original span 
+					// type size, and byte ordering would corrupt
+					// 
 					buffer_word.compound = byteswap(buffer_word.compound);
 				}
 				this->flush_word(buffer_word.compound);
 			}
 
 			while (index != data_bytes.size()) {
-				(*this) << vlw_t{ 8, data_bytes[index]};
+				(*this) << vlw_t{ 8, static_cast<vlw_t::type>(data_bytes[index]) };
 				++index;
 			}
 		} else {
 			for (std::byte item : data_bytes) {
-				(*this) << vlw_t{ 8, item };
+				(*this) << vlw_t{ 8, static_cast<vlw_t::type>(item) };
 			}
 		}
 	}
@@ -203,9 +215,9 @@ void obitwrapper<buffer_t>::flush_word(word_t word) {
 	// TODO: when fed with reference type as a template parameter, sizeof operator 
 	// returns a result that breaks the logic below
 	if constexpr (sizeof(word_t) < sizeof(buffer_t)) {
-		(*this) << vlw_t{ sizeof(word) << 3, word };
+		(*this) << vlw_t{ sizeof(word) << 3, static_cast<vlw_t::type>(word) };
 	} else if constexpr (sizeof(word_t) == sizeof(buffer_t)) {
-		this->flush_word<buffer_t>(word);
+		this->flush_word<buffer_t>(static_cast<buffer_t>(word));
 	} else {
 		constexpr size_t ratio = sizeof(word_t) / sizeof(buffer_t);
 		for (ptrdiff_t i = (ptrdiff_t)(ratio - 1); i >= 0; --i) {
@@ -214,7 +226,7 @@ void obitwrapper<buffer_t>::flush_word(word_t word) {
 	}
 }
 
-// TODO: consider adding accessible typename of the underlying buffer tipe in bitwrapper
+// TODO: consider adding accessible typename of the underlying buffer type in bitwrapper
 //
 
 // obitwrapper is neither copyable neither movable to guarantee that it does not outlive the context in which

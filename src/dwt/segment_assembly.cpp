@@ -5,9 +5,8 @@
 
 // SegmentAssembler class template implementation
 
-// TODO: check internal linkage for inline functions/templates
 template<typename T, size_t alignment>
-inline void kdiff(T* input, T* output, size_t length, size_t bdepth, bool normalize = false) {
+inline static void kdiff(T* input, T* output, size_t length, size_t bdepth, bool normalize = false) {
 	// mask covers half of static range
 	T mask = ~((-1 << bdepth) >> 1);
 	// norm is either 0 either half of static range
@@ -396,9 +395,8 @@ void SegmentAssembler<T, alignment>::set_segment_size(size_t S) {
 
 // SegmentDisassembler class template implementation
 
-// TODO: check internal linkage for inline functions/templates
 template <typename T, size_t alignment>
-inline void rkdiff(T* diffData, size_t length, size_t bdepth, bool normalize = false) {
+inline static void rkdiff(T* diffData, size_t length, size_t bdepth, bool normalize = false) {
 	// mask covers half of static range
 	T mask = ~((-1 << bdepth) >> 1);
 	// norm is either 0 either half of static range

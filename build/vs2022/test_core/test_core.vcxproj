@@ -35,6 +35,7 @@
   <ItemGroup>
     <ClCompile Include="..\..\..\src\test\compliance.cpp" />
     <ClCompile Include="..\..\..\src\test\extreme.cpp" />
+    <ClCompile Include="..\..\..\src\test\functional\computation_flow.cpp" />
     <ClCompile Include="..\..\..\src\test\functional\dwt_fragments.cpp" />
     <ClCompile Include="..\..\..\src\test\smoke.cpp" />
     <ClCompile Include="..\..\..\src\test\static.cpp" />

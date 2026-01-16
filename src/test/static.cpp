@@ -152,3 +152,20 @@ TEST(compile, io) {
 
 	ccsds_protocol protocol(*(output[0]), 0);
 }
+
+
+TEST(implementation_props, integer_conversions) {
+	size_t size = 1;
+	ptrdiff_t index = 2;
+	static_assert(std::is_same_v<decltype(size - index), size_t>);
+	static_assert(std::is_same_v<decltype(index - size), size_t>);
+	static_assert(std::is_same_v<decltype(index - (ptrdiff_t)(size)), ptrdiff_t>);
+
+	uintptr_t uwi = 1;
+	intptr_t swi = 2;
+	static_assert(std::is_same_v<decltype(swi - uwi), uintptr_t>);
+	static_assert(std::is_same_v<decltype(uwi - swi), uintptr_t>);
+	static_assert(std::is_same_v<decltype((intptr_t)(uwi) - swi), intptr_t>);
+
+	static_assert(std::is_same_v<std::make_signed_t<size_t>, ptrdiff_t>);
+}

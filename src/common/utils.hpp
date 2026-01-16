@@ -117,7 +117,7 @@ using sufficient_integral_i = _sufficient_integral<byte_width>::type;
 template <typename T>
 union bytes_view {
 	T compound;
-	uint8_t bytes[sizeof(T)];
+	std::byte bytes[sizeof(T)];
 };
 
 template <typename T>
@@ -404,7 +404,7 @@ template <typename... Ts>
 using tuple_wrap_t = tuple_wrap<Ts...>::type;
 
 template <typename T>
-using is_tuple_v = is_tuple<T>::value;
+constexpr bool is_tuple_v = is_tuple<T>::value;
 
 template <typename T>
 using tuple_element_last_t = tuple_element_last<T>::type;

@@ -1899,3 +1899,17 @@ void fncore()
 // 				max_offset_allocated = std::max(max_offset_allocated, field_msb_offset);
 // 			}, args... );
 // 	}, bitfield_traits<Derived>::fields);
+
+// crazy metaprogramming staff? invoke template lambda
+// 
+// template <typename... ParamsT> 
+// struct holder {
+// 	template <ParamsT... Values>
+// 	struct call_labmda_template_t {
+// 		template <typename LambdaT, typename... LambdaArgsT>
+// 		std::invoke_result_t<LambdaT> invoke(LambdaT& obj, LambdaArgsT&&... args) {
+// 			return obj.template operator() <Values...> (std::forward(args...));
+// 		}
+// 	};
+// };
+//

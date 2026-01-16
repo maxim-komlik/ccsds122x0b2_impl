@@ -10,7 +10,7 @@ struct img_meta {	// per-element location
 };
 
 
-struct img_pos {
+struct img_pos { // step members should be signed. Maybe coordinate members should be signed also
 	size_t x = 0;
 	size_t x_step = 0;
 	size_t y = 0;

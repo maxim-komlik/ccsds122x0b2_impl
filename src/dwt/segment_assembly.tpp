@@ -5,13 +5,14 @@
 
 #include "bitmap.tpp"
 #include "core_types.hpp"
+#include "compressor_types.hpp"
 #include "utils.hpp"
 #include "dwt/constant.hpp"
 
 
 template <typename T, size_t alignment = 16>
 class SegmentAssembler {
-	using oT = sufficient_integral<T>;
+	using oT = compressor_type_params<T>::segment_type;
 	shifts_t bit_shifts;
 	size_t segment_size = 0;
 
@@ -35,7 +36,7 @@ private:
 
 template <typename T, size_t alignment = 16>
 class SegmentDisassembler {
-	using iT = sufficient_integral<T>;
+	using iT = compressor_type_params<T>::segment_type;
 	size_t img_width = 0;
 
 public:
@@ -67,7 +68,7 @@ private:
 // result type can hold the values of possibly increased bitness of whole 
 // part; e.g. for image with bdepth == 24, 32-bit IEEE754-compatible
 // floating point cannot be used as an output type because its 23-bit 
-// matiss cannot represent possibly increased in depth (up to 28 bit 
+// mantiss cannot represent possibly increased in depth (up to 28 bit 
 // + 1 bit for sign) whole part of a fraction. It should be noted that 
 // the output of segment processing and subsequent BPE is the same for 
 // any integral data type capable to represent the output of DWT; e.g. 

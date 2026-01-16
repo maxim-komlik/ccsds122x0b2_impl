@@ -23,6 +23,8 @@ template <typename T>
 struct segment {
 	using type = T;
 
+	size_t id;
+
 	size_t size;		// min value: 1
 	size_t bdepthDc;	// min value: 1
 	size_t bdepthAc; 	// min value: 0

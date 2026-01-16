@@ -13,7 +13,6 @@ extern template class SegmentAssembler<int64_t>;
 // TODO: fp support:
 // extern template class SegmentAssembler<float>;
 // extern template class SegmentAssembler<double>;
-// extern template class SegmentAssembler<long double>;
 
 
 extern template class SegmentDisassembler<int8_t>;
@@ -24,5 +23,4 @@ extern template class SegmentDisassembler<int64_t>;
 // TODO: fp support:
 // extern template class SegmentDisassembler<float>;
 // extern template class SegmentDisassembler<double>;
-// extern template class SegmentDisassembler<long double>;
 

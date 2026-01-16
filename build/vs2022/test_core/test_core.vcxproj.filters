@@ -8,6 +8,9 @@
     <ClCompile Include="..\..\..\src\test\functional\dwt_fragments.cpp">
       <Filter>functional</Filter>
     </ClCompile>
+    <ClCompile Include="..\..\..\src\test\functional\computation_flow.cpp">
+      <Filter>functional</Filter>
+    </ClCompile>
   </ItemGroup>
   <ItemGroup>
     <None Include="..\..\..\src\test\test_utils.tpp" />

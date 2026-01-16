@@ -1131,6 +1131,17 @@ bool BitPlaneEncoder<T, alignment>::get_use_heuristic_bdepthAc() const {
 }
 
 
+template <typename T, size_t alignment>
+void BitPlaneEncoder<T, alignment>::set_stop_after_DC(bool value) {
+	// TODO: implement logic
+}
+
+template <typename T, size_t alignment>
+void BitPlaneEncoder<T, alignment>::set_stop_at_bplane(size_t bplane_index, size_t stage_index /* = 0b11 == stage_4 */) {
+	// TODO: implement logic
+}
+
+
 // BitPlaneDecoder implementation
 template <typename T>
 template <typename ibwT>
