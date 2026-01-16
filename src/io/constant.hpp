@@ -2,9 +2,23 @@
 
 #include <cstdint>
 
-enum class dwt_type_t {
-	idwt,
-	fdwt
+#include "common/constant.hpp"
+
+// TODO: move dbg parameters to dedicated files
+namespace dbg {
+	namespace protocol {
+		static constexpr uint32_t mask_forward_compatibility = 0x01;
+
+		static constexpr uint32_t disabled_stages = 0x01;
+
+		constexpr bool if_enabled(uint32_t mask) {
+			return (disabled_stages & mask) == 0;
+		}
+
+		constexpr bool if_disabled(uint32_t mask) {
+			return !if_enabled(mask);
+		}
+	};
 };
 
 enum class bpe_stage_index_t : uint8_t {

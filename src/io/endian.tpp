@@ -10,7 +10,7 @@
 
 #include <type_traits>
 
-// TODO: unroll here it we take this implementation seriously
+// TODO: unroll here if we take this implementation seriously
 template <typename T>
 T byteswap(T word) {
 	typedef typename std::make_unsigned<T>::type uT;

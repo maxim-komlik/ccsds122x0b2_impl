@@ -34,6 +34,19 @@ struct HeaderPart_1A : private bitfield<HeaderPart_1A> {
 	static_assert(bitfield<HeaderPart_1A>::size == 3);
 	// TODO: better implement composition with bitfield instead of inheritance
 public:
+	HeaderPart_1A() = default;
+	HeaderPart_1A(std::span<std::byte, bitfield::size> raw_data) : bitfield(raw_data) {
+		bool valid = true;
+		if constexpr (dbg::protocol::if_disabled(dbg::protocol::mask_forward_compatibility)) {
+			valid &= (this->get_bitfield<name_to_index("reserved_001"sv)>() == 
+				this->get_default<name_to_index("reserved_001"sv)>());
+		}
+
+		if (!valid) {
+			// TODO: error handling
+		}
+	};
+
 	void set_StartImgFlag(bool value) {
 		this->set_bitfield<name_to_index("StartImgFlag"sv)>((uint8_t)value);
 	}
@@ -103,7 +116,7 @@ public:
 		return bitfield<HeaderPart_1A>::commit();
 	}
 
-	constexpr size_t size() const {
+	static constexpr size_t size() {
 		return bitfield<HeaderPart_1A>::size;
 	}
 };
@@ -121,6 +134,21 @@ struct bitfield_traits<HeaderPart_1B> {
 
 // Table 4-4, Page 4-7
 struct HeaderPart_1B : bitfield<HeaderPart_1B> {
+	static_assert(bitfield<HeaderPart_1B>::size == 1);
+
+	HeaderPart_1B() = default;
+	HeaderPart_1B(std::span<std::byte, bitfield::size> raw_data) : bitfield(raw_data) {
+		bool valid = true;
+		if constexpr (dbg::protocol::if_disabled(dbg::protocol::mask_forward_compatibility)) {
+			valid &= (this->get_bitfield<name_to_index("reserved_001"sv)>() == 
+				this->get_default<name_to_index("reserved_001"sv)>());
+		}
+
+		if (!valid) {
+			// TODO: error handling
+		}
+	};
+
 	void set_PadRows(size_t rows_num) {
 		this->set_bitfield<name_to_index("PadRows"sv)>((uint8_t)rows_num);
 	}
@@ -134,7 +162,7 @@ struct HeaderPart_1B : bitfield<HeaderPart_1B> {
 		return bitfield<HeaderPart_1B>::commit();
 	}
 
-	constexpr size_t size() const {
+	static constexpr size_t size() {
 		return bitfield<HeaderPart_1B>::size;
 	}
 };
@@ -162,6 +190,27 @@ struct bitfield_traits<HeaderPart_2> {
 // Table 4-5, Page 4-10
 struct HeaderPart_2 : bitfield<HeaderPart_2> {
 	static_assert(bitfield<HeaderPart_2>::size == 5);
+
+	HeaderPart_2() = default;
+	HeaderPart_2(std::span<std::byte, bitfield::size> raw_data) : bitfield(raw_data) {
+		constexpr size_t min_segment_size_bytes = 9;
+
+		bool valid = true;
+		valid &= (this->get_bitfield<name_to_index("SegByteLimit"sv)>() >= min_segment_size_bytes);
+		valid &= !(
+			(this->get_bitfield<name_to_index("DCStop"sv)>() == true) & 
+			(this->get_bitfield<name_to_index("BitPlaneStop"sv)>() != 
+				this->get_default<name_to_index("BitPlaneStop"sv)>()));
+
+		if constexpr (dbg::protocol::if_disabled(dbg::protocol::mask_forward_compatibility)) {
+			valid &= (this->get_bitfield<name_to_index("reserved_001"sv)>() == 
+				this->get_default<name_to_index("reserved_001"sv)>());
+		}
+
+		if (!valid) {
+			// TODO: error handling
+		}
+	};
 
 	void set_SegByteLimit(size_t byte_limit) {
 		this->set_bitfield<name_to_index("SegByteLimit"sv)>((uint32_t)byte_limit);
@@ -208,7 +257,7 @@ struct HeaderPart_2 : bitfield<HeaderPart_2> {
 		return bitfield<HeaderPart_2>::commit();
 	}
 
-	constexpr size_t size() const {
+	static constexpr size_t size() {
 		return bitfield<HeaderPart_2>::size;
 	}
 };
@@ -232,6 +281,19 @@ struct bitfield_traits<HeaderPart_3> {
 // Table 4-6, Page 4-13
 struct HeaderPart_3 : bitfield<HeaderPart_3> {
 	static_assert(bitfield<HeaderPart_3>::size == 3);
+
+	HeaderPart_3() = default;
+	HeaderPart_3(std::span<std::byte, bitfield::size> raw_data) : bitfield(raw_data) {
+		bool valid = true;
+		if constexpr (dbg::protocol::if_disabled(dbg::protocol::mask_forward_compatibility)) {
+			valid &= (this->get_bitfield<name_to_index("reserved_001"sv)>() == 
+				this->get_default<name_to_index("reserved_001"sv)>());
+		}
+
+		if (!valid) {
+			// TODO: error handling
+		}
+	};
 
 	void set_S(size_t blocks_per_segment) {
 		this->set_bitfield<name_to_index("S"sv)>((uint32_t)blocks_per_segment);
@@ -262,7 +324,7 @@ struct HeaderPart_3 : bitfield<HeaderPart_3> {
 		return bitfield<HeaderPart_3>::commit();
 	}
 
-	constexpr size_t size() const {
+	static constexpr size_t size() {
 		return bitfield<HeaderPart_3>::size;
 	}
 };
@@ -300,6 +362,45 @@ struct bitfield_traits<HeaderPart_4> {
 // Table 4-7, Page 4-15
 struct HeaderPart_4 : bitfield<HeaderPart_4> {
 	static_assert(bitfield<HeaderPart_4>::size == 8);
+
+	HeaderPart_4() = default;
+	HeaderPart_4(std::span<std::byte, bitfield::size> raw_data) : bitfield(raw_data) {
+		bool valid = true;
+		valid &= !(
+			(this->get_bitfield<name_to_index("CustomWtFlag"sv)>() == false) &
+			(
+				(this->get_bitfield<name_to_index("CustomWtHH__1"sv)>() !=
+					this->get_default<name_to_index("CustomWtHH__1"sv)>()) &
+				(this->get_bitfield<name_to_index("CustomWtHL__1"sv)>() !=
+					this->get_default<name_to_index("CustomWtHL__1"sv)>()) &
+				(this->get_bitfield<name_to_index("CustomWtLH__1"sv)>() !=
+					this->get_default<name_to_index("CustomWtLH__1"sv)>()) &
+				(this->get_bitfield<name_to_index("CustomWtHH__2"sv)>() !=
+					this->get_default<name_to_index("CustomWtHH__2"sv)>()) &
+				(this->get_bitfield<name_to_index("CustomWtHL__2"sv)>() !=
+					this->get_default<name_to_index("CustomWtHL__2"sv)>()) &
+				(this->get_bitfield<name_to_index("CustomWtLH__2"sv)>() !=
+					this->get_default<name_to_index("CustomWtLH__2"sv)>()) &
+				(this->get_bitfield<name_to_index("CustomWtHH__3"sv)>() !=
+					this->get_default<name_to_index("CustomWtHH__3"sv)>()) &
+				(this->get_bitfield<name_to_index("CustomWtHL__3"sv)>() !=
+					this->get_default<name_to_index("CustomWtHL__3"sv)>()) &
+				(this->get_bitfield<name_to_index("CustomWtLH__3"sv)>() !=
+					this->get_default<name_to_index("CustomWtLH__3"sv)>()) &
+				(this->get_bitfield<name_to_index("CustomWtLL__3"sv)>() !=
+					this->get_default<name_to_index("CustomWtLL__3"sv)>())));
+
+		if constexpr (dbg::protocol::if_disabled(dbg::protocol::mask_forward_compatibility)) {
+			valid &= (this->get_bitfield<name_to_index("reserved_001"sv)>() == 
+				this->get_default<name_to_index("reserved_001"sv)>());
+			valid &= (this->get_bitfield<name_to_index("reserved_002"sv)>() == 
+				this->get_default<name_to_index("reserved_002"sv)>());
+		}
+
+		if (!valid) {
+			// TODO: error handling
+		}
+	};
 
 	void set_DWTtype(dwt_type_t value) {
 		this->set_bitfield<name_to_index("DWTtype"sv)>((uint8_t)value);
@@ -438,7 +539,7 @@ struct HeaderPart_4 : bitfield<HeaderPart_4> {
 		return bitfield<HeaderPart_4>::commit();
 	}
 
-	constexpr size_t size() const {
+	static constexpr size_t size() {
 		return bitfield<HeaderPart_4>::size;
 	}
 };

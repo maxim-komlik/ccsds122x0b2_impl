@@ -37,10 +37,69 @@
 // such fine-tuning should be discarded.
 // 
 
+// struct session_context;
+struct channel_context;
 
-template <typename dstT>
-struct compression_context {
-	std::unique_ptr<sink<dstT>> dst; // TODO: template parameter? Would like sink to be plain type, not template
-	std::unique_ptr<segment<dstT>> segment_data;
+// struct dwt_context { // name alternative: decorrelation_context?
+// 	size_t id;
+// 	session_context& session_cx;
+// 	img_pos frame;
+// };
+// 
+// template <typename segT>
+// struct segmentation_context {
+// 	size_t id;
+// 	session_context& session_cx;
+// 	subbands_t<segT> subband_data;
+// 	std::unique_ptr<segment<segT>> incomplete_segment_data;
+// };
+// 
+// template <typename segT>
+// struct compression_context {
+// 	using sink_value_type = size_t;
+// 
+// 	size_t id;
+// 	session_context& session_cx;
+// 	std::unique_ptr<sink<sink_value_type>> dst; // TODO: template parameter? Would like sink to be plain type, not template
+// 	std::unique_ptr<segment<segT>> segment_data;
+// };
+
+struct dwt_context { // name alternative: decorrelation_context?
 	size_t id;
+	channel_context& channel_cx;
+	img_pos frame;
 };
+
+template <typename segT>
+struct segmentation_context {
+	size_t id;
+	channel_context& channel_cx;
+	subbands_t<segT> subband_data;
+	std::unique_ptr<segment<segT>> incomplete_segment_data;
+	img_pos frame;
+};
+
+template <typename segT>
+struct compression_context {
+	using sink_value_type = size_t;
+
+	size_t id;
+	channel_context& channel_cx;
+	std::unique_ptr<sink<sink_value_type>> dst; // TODO: template parameter? Would like sink to be plain type, not template
+	std::unique_ptr<segment<segT>> segment_data;
+};
+
+inline size_t generate_compression_id() {
+	static std::atomic<size_t> current_id = 0;
+	return current_id.fetch_add(1, std::memory_order_relaxed);
+}
+
+inline size_t generate_segmentation_id() {
+	static std::atomic<size_t> current_id = 0;
+	return current_id.fetch_add(1, std::memory_order_relaxed);
+}
+
+inline size_t generate_dwt_id() {
+	static std::atomic<size_t> current_id = 0;
+	return current_id.fetch_add(1, std::memory_order_relaxed);
+}

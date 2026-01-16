@@ -44,7 +44,7 @@ struct session_settings {
 struct segment_settings {
 	size_t size;	// but actually stored in segment itself
 	bool heuristic_quant_DC;
-	bool heiristic_bdepth_AC;
+	bool heuristic_bdepth_AC;
 };
 
 struct compression_settings {
