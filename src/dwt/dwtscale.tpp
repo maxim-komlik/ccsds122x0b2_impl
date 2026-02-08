@@ -2,6 +2,8 @@
 
 #include <array>
 
+#include "exception.hpp"
+
 #include "bitmap.tpp"
 
 // During dwt, only optional subband shifts are performrmed as part 
@@ -50,6 +52,11 @@ public:
 
 	shifts_t get_shifts() const {
 		return this->bit_shifts;
+	}
+
+	void set_shifts(const shifts_t& shifts) {
+		// no shift parameters can be set for float DWT
+		throw ccsds::exception(); // TODO: refactor exception type
 	}
 };
 

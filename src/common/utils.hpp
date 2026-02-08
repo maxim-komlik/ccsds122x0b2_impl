@@ -45,7 +45,7 @@ struct _unroll_init {
 		if constexpr (UT == left) {
 			_unroll<UT, N - 1>::apply(
 				[load, link]<size_t lN>(T lparam) {
-					load.template operator() < lN > (lparam);
+					load.template operator()<lN>(lparam);
 					link();
 				}, args...);
 		}
@@ -54,7 +54,7 @@ struct _unroll_init {
 			_unroll<UT, N - 1>::apply(
 				[load, link]<size_t lN>(T lparam) {
 					link();
-					load.template operator() < lN > (lparam);
+					load.template operator()<lN>(lparam);
 				}, args...);
 		}
 	}

@@ -1,6 +1,7 @@
 #include "dwt.tpp"
 
 #include <utility>
+#include <variant>
 
 #include "utils.hpp"
 
@@ -37,7 +38,13 @@ union ForwardWaveletTransformer<T, alignment>::frame_overlap_description {
 };
 
 template <typename T, size_t alignment>
-void ForwardWaveletTransformer<T, alignment>::preprocess_image(bitmap<T>& src) {
+ForwardWaveletTransformer<T, alignment>::ForwardWaveletTransformer() {
+	this->buffers.fill(bitmap<T>(dwt::fwd_buffers_offset_value));
+}
+
+template <typename T, size_t alignment>
+template <typename iT>
+void ForwardWaveletTransformer<T, alignment>::preprocess_image(bitmap<iT>& src) {
 	// This function is needed to eliminate concurrent memory writes from different 
 	// transformers from different threads to the same regions of the input image. 
 	// Such writes could be caused by extension or padding of image rows in image 
@@ -59,7 +66,7 @@ void ForwardWaveletTransformer<T, alignment>::preprocess_image(bitmap<T>& src) {
 		this->core.extfwd(src[i].ptr());
 	}
 	for (ptrdiff_t i = 0; i < src_dims.height; ++i) {
-		bitmap_row<T> src_row = src[i];
+		bitmap_row<iT> src_row = src[i];
 		T last_item = src_row[src_dims.width - 1];
 		for (ptrdiff_t j = src_dims.width; j < padded_width; ++j) {
 			src_row[j] = last_item;
@@ -72,7 +79,8 @@ void ForwardWaveletTransformer<T, alignment>::preprocess_image(bitmap<T>& src) {
 }
 
 template <typename T, size_t alignment>
-subbands_t<T> ForwardWaveletTransformer<T, alignment>::apply(const bitmap<T>& source, const img_pos& frame) {
+template <typename iT>
+subbands_t<T> ForwardWaveletTransformer<T, alignment>::apply(const bitmap<iT>& source, const img_pos& frame) {
 	img_meta src_dims = source.get_meta();
 	// image dimensions adjusted for padding
 	src_dims.width = (src_dims.width + (dwt::horizontal_padding_length - 1)) & (~dwt::horizontal_padding_mask);
@@ -116,9 +124,6 @@ subbands_t<T> ForwardWaveletTransformer<T, alignment>::apply(const bitmap<T>& so
 		for (auto& item : tail_frame.arr) {
 			item = zeropred(item, double_frame);
 		}
-		// for (ptrdiff_t i = 0; i < std::tuple_size_v<decltype(frame_edge_overlap)::value_type>; ++i) {
-		// 	zeropred(frame_edge_overlap[1][i], double_frame);
-		// }
 	}
 
 	// buffer resize and memory allocation staff
@@ -128,81 +133,6 @@ subbands_t<T> ForwardWaveletTransformer<T, alignment>::apply(const bitmap<T>& so
 		std::array<frame_overlap_description, 2> current_overlap = frame_edge_overlap;
 
 		this->resize_buffers(base_width, base_height, current_overlap);
-
-		// ptrdiff_t overlap_requirement = dwt::overlap_img_range;
-		// 
-		// auto get_buffer_dimensions = [&]<dwt_type horizontal, dwt_type vertical = dwt_type::none>() -> std::pair<size_t, size_t> {
-		// 	std::pair<size_t, size_t> result = { base_width, base_height };
-		// 
-		// 	if constexpr (horizontal == dwt_type::lowpass) {
-		// 		result.first += current_overlap[0].edges.left + current_overlap[0].edges.right;
-		// 		result.first += current_overlap[1].edges.left + current_overlap[1].edges.right;
-		// 		if constexpr (vertical != dwt_type::highpass) {
-		// 			result.second += current_overlap[0].edges.top + current_overlap[0].edges.bottom;
-		// 			result.second += current_overlap[1].edges.top + current_overlap[1].edges.bottom;
-		// 		}
-		// 	}
-		// 	else if constexpr (vertical == dwt_type::none) {
-		// 		result.second += current_overlap[0].edges.top + current_overlap[0].edges.bottom;
-		// 		result.second += current_overlap[1].edges.top + current_overlap[1].edges.bottom;
-		// 	}
-		// 	//		width	height
-		// 	// l	+		+
-		// 	// ll	+		+
-		// 	// lh	+		-
-		// 	// h	-		+
-		// 	// hl	-		-
-		// 	// hh	-		-
-		// 	//
-		// 	return result;
-		// };
-		// 
-		// // H1, L1, LL1, H2, L2, LL2, H3, L3, LL3, HL3, LH3, HH3, HL2, LH2, HH2, HL1, LH1, HH1
-		// for (ptrdiff_t level = 0; level < dwt::level_num; ++level) {
-		// 	overlap_requirement -= dwt::lowpass_dependency_radius;
-		// 	for (auto& overlap_item : current_overlap) {
-		// 		for (auto& edge_item : overlap_item.arr) {
-		// 			edge_item = (edge_item > overlap_requirement) ? (edge_item - dwt::lowpass_dependency_radius) : edge_item;
-		// 		}
-		// 		overlap_item.edges.left >>= 1;
-		// 		overlap_item.edges.right >>= 1;
-		// 	}
-		// 	base_width >>= 1;
-		// 
-		// 	{
-		// 		auto [height, width] = get_buffer_dimensions<dwt_type::highpass>(); // transposed
-		// 		this->buffers[3 * level + 0].resize(width, height);
-		// 	}
-		// 
-		// 	{
-		// 		auto [height, width] = get_buffer_dimensions<dwt_type::lowpass>(); // transposed
-		// 		this->buffers[3 * level + 1].resize(width, height);
-		// 	}
-		// 
-		// 	for (auto& overlap_item : current_overlap) {
-		// 		overlap_item.edges.top >>= 1;
-		// 		overlap_item.edges.bottom >>= 1;
-		// 	}
-		// 	base_height >>= 1;
-		// 
-		// 	{
-		// 		auto [width, height] = get_buffer_dimensions<dwt_type::lowpass, dwt_type::lowpass>();
-		// 		width = (width + (alignment - 1)) & (~(alignment - 1));
-		// 		width += dwt::overlap_crossrow_buffer_width;
-		// 		this->buffers[3 * level + 2].resize(width, height);
-		// 	}
-		// 
-		// 	{
-		// 		auto [width, height] = get_buffer_dimensions<dwt_type::highpass, dwt_type::either>();
-		// 		this->buffers[18 - ((level + 1) * 3) + 0].resize(width, height);
-		// 		this->buffers[18 - ((level + 1) * 3) + 2].resize(width, height);
-		// 	}
-		// 
-		// 	{
-		// 		auto [width, height] = get_buffer_dimensions<dwt_type::lowpass, dwt_type::highpass>();
-		// 		this->buffers[18 - ((level + 1) * 3) + 1].resize(width, height);
-		// 	}
-		// }
 	}
 
 	// skip unnecessary coefficient data during transpose step after dwt application: 
@@ -243,7 +173,10 @@ subbands_t<T> ForwardWaveletTransformer<T, alignment>::apply(const bitmap<T>& so
 		size_t height_limit = source.get_meta().height - src_frame.y;
 		src_frame.height = std::min(src_frame.height, source.get_meta().height - src_frame.y);
 
-		const_bitmap_slice<T> src = source.slice(src_frame);
+		constexpr size_t src_slice_index = 0;
+		constexpr size_t buffer_slice_index = 1;
+		std::variant<const_bitmap_slice<iT>, const_bitmap_slice<T>> src{ std::in_place_index<src_slice_index>, source.slice(src_frame) };
+		// const_bitmap_slice<T> src = source.slice(src_frame);
 
 		ptrdiff_t overlap_requirement = dwt::overlap_img_range;
 		auto current_overlap = frame_edge_overlap[frame_index];
@@ -344,7 +277,14 @@ subbands_t<T> ForwardWaveletTransformer<T, alignment>::apply(const bitmap<T>& so
 			bitmap_slice<T> lhout = this->buffers[this->buffers.size() - (level + 1) * 3 + 1].slice(lhout_frame);
 
 			// Main chain
-			this->transform(src, hout, lout, hout_drop_offset, lout_drop_offset, skip_src_extension);
+			// this->transform(src, hout, lout, hout_drop_offset, lout_drop_offset, skip_src_extension);
+			if (src_is_image_data) {
+				auto& src_slice = std::get<src_slice_index>(src);
+				this->transform(src_slice, hout, lout, hout_drop_offset, lout_drop_offset, skip_src_extension);
+			} else {
+				auto& src_slice = std::get<buffer_slice_index>(src);
+				this->transform(src_slice, hout, lout, hout_drop_offset, lout_drop_offset, skip_src_extension);
+			}
 			
 			if (apply_height_padding) {
 				// apply vertical padding in intermediate level 1 buffers
@@ -369,12 +309,13 @@ subbands_t<T> ForwardWaveletTransformer<T, alignment>::apply(const bitmap<T>& so
 				}
 			}
 
-			this->transform(lout, lhout, llout, lhout_drop_offset, llout_drop_offset);
+			this->transform(static_cast<const_bitmap_slice<T>>(lout), lhout, llout, lhout_drop_offset, llout_drop_offset);
 
 			// Aux chain
-			this->transform(hout, hhout, hlout, hxout_drop_offset, hxout_drop_offset);
+			this->transform(static_cast<const_bitmap_slice<T>>(hout), hhout, hlout, hxout_drop_offset, hxout_drop_offset);
 
-			src = llout;
+			// src = static_cast<const_bitmap_slice<T>>(llout);
+			src.emplace<buffer_slice_index>(static_cast<const_bitmap_slice<T>>(llout));
 			src_is_image_data = false;
 		}
 
@@ -384,6 +325,8 @@ subbands_t<T> ForwardWaveletTransformer<T, alignment>::apply(const bitmap<T>& so
 	}
 
 	subbands_t<T> result; // TODO: check type match, maybe alignment parameter needed
+	result.fill(bitmap<T>(dwt::fwd_buffers_offset_value));
+
 	ptrdiff_t overlap_requirement = dwt::overlap_img_range;
 	// buffers are allocated in the order below in return value:
 	// LL3, HL3, LH3, HH3, HL2, LH2, HH2, HL1, LH1, HH1
@@ -457,7 +400,8 @@ subbands_t<T> ForwardWaveletTransformer<T, alignment>::apply(const bitmap<T>& so
 }
 
 template <typename T, size_t alignment>
-subbands_t<T> ForwardWaveletTransformer<T, alignment>::apply(bitmap<T>& source) {
+template <typename iT>
+subbands_t<T> ForwardWaveletTransformer<T, alignment>::apply(bitmap<iT>& source) {
 	this->preprocess_image(source);
 
 	img_pos img_frame = source.single_frame_params();
@@ -473,8 +417,9 @@ dwtscale<T>& ForwardWaveletTransformer<T, alignment>::get_scale() {
 }
 
 template <typename T, size_t alignment>
-void ForwardWaveletTransformer<T, alignment>::transform(const_bitmap_slice<T> source, bitmap_slice<T> hdst, bitmap_slice<T> ldst,
-	ptrdiff_t hdst_drop_offset, ptrdiff_t ldst_drop_offset, bool skip_extension) {
+template <typename iT>
+void ForwardWaveletTransformer<T, alignment>::transform(const_bitmap_slice<iT> source, bitmap_slice<T> hdst, bitmap_slice<T> ldst,
+		ptrdiff_t hdst_drop_offset, ptrdiff_t ldst_drop_offset, bool skip_extension) {
 
 	// performance assumptions: 
 	//		hdst and ldst are properly aligned
@@ -505,7 +450,7 @@ void ForwardWaveletTransformer<T, alignment>::transform(const_bitmap_slice<T> so
 	for (ptrdiff_t i = 0; i < source.get_description().height; i += alignment) {
 		ptrdiff_t max_src_row_index = std::min<ptrdiff_t>(source.get_description().height - i, alignment);
 		for (ptrdiff_t j = 0; j < max_src_row_index; ++j) {
-			bitmap_row<T> source_row(source[i + j]);
+			bitmap_row<iT> source_row(source[i + j]);
 			if (!skip_extension) {
 				this->core.extfwd(source_row.ptr());
 				this->core.rextfwd(source_row.ptr() + source_row.width());
@@ -537,32 +482,6 @@ void ForwardWaveletTransformer<T, alignment>::transform(const_bitmap_slice<T> so
 			}
 		}
 
-		// for (ptrdiff_t k = 0; k < buffers_copy_width; ++k) {
-		// 	bitmap_row<T> hrow = hdst[k];
-		// 	bitmap_row<T> lrow = ldst[k];
-		// 	for (ptrdiff_t j = 0; j < alignment; ++j) {
-		// 		hrow[i + j] = hbuffer[j][k + hdst_drop_offset];
-		// 		lrow[i + j] = lbuffer[j][k + ldst_drop_offset];
-		// 	}
-		// }
-
-		// for (ptrdiff_t k = 0; k < hdst.get_description().height; ++k) {
-		// 	bitmap_row<T> hrow = hdst[k];
-		// 	for (ptrdiff_t j = 0; j < alignment; ++j) {
-		// 		hrow[i + j] = hbuffer[j][k + hdst_drop_offset];
-		// 	}
-		// }
-		// for (ptrdiff_t k = 0; k < ldst.get_description().height; ++k) {
-		// 	bitmap_row<T> lrow = ldst[k];
-		// 	for (ptrdiff_t j = 0; j < alignment; ++j) {
-		// 		lrow[i + j] = lbuffer[j][k + ldst_drop_offset];
-		// 	}
-		// }
-
-
-
-
-
 		for (ptrdiff_t j = 0; j < hdst.get_description().height; j += alignment) {
 			ptrdiff_t max_dst_row_index = std::min<ptrdiff_t>(hdst.get_description().height - j, alignment);
 			for (ptrdiff_t ii = 0; ii < alignment; ++ii) {
@@ -592,37 +511,6 @@ void ForwardWaveletTransformer<T, alignment>::transform(const_bitmap_slice<T> so
 				}
 			}
 		}
-
-
-		// for (ptrdiff_t j = 0; j < buffer_width; j += alignment) {
-		// 	ptrdiff_t max_dst_row_index = std::min<ptrdiff_t>(dst_meta.height - j, alignment);
-		// 	for (ptrdiff_t ii = 0; ii < alignment; ++ii) {
-		// 		for (ptrdiff_t jj = 0; jj < alignment; ++jj) {
-		// 			transpose_buffer[jj][ii] = dstbuffer[ii][k + jj + dst_drop_offset];
-		// 		}
-		// 	}
-		// 	for (ptrdiff_t l = 0; l < max_dst_row_index; ++l) {
-		// 		bitmap_row<T> dstrow = dst[j + l];
-		// 		for (ptrdiff_t k = 0; k < alignment; ++k) {
-		// 			dstrow[i + j + k] = transpose_buffer[l][k];
-		// 		}
-		// 	}
-		// }
-		// 
-		// for (ptrdiff_t j = 0; j < buffer_width; j += alignment) {
-		// 	ptrdiff_t max_dst_row_index = std::min<ptrdiff_t>(dst_meta.height - j, alignment);
-		// 	for (ptrdiff_t ii = 0; ii < alignment; ++ii) {
-		// 		for (ptrdiff_t jj = 0; jj < alignment; ++jj) {
-		// 			transpose_buffer[jj][ii] = dstbuffer[ii][j + jj + dst_drop_offset];
-		// 		}
-		// 	}
-		// 	for (ptrdiff_t k = 0; k < max_dst_row_index; ++k) {
-		// 		bitmap_row<T> dstrow = dst[j + k];
-		// 		for (ptrdiff_t l = 0; l < alignment; ++l) {
-		// 			dstrow[i + j + l] = transpose_buffer[k][l];
-		// 		}
-		// 	}
-		// }
 	}
 }
 
@@ -641,40 +529,6 @@ void ForwardWaveletTransformer<T, alignment>::set_target_frame_size(size_t frame
 	}
 
 	this->resize_buffers(frame_width, frame_height, frame_edge_overlap);
-	
-	// frame_width = (frame_width + (this->c_h_alignment - 1)) & (~(this->c_h_alignment - 1));
-	// frame_height = ((frame_height + (this->c_v_alignment - 1)) & (~(this->c_v_alignment - 1)));
-	// 
-	// constexpr ptrdiff_t buffer_iter_step = 3;
-	// // TODO: adjust for fragmented use
-	// 
-	// // it's possible to check current size of some internal buffers and skip 
-	// // redundant resize attempt if the size of the buffers corresponds to the 
-	// // target frame size. However, the part of the buffers that are used as 
-	// // output should be always resized.
-	// size_t width = frame_height;
-	// size_t height = frame_width / 2;
-	// for (ptrdiff_t i = 0; i < dwt::level_num; ++i) {
-	// 	for (ptrdiff_t j = 0; j < 2; ++j) {
-	// 		this->buffers[i * buffer_iter_step + j].resize(width, height);
-	// 	}
-	// 	width ^= height;
-	// 	height ^= width;
-	// 	width ^= height;
-	// 	height /= 2;
-	// 
-	// 	this->buffers[i * buffer_iter_step + 2].resize(width, height);
-	// 
-	// 	for (ptrdiff_t j = 0; j < 3; ++j) {
-	// 		// expected to always allocate, because these buffers are reinitialized 
-	// 		// on every apply/get_subbands call
-	// 		this->buffers[this->buffers.size() - (i + 1) * buffer_iter_step + j].resize(width, height);
-	// 	}
-	// 	width ^= height;
-	// 	height ^= width;
-	// 	width ^= height;
-	// 	height /= 2;
-	// }
 }
 
 template <typename T, size_t alignment>
@@ -737,8 +591,7 @@ void ForwardWaveletTransformer<T, alignment>::resize_buffers(size_t base_width, 
 				result.second += overlap[0].edges.top + overlap[0].edges.bottom;
 				result.second += overlap[1].edges.top + overlap[1].edges.bottom;
 			}
-		}
-		else if constexpr (vertical == dwt_type::none) {
+		} else if constexpr (vertical == dwt_type::none) {
 			result.second += overlap[0].edges.top + overlap[0].edges.bottom;
 			result.second += overlap[1].edges.top + overlap[1].edges.bottom;
 		}
@@ -817,7 +670,13 @@ void ForwardWaveletTransformer<T, alignment>::resize_buffers(size_t base_width, 
 // BackwardWaveletTransformer class template implementation
 
 template <typename T, size_t alignment>
-bitmap<T> BackwardWaveletTransformer<T, alignment>::apply(subbands_t<T>& subbands, size_t top_overlap) {
+BackwardWaveletTransformer<T, alignment>::BackwardWaveletTransformer() {
+	this->buffers.fill(bitmap<T>(dwt::bwd_buffers_offset_value));
+}
+
+template <typename T, size_t alignment>
+template <typename oT>
+bitmap<oT> BackwardWaveletTransformer<T, alignment>::apply(subbands_t<T>& subbands, size_t top_overlap) {
 	img_meta dst_img_dims = subbands.front().get_meta(); // based on LL3 dimensions
 	this->resize_buffers(dst_img_dims.width, dst_img_dims.height, top_overlap);
 
@@ -825,12 +684,33 @@ bitmap<T> BackwardWaveletTransformer<T, alignment>::apply(subbands_t<T>& subband
 	dst_img_dims.height -= top_overlap;
 	dst_img_dims.height <<= 3;
 	// dst is meant to be transposed at the end of backward transform
-	bitmap<T> dst(dst_img_dims.height, dst_img_dims.width, 64); 
+	bitmap<T> dst(dst_img_dims.height, dst_img_dims.width, dwt::bwd_buffers_offset_value);
 
-	bitmap<T> LL3_transposed = subbands.front().transpose();
-	if (!this->skip_dc_scaling) {
-		this->scale.unscale(LL3_transposed, 0);
-	}
+	auto preprocess_subband = [&](ptrdiff_t subband_index, size_t rows_drop_offset = 0, bool skip_unscale = false) 
+			-> bitmap<T> {
+		const bitmap<T>& src_subband = subbands[subband_index];
+		img_pos frame = src_subband.single_frame_params();
+		frame.y += rows_drop_offset;
+		frame.height -= rows_drop_offset;
+
+		// would be better to enforce URVO, but unscale returns void
+		bitmap<T> result = src_subband.slice(frame).transpose();
+		if (!skip_unscale) {
+			this->scale.unscale(result, subband_index);
+		}
+		return result;
+	};
+
+	// size_t buffers_overlap = top_overlap;
+	size_t buffers_overlap = std::min(constants::dwt::lowpass_dependency_radius, top_overlap);
+	size_t subband_overlap = top_overlap;
+	size_t subband_rows_offset = subband_overlap - buffers_overlap;
+
+	bitmap<T> LL3_transposed = preprocess_subband(0, subband_rows_offset, this->skip_dc_scaling);
+	// subbands.front().transpose();
+	// if (!this->skip_dc_scaling) {
+	// 	this->scale.unscale(LL3_transposed, 0);
+	// }
 
 	constexpr ptrdiff_t LL2_index = 5;
 	constexpr ptrdiff_t LL1_index = 2;
@@ -839,26 +719,41 @@ bitmap<T> BackwardWaveletTransformer<T, alignment>::apply(subbands_t<T>& subband
 	};
 
 	for (ptrdiff_t level = constants::dwt::level_num; level > 0; --level) {
-		top_overlap <<= (level == 1);
+		subband_rows_offset = subband_overlap - buffers_overlap;
+
+		size_t disturbed_top_rows_num = zeropred(constants::dwt::lowpass_dependency_radius, 
+			buffers_overlap >= constants::dwt::lowpass_dependency_radius);
+
+		// accounts not for disturbed rows really, but uses drop counter to drop overlay remainder 
+		// for the target image on the last transform level
+		disturbed_top_rows_num += zeropred(buffers_overlap, level == 1);
 
 		bitmap<T>& hout = this->buffers[(level - 1) * 3 + 0];
 		bitmap<T>& lout = this->buffers[(level - 1) * 3 + 1];
 
-		bitmap<T> hhsrc = subbands[subbands.size() - level * 3 + 2].transpose();
-		this->scale.unscale(hhsrc, subbands.size() - level * 3 + 2);
+		bitmap<T> hhsrc = preprocess_subband(subbands.size() - level * 3 + 2, subband_rows_offset);
+		bitmap<T> hlsrc = preprocess_subband(subbands.size() - level * 3 + 0, subband_rows_offset);
+		bitmap<T> lhsrc = preprocess_subband(subbands.size() - level * 3 + 1, subband_rows_offset);
 
-		bitmap<T> hlsrc = subbands[subbands.size() - level * 3 + 0].transpose();
-		this->scale.unscale(hlsrc, subbands.size() - level * 3 + 0);
-
-		bitmap<T> lhsrc = subbands[subbands.size() - level * 3 + 1].transpose();
-		this->scale.unscale(lhsrc, subbands.size() - level * 3 + 1);
-
-		this->transform(lhsrc, ll_collection[level], lout, top_overlap);
-		this->transform(hhsrc, hlsrc, hout, top_overlap);
+		this->transform(lhsrc, ll_collection[level], lout, disturbed_top_rows_num);
+		this->transform(hhsrc, hlsrc, hout, disturbed_top_rows_num);
 		this->transform(hout, lout, ll_collection[level - 1]);
 
-		top_overlap = zeropred(2, top_overlap > 0);
+		subband_overlap <<= 1;
+		buffers_overlap <<= 1;
+		buffers_overlap = std::min(constants::dwt::lowpass_dependency_radius, buffers_overlap);
 	}
+
+	// bottom cut is just a shrink by number of target image rows on the transformed output, constant time.
+	// top cut is overlay offset, counting proper intermediate drop offsets
+	// bottom data should be present in the preceding fragment undisturbed. The corresponding top overlay 
+	// data of the subseqent fragment should be dropped.
+	// 
+	// that is, on every pass we drop invalidated rows, to keep only valid data as the next level input.
+	// on the last pass we drop all overlay rows, whether they are valid or not.
+	// 
+	// overlay minimum value is 6, along height/y axis, in LL3 dimensions: top overlay 4 and bottom overlay 3
+	//
 
 	// TODO: but technically this->transform transposes the output
 	// in order to pass the output to the next level bdwt. It is 
@@ -869,10 +764,9 @@ bitmap<T> BackwardWaveletTransformer<T, alignment>::apply(subbands_t<T>& subband
 	// restore original image transpose is needed. Therefore inverted
 	// logic here.
 	if (!this->transpose_output) {
-		dst = dst.transpose();
+		return dst.transpose<oT>();
 	}
-
-	return dst;
+	return static_cast<bitmap<oT>>(dst);
 }
 
 template <typename T, size_t alignment>
@@ -902,13 +796,21 @@ void BackwardWaveletTransformer<T, alignment>::set_transpose_output(bool value) 
 
 template <typename T, size_t alignment>
 void BackwardWaveletTransformer<T, alignment>::transform(const bitmap<T>& hsrc, const bitmap<T>& lsrc, bitmap<T>& dst, size_t dst_drop_offset) {
-	img_meta dst_meta = dst.get_meta();
-	size_t buffer_width = dst_meta.height;
+	bool valid = true;
+	valid &= hsrc.get_meta().width == lsrc.get_meta().width;
+	valid &= hsrc.get_meta().height == lsrc.get_meta().height;
+	if (!valid) {
+		// TODO: handle error
+	}
+
+	size_t src_height = hsrc.get_meta().height;
+	size_t src_width = hsrc.get_meta().width;
+	size_t buffer_width = src_width * 2;	// or get rid of variable and use buffer.get_meta() for stack utilization sake?
 	std::array<std::array<T, alignment>, alignment> transpose_buffer = {};
 	bitmap<T> dstbuffer(buffer_width, alignment, 64);
 	
-	for (ptrdiff_t i = 0; i < dst_meta.width; i += alignment) { // used for output indexing, transposed for sources
-		ptrdiff_t max_src_row_index = std::min<ptrdiff_t>(dst_meta.width - i, alignment); // hsrc.get_meta().height == dst_meta.width
+	for (ptrdiff_t i = 0; i < src_height; i += alignment) { // used for input indexing, transposed for dst
+		ptrdiff_t max_src_row_index = std::min<ptrdiff_t>(src_height - i, alignment);
 		for (ptrdiff_t j = 0; j < max_src_row_index; ++j) {
 			bitmap_row<T> hrow(hsrc[i + j]);
 			bitmap_row<T> lrow(lsrc[i + j]);
@@ -945,15 +847,8 @@ void BackwardWaveletTransformer<T, alignment>::transform(const bitmap<T>& hsrc, 
 			}
 		}
 
-		// for (ptrdiff_t k = 0; k < buffer_width; ++k) {
-		// 	bitmap_row<T> dstrow = dst[k];
-		// 	for (ptrdiff_t j = 0; j < alignment; ++j) {
-		// 		dstrow[i + j] = dstbuffer[j][k + dst_drop_offset];
-		// 	}
-		// }
-
-		for (ptrdiff_t j = 0; j < buffer_width; j += alignment) {
-			ptrdiff_t max_dst_row_index = std::min<ptrdiff_t>(dst_meta.height - j, alignment);
+		for (ptrdiff_t j = 0; j < dst.get_meta().height; j += alignment) {
+			ptrdiff_t max_dst_row_index = std::min<ptrdiff_t>(dst.get_meta().height - j, alignment);
 			for (ptrdiff_t ii = 0; ii < alignment; ++ii) {
 				for (ptrdiff_t jj = 0; jj < alignment; ++jj) {
 					transpose_buffer[jj][ii] = dstbuffer[ii][j + jj + dst_drop_offset];
@@ -984,37 +879,22 @@ void BackwardWaveletTransformer<T, alignment>::set_fragment_size(size_t width, s
 	size_t LL3_width = width >> 3;
 	size_t LL3_base_height = height >> 3;
 	this->resize_buffers(LL3_width, LL3_base_height + max_top_l3_overlap, max_top_l3_overlap);
-
-	// // H1, L1, LL1, H2, L2, LL2, H3, L3
-	// size_t current_top_overlap = 0;
-	// for (ptrdiff_t level = 0; level < constants::dwt::level_num; ++level) {
-	// 	width >>= 1;
-	// 
-	// 	this->buffers[(level * 3) + 0].resize(width, height + current_top_overlap);
-	// 	this->buffers[(level * 3) + 1].resize(width, height + current_top_overlap);
-	// 
-	// 	height >>= 1;
-	// 	current_top_overlap = constants::dwt::lowpass_dependency_radius;
-	// 	current_top_overlap >>= 1;
-	// 
-	// 	if (level != 2) {
-	// 		this->buffers[(level * 3) + 2].resize(height + current_top_overlap, width);
-	// 	}
-	// }
 }
 
 template <typename T, size_t alignment>
 void BackwardWaveletTransformer<T, alignment>::resize_buffers(size_t width, size_t height, size_t top_overlap) {
 	height -= top_overlap;
 	// H1, L1, LL1, H2, L2, LL2, H3, L3
-	for (ptrdiff_t level = constants::dwt::level_num; level > 0 ; --level) {
+	for (ptrdiff_t level = constants::dwt::level_num; level > 0; --level) {
 		if (level != 3) {
 			this->buffers[((level - 1) * 3) + 2].resize(height + top_overlap, width);
 		}
 
 		height <<= 1;
-		top_overlap = zeropred(constants::dwt::lowpass_dependency_radius, (level != 1) & (top_overlap > 0));
-		top_overlap >>= 1;
+		// top_overlap = zeropred(constants::dwt::lowpass_dependency_radius, (level != 1) & (top_overlap > 0));
+		top_overlap <<= 1;
+		top_overlap = std::min(constants::dwt::lowpass_dependency_radius, top_overlap);
+		top_overlap = zeropred(top_overlap, level != 1);
 
 		this->buffers[((level - 1) * 3) + 0].resize(width, height + top_overlap);
 		this->buffers[((level - 1) * 3) + 1].resize(width, height + top_overlap);
@@ -1023,27 +903,132 @@ void BackwardWaveletTransformer<T, alignment>::resize_buffers(size_t width, size
 	}
 }
 
+
 //
 // explicit instantiation section
 
 template class ForwardWaveletTransformer<int8_t>;
-template class ForwardWaveletTransformer<int16_t>;
-template class ForwardWaveletTransformer<int32_t>;
-template class ForwardWaveletTransformer<int64_t>;
+template subbands_t<int8_t> ForwardWaveletTransformer<int8_t>::apply<int8_t>(const bitmap<int8_t>& source, const img_pos& frame);
+template subbands_t<int8_t> ForwardWaveletTransformer<int8_t>::apply<uint8_t>(const bitmap<uint8_t>& source, const img_pos& frame);
+template subbands_t<int8_t> ForwardWaveletTransformer<int8_t>::apply<int8_t>(bitmap<int8_t>& source);
+template subbands_t<int8_t> ForwardWaveletTransformer<int8_t>::apply<uint8_t>(bitmap<uint8_t>& source);
+template void ForwardWaveletTransformer<int8_t>::preprocess_image<int8_t>(bitmap<int8_t>& src);
+template void ForwardWaveletTransformer<int8_t>::preprocess_image<uint8_t>(bitmap<uint8_t>& src);
 
-// TODO: fp support:
-// template class ForwardWaveletTransformer<float>;
-// template class ForwardWaveletTransformer<double>;
+template class ForwardWaveletTransformer<int16_t>;
+template subbands_t<int16_t> ForwardWaveletTransformer<int16_t>::apply<int16_t>(const bitmap<int16_t>& source, const img_pos& frame);
+template subbands_t<int16_t> ForwardWaveletTransformer<int16_t>::apply<int8_t>(const bitmap<int8_t>& source, const img_pos& frame);
+template subbands_t<int16_t> ForwardWaveletTransformer<int16_t>::apply<uint16_t>(const bitmap<uint16_t>& source, const img_pos& frame);
+template subbands_t<int16_t> ForwardWaveletTransformer<int16_t>::apply<uint8_t>(const bitmap<uint8_t>& source, const img_pos& frame);
+template subbands_t<int16_t> ForwardWaveletTransformer<int16_t>::apply<int16_t>(bitmap<int16_t>& source);
+template subbands_t<int16_t> ForwardWaveletTransformer<int16_t>::apply<int8_t>(bitmap<int8_t>& source);
+template subbands_t<int16_t> ForwardWaveletTransformer<int16_t>::apply<uint16_t>(bitmap<uint16_t>& source);
+template subbands_t<int16_t> ForwardWaveletTransformer<int16_t>::apply<uint8_t>(bitmap<uint8_t>& source);
+template void ForwardWaveletTransformer<int16_t>::preprocess_image<int16_t>(bitmap<int16_t>& src);
+template void ForwardWaveletTransformer<int16_t>::preprocess_image<int8_t>(bitmap<int8_t>& src);
+template void ForwardWaveletTransformer<int16_t>::preprocess_image<uint16_t>(bitmap<uint16_t>& src);
+template void ForwardWaveletTransformer<int16_t>::preprocess_image<uint8_t>(bitmap<uint8_t>& src);
+
+template class ForwardWaveletTransformer<int32_t>;
+template subbands_t<int32_t> ForwardWaveletTransformer<int32_t>::apply<int32_t>(const bitmap<int32_t>& source, const img_pos& frame);
+template subbands_t<int32_t> ForwardWaveletTransformer<int32_t>::apply<int16_t>(const bitmap<int16_t>& source, const img_pos& frame);
+template subbands_t<int32_t> ForwardWaveletTransformer<int32_t>::apply<uint32_t>(const bitmap<uint32_t>& source, const img_pos& frame);
+template subbands_t<int32_t> ForwardWaveletTransformer<int32_t>::apply<uint16_t>(const bitmap<uint16_t>& source, const img_pos& frame);
+template subbands_t<int32_t> ForwardWaveletTransformer<int32_t>::apply<int32_t>(bitmap<int32_t>& source);
+template subbands_t<int32_t> ForwardWaveletTransformer<int32_t>::apply<int16_t>(bitmap<int16_t>& source);
+template subbands_t<int32_t> ForwardWaveletTransformer<int32_t>::apply<uint32_t>(bitmap<uint32_t>& source);
+template subbands_t<int32_t> ForwardWaveletTransformer<int32_t>::apply<uint16_t>(bitmap<uint16_t>& source);
+template void ForwardWaveletTransformer<int32_t>::preprocess_image<int32_t>(bitmap<int32_t>& src);
+template void ForwardWaveletTransformer<int32_t>::preprocess_image<int16_t>(bitmap<int16_t>& src);
+template void ForwardWaveletTransformer<int32_t>::preprocess_image<uint32_t>(bitmap<uint32_t>& src);
+template void ForwardWaveletTransformer<int32_t>::preprocess_image<uint16_t>(bitmap<uint16_t>& src);
+
+template class ForwardWaveletTransformer<int64_t>;
+template subbands_t<int64_t> ForwardWaveletTransformer<int64_t>::apply<int64_t>(const bitmap<int64_t>& source, const img_pos& frame);
+template subbands_t<int64_t> ForwardWaveletTransformer<int64_t>::apply<int32_t>(const bitmap<int32_t>& source, const img_pos& frame);
+template subbands_t<int64_t> ForwardWaveletTransformer<int64_t>::apply<uint64_t>(const bitmap<uint64_t>& source, const img_pos& frame);
+template subbands_t<int64_t> ForwardWaveletTransformer<int64_t>::apply<uint32_t>(const bitmap<uint32_t>& source, const img_pos& frame);
+template subbands_t<int64_t> ForwardWaveletTransformer<int64_t>::apply<int64_t>(bitmap<int64_t>& source);
+template subbands_t<int64_t> ForwardWaveletTransformer<int64_t>::apply<int32_t>(bitmap<int32_t>& source);
+template subbands_t<int64_t> ForwardWaveletTransformer<int64_t>::apply<uint64_t>(bitmap<uint64_t>& source);
+template subbands_t<int64_t> ForwardWaveletTransformer<int64_t>::apply<uint32_t>(bitmap<uint32_t>& source);
+template void ForwardWaveletTransformer<int64_t>::preprocess_image<int64_t>(bitmap<int64_t>& src);
+template void ForwardWaveletTransformer<int64_t>::preprocess_image<int32_t>(bitmap<int32_t>& src);
+template void ForwardWaveletTransformer<int64_t>::preprocess_image<uint64_t>(bitmap<uint64_t>& src);
+template void ForwardWaveletTransformer<int64_t>::preprocess_image<uint32_t>(bitmap<uint32_t>& src);
+
+template class ForwardWaveletTransformer<float>;
+template subbands_t<float> ForwardWaveletTransformer<float>::apply<int32_t>(const bitmap<int32_t>& source, const img_pos& frame);
+template subbands_t<float> ForwardWaveletTransformer<float>::apply<int16_t>(const bitmap<int16_t>& source, const img_pos& frame);
+template subbands_t<float> ForwardWaveletTransformer<float>::apply<int8_t>(const bitmap<int8_t>& source, const img_pos& frame);
+template subbands_t<float> ForwardWaveletTransformer<float>::apply<uint32_t>(const bitmap<uint32_t>& source, const img_pos& frame);
+template subbands_t<float> ForwardWaveletTransformer<float>::apply<uint16_t>(const bitmap<uint16_t>& source, const img_pos& frame);
+template subbands_t<float> ForwardWaveletTransformer<float>::apply<uint8_t>(const bitmap<uint8_t>& source, const img_pos& frame);
+template subbands_t<float> ForwardWaveletTransformer<float>::apply<int32_t>(bitmap<int32_t>& source);
+template subbands_t<float> ForwardWaveletTransformer<float>::apply<int16_t>(bitmap<int16_t>& source);
+template subbands_t<float> ForwardWaveletTransformer<float>::apply<int8_t>(bitmap<int8_t>& source);
+template subbands_t<float> ForwardWaveletTransformer<float>::apply<uint32_t>(bitmap<uint32_t>& source);
+template subbands_t<float> ForwardWaveletTransformer<float>::apply<uint16_t>(bitmap<uint16_t>& source);
+template subbands_t<float> ForwardWaveletTransformer<float>::apply<uint8_t>(bitmap<uint8_t>& source);
+template void ForwardWaveletTransformer<float>::preprocess_image<int32_t>(bitmap<int32_t>& src);
+template void ForwardWaveletTransformer<float>::preprocess_image<int16_t>(bitmap<int16_t>& src);
+template void ForwardWaveletTransformer<float>::preprocess_image<int8_t>(bitmap<int8_t>& src);
+template void ForwardWaveletTransformer<float>::preprocess_image<uint32_t>(bitmap<uint32_t>& src);
+template void ForwardWaveletTransformer<float>::preprocess_image<uint16_t>(bitmap<uint16_t>& src);
+template void ForwardWaveletTransformer<float>::preprocess_image<uint8_t>(bitmap<uint8_t>& src);
+
+template class ForwardWaveletTransformer<double>;
+template subbands_t<double> ForwardWaveletTransformer<double>::apply<int64_t>(const bitmap<int64_t>& source, const img_pos& frame);
+template subbands_t<double> ForwardWaveletTransformer<double>::apply<int32_t>(const bitmap<int32_t>& source, const img_pos& frame);
+template subbands_t<double> ForwardWaveletTransformer<double>::apply<uint64_t>(const bitmap<uint64_t>& source, const img_pos& frame);
+template subbands_t<double> ForwardWaveletTransformer<double>::apply<uint32_t>(const bitmap<uint32_t>& source, const img_pos& frame);
+template subbands_t<double> ForwardWaveletTransformer<double>::apply<int64_t>(bitmap<int64_t>& source);
+template subbands_t<double> ForwardWaveletTransformer<double>::apply<int32_t>(bitmap<int32_t>& source);
+template subbands_t<double> ForwardWaveletTransformer<double>::apply<uint64_t>(bitmap<uint64_t>& source);
+template subbands_t<double> ForwardWaveletTransformer<double>::apply<uint32_t>(bitmap<uint32_t>& source);
+template void ForwardWaveletTransformer<double>::preprocess_image<int64_t>(bitmap<int64_t>& src);
+template void ForwardWaveletTransformer<double>::preprocess_image<int32_t>(bitmap<int32_t>& src);
+template void ForwardWaveletTransformer<double>::preprocess_image<uint64_t>(bitmap<uint64_t>& src);
+template void ForwardWaveletTransformer<double>::preprocess_image<uint32_t>(bitmap<uint32_t>& src);
 // template class ForwardWaveletTransformer<long double>;
 
-template class BackwardWaveletTransformer<int8_t>;
-template class BackwardWaveletTransformer<int16_t>;
-template class BackwardWaveletTransformer<int32_t>;
-template class BackwardWaveletTransformer<int64_t>;
 
-// TODO: fp support:
-// template class BackwardWaveletTransformer<float>;
-// template class BackwardWaveletTransformer<double>;
+template class BackwardWaveletTransformer<int8_t>;
+template bitmap<int8_t> BackwardWaveletTransformer<int8_t>::apply<int8_t>(subbands_t<int8_t>& subbands, size_t top_overlap);
+template bitmap<uint8_t> BackwardWaveletTransformer<int8_t>::apply<uint8_t>(subbands_t<int8_t>& subbands, size_t top_overlap);
+
+template class BackwardWaveletTransformer<int16_t>;
+template bitmap<int16_t> BackwardWaveletTransformer<int16_t>::apply<int16_t>(subbands_t<int16_t>& subbands, size_t top_overlap);
+template bitmap<int8_t> BackwardWaveletTransformer<int16_t>::apply<int8_t>(subbands_t<int16_t>& subbands, size_t top_overlap);
+template bitmap<uint16_t> BackwardWaveletTransformer<int16_t>::apply<uint16_t>(subbands_t<int16_t>& subbands, size_t top_overlap);
+template bitmap<uint8_t> BackwardWaveletTransformer<int16_t>::apply<uint8_t>(subbands_t<int16_t>& subbands, size_t top_overlap);
+
+template class BackwardWaveletTransformer<int32_t>;
+template bitmap<int32_t> BackwardWaveletTransformer<int32_t>::apply<int32_t>(subbands_t<int32_t>& subbands, size_t top_overlap);
+template bitmap<int16_t> BackwardWaveletTransformer<int32_t>::apply<int16_t>(subbands_t<int32_t>& subbands, size_t top_overlap);
+template bitmap<uint32_t> BackwardWaveletTransformer<int32_t>::apply<uint32_t>(subbands_t<int32_t>& subbands, size_t top_overlap);
+template bitmap<uint16_t> BackwardWaveletTransformer<int32_t>::apply<uint16_t>(subbands_t<int32_t>& subbands, size_t top_overlap);
+
+template class BackwardWaveletTransformer<int64_t>;
+template bitmap<int64_t> BackwardWaveletTransformer<int64_t>::apply<int64_t>(subbands_t<int64_t>& subbands, size_t top_overlap);
+template bitmap<int32_t> BackwardWaveletTransformer<int64_t>::apply<int32_t>(subbands_t<int64_t>& subbands, size_t top_overlap);
+template bitmap<uint64_t> BackwardWaveletTransformer<int64_t>::apply<uint64_t>(subbands_t<int64_t>& subbands, size_t top_overlap);
+template bitmap<uint32_t> BackwardWaveletTransformer<int64_t>::apply<uint32_t>(subbands_t<int64_t>& subbands, size_t top_overlap);
+
+
+template class BackwardWaveletTransformer<float>;
+template bitmap<int32_t> BackwardWaveletTransformer<float>::apply<int32_t>(subbands_t<float>& subbands, size_t top_overlap);
+template bitmap<int16_t> BackwardWaveletTransformer<float>::apply<int16_t>(subbands_t<float>& subbands, size_t top_overlap);
+template bitmap<int8_t> BackwardWaveletTransformer<float>::apply<int8_t>(subbands_t<float>& subbands, size_t top_overlap);
+template bitmap<uint32_t> BackwardWaveletTransformer<float>::apply<uint32_t>(subbands_t<float>& subbands, size_t top_overlap);
+template bitmap<uint16_t> BackwardWaveletTransformer<float>::apply<uint16_t>(subbands_t<float>& subbands, size_t top_overlap);
+template bitmap<uint8_t> BackwardWaveletTransformer<float>::apply<uint8_t>(subbands_t<float>& subbands, size_t top_overlap);
+
+template class BackwardWaveletTransformer<double>;
+template bitmap<int64_t> BackwardWaveletTransformer<double>::apply<int64_t>(subbands_t<double>& subbands, size_t top_overlap);
+template bitmap<int32_t> BackwardWaveletTransformer<double>::apply<int32_t>(subbands_t<double>& subbands, size_t top_overlap);
+template bitmap<uint64_t> BackwardWaveletTransformer<double>::apply<uint64_t>(subbands_t<double>& subbands, size_t top_overlap);
+template bitmap<uint32_t> BackwardWaveletTransformer<double>::apply<uint32_t>(subbands_t<double>& subbands, size_t top_overlap);
 // template class BackwardWaveletTransformer<long double>;
 
 
@@ -1084,143 +1069,3 @@ namespace {
 	}
 
 }
-
-
-// bool src_is_image_data = true;
-// bool& apply_height_padding = src_is_image_data;
-// bool& skip_src_extension = src_is_image_data;
-// for (ptrdiff_t level = 0; level < dwt::level_num; ++level) {
-// 	overlap_requirement -= dwt::lowpass_dependency_radius;
-// 
-// 	ptrdiff_t hout_drop_offset = current_overlap.edges.left >> 1;
-// 	ptrdiff_t lout_drop_offset = relu(current_overlap.edges.left - overlap_requirement) >> 1; // TODO: check integer conversion here
-// 	ptrdiff_t llout_drop_offset = relu(current_overlap.edges.top - overlap_requirement) >> 1; // TODO: check integer conversion here
-// 	ptrdiff_t hxout_drop_offset = current_overlap.edges.top >> 1;
-// 	ptrdiff_t lhout_drop_offset = current_overlap.edges.top >> 1;
-// 	// but lh buffer will contain vertical overlap remainders after these dropout settings
-// 
-// 	// bet for effective conditional move
-// 	current_overlap.edges.left = (current_overlap.edges.left > overlap_requirement) ? (current_overlap.edges.left - dwt::lowpass_dependency_radius) : current_overlap.edges.left;
-// 	current_overlap.edges.right = (current_overlap.edges.right > overlap_requirement) ? (current_overlap.edges.right - dwt::lowpass_dependency_radius) : current_overlap.edges.right;
-// 	current_overlap.edges.left >>= 1;
-// 	current_overlap.edges.right >>= 1;
-// 	level_frame.width >>= 1;
-// 	level_frame_width >>= 1;
-// 
-// 	ptrdiff_t hout_index = level * 3 + 0;
-// 	img_pos hout_frame = level_frame;
-// 	hout_frame.height += current_overlap.edges.top + current_overlap.edges.bottom;
-// 	hout_frame.x = frame_positions[hout_index].x;
-// 	frame_positions[hout_index].x_step = hout_frame.width;
-// 	bitmap_slice<T> hout = this->buffers[hout_index].slice(hout_frame.transpose());
-// 	
-// 	ptrdiff_t lout_index = level * 3 + 1;
-// 	img_pos lout_frame = level_frame;
-// 	lout_frame.height += current_overlap.edges.top + current_overlap.edges.bottom;
-// 	lout_frame.width += current_overlap.edges.left + current_overlap.edges.right;
-// 	lout_frame.x = frame_positions[lout_index].x;
-// 	frame_positions[lout_index].x_step = lout_frame.width;
-// 	bitmap_slice<T> lout = this->buffers[lout_index].slice(lout_frame.transpose());
-// 
-// 	current_overlap.edges.left = (current_overlap.edges.left > overlap_requirement) ? (current_overlap.edges.left - dwt::lowpass_dependency_radius) : current_overlap.edges.left;
-// 	current_overlap.edges.right = (current_overlap.edges.right > overlap_requirement) ? (current_overlap.edges.right - dwt::lowpass_dependency_radius) : current_overlap.edges.right;
-// 	current_overlap.edges.left >>= 1;
-// 	current_overlap.edges.right >>= 1;
-// 	level_frame.height >>= 1;
-// 	level_frame_height >>= 1;
-// 
-// 	ptrdiff_t llout_index = level * 3 + 2;
-// 	img_pos llout_frame = level_frame;
-// 	llout_frame.height += current_overlap.edges.top + current_overlap.edges.bottom;
-// 	llout_frame.width += current_overlap.edges.left + current_overlap.edges.right;
-// 	llout_frame.x = frame_positions[llout_index].x;
-// 	llout_frame.x = (frame_index == 0) ? llout_frame.x : 
-// 		((llout_frame + dwt::overlap_crossrow_buffer_width + alignment - 1) & (~(alignment - 1)));
-// 	frame_positions[llout_index].x_step = llout_frame.width;
-// 	bitmap_slice<T> llout = this->buffers[llout_index].slice(llout_frame);
-// 
-// 	// frame dimensions and positions are the same for horizontal highpass buffers
-// 	img_pos hxout_frame = level_frame;
-// 	auto& hxout_positions = frame_positions[frame_positions.size() - (level + 1) * 2 + 0];
-// 	hxout_frame.x = hxout_positions.x;
-// 	hxout_positions.x_step = hxout_frame.width;
-// 
-// 	bitmap_slice<T> hhout = this->buffers[this->buffers.size() - (level + 1) * 3 + 2].slice(hxout_frame);
-// 	bitmap_slice<T> hlout = this->buffers[this->buffers.size() - (level + 1) * 3 + 0].slice(hxout_frame);
-// 
-// 	auto& lhout_positions = frame_positions[frame_positions.size() - (level + 1) * 2 + 1];
-// 	img_pos lhout_frame = level_frame;
-// 	lhout_frame.width += current_overlap.edges.left + current_overlap.edges.right;
-// 	lhout_frame.x = lhout_positions.x;
-// 	lhout_positions.x_step = lhout_frame.width;
-// 	bitmap_slice<T> lhout = this->buffers[this->buffers.size() - (level + 1) * 3 + 1].slice(lhout_frame);
-// 
-// 	// Main chain
-// 	transform_exp(src, hout, lout, hout_drop_offset, lout_drop_offset, skip_src_extension);
-// 	
-// 	if (apply_height_padding) {
-// 		// apply vertical padding in intermediate level 1 buffers
-// 		size_t unpadded_source_height = source.get_meta().height;
-// 		if (current_img_frame.y + current_img_frame.height > unpadded_source_height) {
-// 			size_t unpadded_frame_height = unpadded_source_height - current_img_frame.y;
-// 			std::array<std::reference_wrapper<bitmap<T>>, 2> buffers_to_pad{ hout, lout };
-// 			for (auto& buf : buffers_to_pad) {
-// 				for (ptrdiff_t i = 0; i < buf.get_meta().height; ++i) {
-// 					bitmap_row<T> row = buf[i];
-// 					T last_item = row[unpadded_frame_height - 1];
-// 					for (ptrdiff_t j = unpadded_frame_height; j < buf.get_meta().width; ++j) {
-// 						row[j] = last_item;
-// 					}
-// 				}
-// 			}
-// 		}
-// 	}
-// 
-// 	this->transform(lout, lhout, llout, lhout_drop_offset, llout_drop_offset);
-// 
-// 	// Aux chain
-// 	this->transform(hout, hhout, hlout, hxout_drop_offset, hxout_drop_offset);
-// 
-// 	src = llout;
-// 	src_is_image_data = false;
-// }
-// 
-// for (auto& item : frame_positions) {
-// 	item.x += item.x_step;
-// }
-//
-
-
-// constexpr ptrdiff_t source_overlap_requirement = dwt::overlap_img_range;
-// constexpr ptrdiff_t LL1_overlap_requirement = (source_overlap_requirement - dwt::lowpass_dependency_radius) >> 1;
-// constexpr ptrdiff_t LL2_overlap_requirement = (LL1_overlap_requirement - dwt::lowpass_dependency_radius) >> 1;
-// constexpr ptrdiff_t LL3_overlap_requirement = (LL2_overlap_requirement - dwt::lowpass_dependency_radius) >> 1;
-// constexpr std::array<ptrdiff_t, 4> level_overlap_requirements = {
-// 	source_overlap_requirement,
-// 	LL1_overlap_requirement,
-// 	LL2_overlap_requirement,
-// 	LL3_overlap_requirement
-// };
-
-
-// enum class border_handling_type {
-// 	extension,
-// 	overlap
-// };
-// 
-// // upper, left, right, bottom
-// std::array<std::array<border_handling_type, 4>, 2> fragment_border_handling{ {
-// 	{
-// 		(frame.y == 0) ? border_handling_type::extension : border_handling_type::overlap,
-// 		(frame.x == 0) ? border_handling_type::extension : border_handling_type::overlap,
-// 		((frame.x + frame.width) >= source.get_meta().width) ? border_handling_type::extension : border_handling_type::overlap,
-// 		((frame.y + frame.height) >= source.get_meta().width) ? border_handling_type::extension : border_handling_type::overlap
-// 	},
-// 	{
-// 		border_handling_type::overlap,
-// 		((frame.x + frame.width) > source.get_meta().width) ? border_handling_type::extension : border_handling_type::overlap,
-// 		border_handling_type::overlap,
-// 		((frame.y + frame.height * 2) >= source.get_meta().width) ? border_handling_type::extension : border_handling_type::overlap
-// 	}
-// } };
-

@@ -2,6 +2,7 @@
 
 #include <array>
 #include <bit>
+#include <functional>
 
 // SegmentAssembler class template implementation
 
@@ -130,7 +131,7 @@ SegmentAssembler<T, alignment>::output_type SegmentAssembler<T, alignment>::appl
 			item->quantizedDc = aligned_vector<oT>(item->size, k_offset_requirement);
 			item->quantizedBdepthAc = aligned_vector<size_t>(item->size, k_offset_requirement);
 			buffers[0].linear(item->plainDc.data(), item->size, dc_index);
-			item->bdepthDc = bdepthv<T, alignment>(item->plainDc.data(), item->size);
+			item->bdepthDc = bdepthv<oT, alignment>(item->plainDc.data(), item->size);
 
 			std::make_unsigned_t<oT> magnitude_mask_acc = 0;
 			for (ptrdiff_t j = 0; j < item->size; ++j) {
@@ -295,25 +296,25 @@ SegmentAssembler<T, alignment>::output_type SegmentAssembler<T, alignment>::pack
 	if (target_segment_size == 0) {
 		target_segment_size = block_count;
 	}
+
 	size_t segment_count = (block_count + (target_segment_size - 1)) / target_segment_size;
 	std::vector<std::unique_ptr<segment<oT>>> output(segment_count); // implicitly calls default ctor for segments, size = 0
-	--segment_count;
+	
+	ptrdiff_t last_segment_index = segment_count - 1;
+	size_t last_segment_size = block_count - (last_segment_index * target_segment_size);
 
-	size_t segment_index = 0, block_index = 0;
-	output[segment_index] = std::make_unique<segment<oT>>();
-	output[segment_index]->size = segment_index < segment_count ? target_segment_size : block_count;
-	output[segment_index]->bit_shifts = this->bit_shifts;
-	output[segment_index]->data.assign(output[segment_index]->size, block<oT>());
+	// to cause allocation on the first loop iteration
+	ptrdiff_t segment_index = -1;
+	ptrdiff_t block_index = target_segment_size; 
 	for (size_t i = 0; i < DC_loc.height; ++i) {
 		for (size_t j = 0; j < DC_loc.width; ++j) {
 			if (block_index >= target_segment_size) {
-				block_index = 0;
 				++segment_index;
+				block_index = 0;
 
 				output[segment_index] = std::make_unique<segment<oT>>();
-				output[segment_index]->size = segment_index < segment_count ?
-					target_segment_size : // block_count % this->segment_size;
-					(block_count - (segment_count * target_segment_size));
+				output[segment_index]->size = segment_index < last_segment_index ?
+					target_segment_size : last_segment_size;
 				output[segment_index]->bit_shifts = this->bit_shifts;
 				output[segment_index]->data.assign(output[segment_index]->size, block<oT>());
 			}
@@ -427,7 +428,7 @@ SegmentDisassembler<T, alignment>::output_type SegmentDisassembler<T, alignment>
 	for (ptrdiff_t i = 0; i < input.size(); ++i) {
 		// reference sample:
 		input[i]->data[0].content[0] = (input[i]->referenceSample << input[i]->q) | input[i]->plainDc[0];
-		T* diffData = input[i]->quantizedDc.data();
+		iT* diffData = input[i]->quantizedDc.data();
 		diffData[-1] = input[i]->referenceSample;
 
 		// Below is the same as rkdiff function but works for quantized DC only. 
@@ -451,7 +452,7 @@ SegmentDisassembler<T, alignment>::output_type SegmentDisassembler<T, alignment>
 		// }
 		size_t bdepthQDc = (input[i]->bdepthDc - input[i]->q) + 1;
 		if (bdepthQDc > 1) {
-			rkdiff<T, alignment>(diffData, (input[i]->size - 1), bdepthQDc, false);
+			rkdiff<iT, alignment>(diffData, (input[i]->size - 1), bdepthQDc, false);
 			for (ptrdiff_t j = 0; j < input[i]->size - 1; ++j) {
 				input[i]->data[j + 1].content[0] = 
 					(diffData[j] << input[i]->q) | input[i]->plainDc[j + 1]; // PERF NOTE: access by ptr and subscript operator
@@ -471,40 +472,36 @@ SegmentDisassembler<T, alignment>::output_type SegmentDisassembler<T, alignment>
 
 template <typename T, size_t alignment>
 SegmentDisassembler<T, alignment>::output_type SegmentDisassembler<T, alignment>::unpack(std::vector<std::unique_ptr<segment<iT>>>&& input) {
-	constexpr size_t min_img_width = 17;
-	constexpr size_t img_granularity = 16;
-	// TODO: previous implementation remainders below?
-	// image_width = std::max(image_width, min_img_width);
-	// image_width = (image_width + img_granularity - 1) & (~(img_granularity - 1));
+	constexpr ptrdiff_t overlap_rows = 4 + 3; // TODO: value is dwt lowpass dependency radius
 
 	// TODO: needs proper image dimension checks to comply with requirements
 	// (but checks may be performed on a previous stage)
-	img_meta ll3_meta = [](size_t _image_width) noexcept -> img_meta {
-			// limits in target image dimensions
-			constexpr size_t height_limit = 0x01 << 11; // TODO: previous implementation remainder... Why?
-			constexpr size_t length_limit = 0x01 << 28; // TODO: previous implementation remainder... Why?
+	img_meta ll3_meta = std::invoke([](size_t _image_width) noexcept -> img_meta {
+			// limits in target image dimensions, because target image height is not yet known. 
+			// Therefore it is necessary to split image into finite regions
+			constexpr size_t img_overlap_rows = overlap_rows << 3;
+			constexpr size_t height_limit = (0x01 << 11) + img_overlap_rows;
+			constexpr size_t length_limit = 0x01 << 28;
 			img_meta target{};
 			target.width = _image_width;
 			if (_image_width < height_limit) {
-				target.height = _image_width;
-			}
-			else {
+				target.height = _image_width + img_overlap_rows;
+			} else {
 				size_t length = _image_width * _image_width;
 				if (length < length_limit) {
 					target.height = height_limit;
-				}
-				else {
+				} else {
 					target.height = ((length_limit / _image_width) + 
-						img_granularity - 1) & (~(img_granularity - 1));;
+						constants::img::granularity - 1) & (~(constants::img::granularity - 1));
 				}
 			}
 
 			// cast to LL3 dims
 			target.width >>= 3;
 			target.height >>= 3;
-			target.length = target.width * target.height;
+			target.length = target.width * target.height;	// that is element count
 			return target;
-		}(this->img_width);
+		}, this->img_width);
 
 	auto init_buffers_f = [](size_t width, size_t height) {
 		subbands_t<T> buffers;
@@ -527,9 +524,8 @@ SegmentDisassembler<T, alignment>::output_type SegmentDisassembler<T, alignment>
 	// inherently requires bitmap image offset since segments are not alligned
 	// per image boundaries. But offset is applicable to the first buffer row 
 	// only and is (img.width - 1) at most.
-	constexpr ptrdiff_t overlap_rows = 16;
-	ptrdiff_t base_row_i = 0;
-	ptrdiff_t base_col_i = ll3_meta.height; // that triggers allocation of buffers
+	ptrdiff_t base_row_i = ll3_meta.height; // that triggers allocation of buffers
+	ptrdiff_t base_col_i = 0;
 	for (ptrdiff_t i = 0; i < input.size(); ++i) {
 		ptrdiff_t j = 0;
 		while (j < input[i]->size) {
@@ -538,11 +534,15 @@ SegmentDisassembler<T, alignment>::output_type SegmentDisassembler<T, alignment>
 			// so that data overlaps, permitting concurrent processing 
 			// of output buffers by several DWT simultaneously. This 
 			// allows to merge DWT output.
-			if (base_col_i == ll3_meta.height) {
+			if (base_row_i == ll3_meta.height) {
 				buffers_collection.emplace_back(init_buffers_f(ll3_meta.width, ll3_meta.height));
+
+				base_row_i = 0;
+				base_col_i = 0;
+
 				if (buffers_collection.size() >= 2) {
-					auto src = buffers_collection[buffers_collection.size() - 2];
-					auto dst = buffers_collection[buffers_collection.size() - 1];
+					auto& src = buffers_collection[buffers_collection.size() - 2];
+					auto& dst = buffers_collection[buffers_collection.size() - 1];
 					for (ptrdiff_t level = 0; level < 3; ++level) {
 						ptrdiff_t level_overlap = overlap_rows << level;
 						for (ptrdiff_t level_offset = (level > 0); level_offset < 4; ++level_offset) {
@@ -550,10 +550,8 @@ SegmentDisassembler<T, alignment>::output_type SegmentDisassembler<T, alignment>
 							overlapBitmaps(src[buffer_index], dst[buffer_index], level_overlap);
 						}
 					}
+					base_row_i = overlap_rows;
 				}
-
-				base_row_i = 0;
-				base_col_i = 0;
 			}
 
 			size_t buffer_linear_index = base_row_i * ll3_meta.width + base_col_i;
@@ -649,8 +647,8 @@ template class SegmentAssembler<int32_t>;
 template class SegmentAssembler<int64_t>;
 
 // TODO: fp support:
-// template class SegmentAssembler<float>;
-// template class SegmentAssembler<double>;
+template class SegmentAssembler<float>;
+template class SegmentAssembler<double>;
 // template class SegmentAssembler<long double>;
 
 
@@ -660,6 +658,6 @@ template class SegmentDisassembler<int32_t>;
 template class SegmentDisassembler<int64_t>;
 
 // TODO: fp support:
-// template class SegmentDisassembler<float>;
-// template class SegmentDisassembler<double>;
+template class SegmentDisassembler<float>;
+template class SegmentDisassembler<double>;
 // template class SegmentDisassembler<long double>;

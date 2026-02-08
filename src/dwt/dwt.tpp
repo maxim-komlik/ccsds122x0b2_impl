@@ -24,10 +24,16 @@ class ForwardWaveletTransformer: private constants::dwt {
 	bool parallel_compute = false;
 
 public:
-	void preprocess_image(bitmap<T>& src);
+	ForwardWaveletTransformer();
 
-	subbands_t<T> apply(const bitmap<T>& source, const img_pos& frame);
-	subbands_t<T> apply(bitmap<T>& source);
+	template <typename iT>
+	void preprocess_image(bitmap<iT>& src);
+
+	template <typename iT>
+	subbands_t<T> apply(const bitmap<iT>& source, const img_pos& frame);
+
+	template <typename iT>	// image type and DWT underlying type may differ
+	subbands_t<T> apply(bitmap<iT>& source);
 
 	// TODO: redesign scaling configuration [const correctness]
 	dwtscale<T>& get_scale();
@@ -37,7 +43,8 @@ public:
 private:
 	union frame_overlap_description;
 
-	void transform(const_bitmap_slice<T> source, bitmap_slice<T> hdst, bitmap_slice<T> ldst,
+	template <typename iT>
+	void transform(const_bitmap_slice<iT> source, bitmap_slice<T> hdst, bitmap_slice<T> ldst,
 		ptrdiff_t hdst_drop_offset = 0, ptrdiff_t ldst_drop_offset = 0,
 		bool skip_extension = false);
 	std::array<img_pos, 2> decompose_frame(img_meta src_dims, img_pos target_frame);
@@ -57,7 +64,10 @@ class BackwardWaveletTransformer: private constants::dwt {
 	bool transpose_output = false;
 
 public:
-	bitmap<T> apply(subbands_t<T>& subbands, size_t dc_top_overlap = 0);
+	BackwardWaveletTransformer();
+
+	template <typename oT = T>
+	bitmap<oT> apply(subbands_t<T>& subbands, size_t dc_top_overlap = 0);	// TODO: const ref parameter?
 
 	// TODO: redesign scaling configuration [const correctness]
 	dwtscale<T>& get_scale();

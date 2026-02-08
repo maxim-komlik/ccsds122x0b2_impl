@@ -25,7 +25,7 @@ class obitwrapper {
 
 public:
 	using value_type = ubuffer_t;
-	obitwrapper(const callback_t &callback, int_least32_t dst_byte_limit = ((1 << 27) - 1)) 
+	obitwrapper(const callback_t& callback, int_least32_t dst_byte_limit = ((1 << 27) - 1)) 
 			: dest(callback), byte_limit(dst_byte_limit) {}
 
 	~obitwrapper() = default;
@@ -107,9 +107,12 @@ public:
 
 	void set_byte_limit(int_least32_t limit, int_least32_t byte_count_init = 0) {
 		// byte limit is multiple of sizeof(buffer_t), see 4.2.3.2.1
+		constexpr size_t word_mask = sizeof(buffer_t) - 1;
+		// constexpr size_t word_mask = (1 << std::bit_width(sizeof(buffer_t) - 1)) - 1;
+
 		bool valid = true;
 		valid &= (limit > 0);
-		valid &= (limit & (sizeof(buffer_t) - 1)) == 0;
+		valid &= (limit & word_mask) == 0; // TODO: implies buffer_t's size is pot, which may be not true
 		valid &= !((this->byte_count > 0) & (byte_count_init != 0));
 		if (!valid) {
 			// TODO: error handling
@@ -136,7 +139,7 @@ public:
 		return this->byte_limit;
 	}
 
-	void write_bytes(std::span<std::byte> data_bytes) {
+	void write_bytes(std::span<const std::byte> data_bytes) {
 		// data_bytes are assumed to be ordered MSB first
 
 		constexpr size_t bindex_mask = ~((-1) << 3);
@@ -162,7 +165,7 @@ public:
 
 				// can reasonably be well-predicted
 				if (word_aligned) {
-					buffer_word.compound = *(reinterpret_cast<buffer_t*>(data_bytes.data() + index));
+					buffer_word.compound = *(reinterpret_cast<const buffer_t*>(data_bytes.data() + index));
 					index += sizeof(buffer_t);
 				} else {
 					for (ptrdiff_t i = 0; i < sizeof(buffer_t); ++i) {
@@ -173,11 +176,19 @@ public:
 
 				// this gonna be the only endiannes-dependent code in the whole
 				// obitwrapper
-				if constexpr (std::endian::native != std::endian::little) {
-					// TODO: but should we care about endiannes if we write raw bytes? If 
-					// byte span is obtained from some other span with bigger underlying 
-					// trivial type, compound type size may not match with original span 
-					// type size, and byte ordering would corrupt
+				if constexpr (std::endian::native != std::endian::big) {
+					// data_bytes is MSB, that is, big-endian. If buffer word is little-endian, 
+					// byteswap is needed to make the ordering of buffer_word.compound to be the 
+					// same as ordering of this->buffer.
+					// 
+					// byte span obtained from some other span with bigger underlying 
+					// trivial type is illegal in context of this API on little-endian 
+					// machines (because otherwise original span's compound type size 
+					// may not match with size of osbitwrapper buffer word type, and 
+					// byte ordering would corrupt).
+					// However, on little-endian implementations, with the prior knowledge
+					// of buffer word type and original span underlying span, it is safe 
+					// to use this API if the types match.
 					// 
 					buffer_word.compound = byteswap(buffer_word.compound);
 				}

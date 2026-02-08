@@ -18,6 +18,22 @@ namespace per_thread {
 			thread_local compression_resources<T> compr_resources;
 			return compr_resources;
 		}
+
+
+		template <typename T>
+		struct decompression_resources {
+			using dwtT = decompressors<T>::dwtT;
+			using bpeT = decompressors<T>::bpeT;
+			std::unique_ptr<BackwardWaveletTransformer<dwtT>> transformer = nullptr;
+			std::unique_ptr<SegmentDisassembler<dwtT>> disassmebler = nullptr;
+			std::unique_ptr<BitPlaneDecoder<bpeT>> decoder = nullptr;
+		};
+
+		template <typename T>
+		decompression_resources<T>& get_decompression_resources(const session_context& context) {
+			thread_local decompression_resources<T> compr_resources;
+			return compr_resources;
+		}
 	}
 
 	template <typename T> 
@@ -57,9 +73,66 @@ namespace per_thread {
 		resources.assmebler.reset(nullptr);
 		resources.encoder.reset(nullptr);
 	}
+
+
+
+	template <typename T>
+	BackwardWaveletTransformer<typename decompressors<T>::dwtT>& decompressors<T>::get_transformer(const session_context& context) {
+		auto& resources = get_decompression_resources<T>(context);
+		[[unlikely]]
+		if (resources.transformer == nullptr) {
+			resources.transformer = std::make_unique<BackwardWaveletTransformer<dwtT>>();
+		}
+		return *(resources.transformer);
+	}
+
+	template <typename T>
+	SegmentDisassembler<typename decompressors<T>::dwtT>& decompressors<T>::get_disassembler(const session_context& context) {
+		auto& resources = get_decompression_resources<T>(context);
+		[[unlikely]]
+		if (resources.disassmebler == nullptr) {
+			resources.disassmebler = std::make_unique<SegmentDisassembler<dwtT>>();
+		}
+		return *(resources.disassmebler);
+	}
+
+	template <typename T>
+	BitPlaneDecoder<typename decompressors<T>::bpeT>& decompressors<T>::get_decoder(const session_context& context) {
+		auto& resources = get_decompression_resources<T>(context);
+		[[unlikely]]
+		if (resources.decoder == nullptr) {
+			resources.decoder = std::make_unique<BitPlaneDecoder<bpeT>>();
+		}
+		return *(resources.decoder);
+	}
+
+	template <typename T>
+	void decompressors<T>::free_decompression_resources(const session_context& context) {
+		auto& resources = get_decompression_resources<T>(context);
+		resources.transformer.reset(nullptr);
+		resources.disassmebler.reset(nullptr);
+		resources.decoder.reset(nullptr);
+	}
 }
+
+//
+// explicit instantiation section
 
 template struct per_thread::compressors<int8_t>;
 template struct per_thread::compressors<int16_t>;
 template struct per_thread::compressors<int32_t>;
 template struct per_thread::compressors<int64_t>;
+
+template struct per_thread::compressors<float>;
+template struct per_thread::compressors<double>;
+// template struct per_thread::compressors<long double>;
+
+
+template struct per_thread::decompressors<int8_t>;
+template struct per_thread::decompressors<int16_t>;
+template struct per_thread::decompressors<int32_t>;
+template struct per_thread::decompressors<int64_t>;
+
+template struct per_thread::decompressors<float>;
+template struct per_thread::decompressors<double>;
+// template struct per_thread::decompressors<long double>;

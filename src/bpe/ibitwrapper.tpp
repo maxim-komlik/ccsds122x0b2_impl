@@ -1,8 +1,10 @@
 #pragma once
 
+#include <span>
 #include <bit>
 #include <type_traits>
 
+#include "utils.hpp"
 #include "entropy_types.hpp"
 #include "exception.hpp"
 
@@ -14,15 +16,15 @@ template <typename buffer_t> class ibitwrapper {
 	const size_t capacity = sizeof(buffer_t) << 3;
 	size_t rcount = capacity;
 
-	size_t byte_limit; // TODO: but should be capable of holding 2^27 - 1. See 4.2.3.2.1
+	size_t byte_limit = ((1 << 27) - 1); // TODO: but should be capable of holding 2^27 - 1. See 4.2.3.2.1
 	size_t byte_count = 0;
 
-	typedef const std::function<buffer_t(void)> callback_t;
+	typedef std::function<buffer_t(void)> callback_t;
 	callback_t source;
 
 public:
-	ibitwrapper(const callback_t &callback, size_t src_byte_limit = ((1 << 27) - 1)) 
-			: source(callback), byte_limit(src_byte_limit) {};
+	ibitwrapper(const callback_t& callback, size_t src_byte_limit = ((1 << 27) - 1)) 
+			: source(callback)/*, byte_limit(src_byte_limit)*/ {};
 	~ibitwrapper() = default;
 
 	// Nor copyable nor movable
@@ -83,12 +85,12 @@ public:
 
 	size_t extract_next_one() {
 		size_t result = 0;
-		size_t step = std::countl_zero(this->buffer);
+		size_t step = std::countl_zero((ubuffer_t)(this->buffer));
 		// skip all zeroes buffers
 		while (step >= (this->capacity - this->rcount)) {
 			result += (this->capacity - this->rcount);
 			this->fill();
-			step = std::countl_zero(this->buffer);
+			step = std::countl_zero((ubuffer_t)(this->buffer));
 		}
 		// skip left zeroes
 		this->buffer <<= step;
@@ -102,20 +104,120 @@ public:
 
 		return result + step;
 	}
+	
+	void read_bytes(std::span<std::byte> data_bytes) {
+		// data_bytes are assumed to be ordered MSB first
 
-	void fill() {
-		[[unlikely]]
-		if (this->byte_count >= this->byte_limit) {
-			throw ccsds::bpe::byte_limit_exception();
+		constexpr size_t bindex_mask = ~((-1) << 3);
+		if ((data_bytes.size() > sizeof(buffer_t)) & ((this->rcount & bindex_mask) == 0)) {
+			// we're lucky and current buffer's fill counter is on byte 
+			// boundary. At least we can copy whole bytes to the buffer.
+			// 
+			// check if data_bytes.data() is aligned properly next, if so we 
+			// can copy whole words (maybe reversing order of bytes if 
+			// environment is not big-endian (input is string and supposed to 
+			// be organized in big-endian manner)
+
+			ptrdiff_t index = 0;
+			while (!this->empty()) {
+				data_bytes[index] = std::byte{ (uint8_t)(this->extract(8)) };
+				++index;
+			}
+
+			constexpr size_t alignment_mask = alignof(buffer_t) - 1;
+			bool word_aligned = (((size_t)(data_bytes.data() + index)) & alignment_mask) == 0;
+			while (index < (data_bytes.size() - sizeof(buffer_t))) {	// subtraction never underflows here
+				bytes_view<buffer_t> buffer_word;
+				buffer_word.compound = this->load_word();
+
+				// this gonna be the only endiannes-dependent code in the whole
+				// ibitwrapper
+				if constexpr (std::endian::native != std::endian::big) {
+					// data_bytes is MSB, that is, big-endian. If buffer word is little-endian, 
+					// byteswap is needed to preserve the ordering in data_bytes.
+					buffer_word.compound = byteswap(buffer_word.compound);
+				}
+
+				// can reasonably be well-predicted
+				if (word_aligned) {
+					*(reinterpret_cast<buffer_t*>(data_bytes.data() + index)) = buffer_word.compound;
+					index += sizeof(buffer_t);
+				} else {
+					for (ptrdiff_t i = 0; i < sizeof(buffer_t); ++i) {
+						data_bytes[index] = buffer_word.bytes[i];
+						++index;
+					}
+				}
+			}
+
+			while (index != data_bytes.size()) {
+				data_bytes[index] = std::byte{ (uint8_t)(this->extract(8)) };
+				++index;
+			}
+		} else {
+			for (std::byte& item : data_bytes) {
+				item = std::byte{ (uint8_t)(this->extract(8)) };
+			}
 		}
-
-		this->buffer = this->source();
-		this->rcount = 0;
-		this->byte_count += sizeof(decltype(this->buffer));
 	}
 
 	size_t icount() {
 		// TODO
 		return this->rcount;
+	}
+
+	bool empty() const {
+		return (this->rcount == this->capacity);
+	}
+
+	size_t get_byte_limit() const {
+		// TODO: but are byte_limit checks even needed for ibitwrapper? Managing 
+		// data provider would normally throw exception on end of data...
+
+		return this->byte_limit;
+	}
+
+	size_t get_byte_count() const {
+		return this->byte_count;
+	}
+
+	void set_byte_limit(int_least32_t limit, int_least32_t byte_count = 0) {
+
+	}
+
+	void set_byte_count(int_least32_t target_value) {
+		bool valid = true;
+		valid &= (target_value > 0);
+		if (!valid) {
+
+		}
+
+		this->byte_count = target_value;
+	}
+
+private:
+	void fill() {
+		// [[unlikely]]
+		// if (this->byte_count >= this->byte_limit) {
+		// 	throw ccsds::bpe::byte_limit_exception();
+		// }
+		// 
+		// this->buffer = this->source();
+		// this->rcount = 0;
+		// this->byte_count += sizeof(decltype(this->buffer));
+
+		this->buffer = this->load_word();
+		this->rcount = 0;
+	}
+
+	buffer_t load_word() {
+		[[unlikely]]
+		if (this->byte_count >= this->byte_limit) {
+			throw ccsds::bpe::byte_limit_exception();
+		}
+
+		buffer_t result = this->source();
+		this->byte_count += sizeof(decltype(this->buffer));
+		return result;
 	}
 };

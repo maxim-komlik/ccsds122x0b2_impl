@@ -11,9 +11,10 @@
 #include "io/io_settings.hpp"
 #include "io/io_contexts.hpp"
 #include "io/session_context.hpp"
+#include "io/io_data_registry.hpp"
 #include "io/sink.hpp"
 
-#include "io/file_proto.hpp"
+#include "io/file_protocol.hpp"
 
 #include "dwt/dwt.hpp"
 #include "dwt/segment_assembly.hpp"
@@ -88,7 +89,6 @@
 //
 
 
-
 template <typename T>
 struct compression_routines {
 	using types = compressor_type_params<T>;
@@ -101,31 +101,60 @@ struct compression_routines {
 	template <typename iT>
 	static void transform_fragment(dwt_context cx);
 
-	static segmentation_context<subband_type> preprocess_fragments(dwt_context cx);
+	static segmentation_context<subband_type, segment_type> preprocess_fragments(dwt_context cx);
 
-	static std::vector<compression_context<segment_type>> assemble_segments(segmentation_context<subband_type> cx);
+	static std::vector<compression_context<segment_type>> assemble_segments(segmentation_context<subband_type, segment_type> cx);
 
 	static void compress_segment(compression_context<segment_type> data);
+
+	template <typename iT>
+	static void decode_segment(compression_context<segment_type> data);
+
+	static std::vector<segmentation_context<subband_type, segment_type>> disassemble_segments(segmentation_context<subband_type, segment_type> data);
+
+	template <typename oT>
+	static void restore_image(segmentation_context<subband_type, segment_type> data);
+
+	template <typename oT>
+	static void postprocess_image(segmentation_context<subband_type, segment_type> data);
 
 private:
 	static std::vector<subbands_t<subband_type>> collect_contiguous_fragments(dwt_context cx);
 
-	// TODO: merge_subbands uses context argument just to obtain image width value, it's better 
-	// to pass image width explicitly
 	static std::array<subbands_t<subband_type>, 2> merge_subbands(size_t image_width, std::vector<subbands_t<subband_type>>&& fragments);
 
 	static std::vector<compression_context<segment_type>> dispatch_segments(channel_context& context, std::vector<std::unique_ptr<segment<segment_type>>>&& segments);
-
-	// static void free_compressed_segment_data(channel_context& context);
 };
+
+inline size_t collect_decompression_session_params(session_context& cx, std::vector<std::reference_wrapper<const data_descriptor>>& handles);
+
+
+const data_descriptor& make_output_segment_descriptor(session_context& cx, size_t segment_id, size_t channel_id) {
+	switch (cx.data_registry.get_segment_storage_type()) {
+	// TODO: move dst_type do data_registry instance?
+	case storage_type::file: {
+		return cx.data_registry.put_output(cx, segment_file_descriptor{ channel_id, segment_id});
+		break;
+	}
+	case storage_type::memory: {
+		return cx.data_registry.put_output(cx, segment_memory_descriptor{ channel_id, segment_id });
+		break;
+	}
+	default: {
+		// TODO: error handling
+		break;
+	}
+	}
+}
 
 template <typename T>
 template <typename iT>
 std::vector<dwt_context> compression_routines<T>::preprocess_image(dwt_context cx) {
-	auto op_state_token = cx.channel_cx.register_operation_start(cx);
+	auto op_state_token = cx.channel_cx.descriptors.start_operation(cx);
 	auto& transformer = per_thread::compressors<T>::get_transformer(cx.channel_cx.session_cx);
 
-	bitmap<iT>& img = std::get<std::vector<bitmap<iT>>>(cx.channel_cx.session_cx.image_channels)[cx.frame.z];
+	image_memory_descriptor<iT>& descriptor = io_data_registry::get_data<image_selector<iT>>(cx.data);
+	bitmap<iT>& img = descriptor.image;
 
 	if (cx.channel_cx.session_cx.settings_session.transpose) {
 		img = img.transpose();
@@ -150,8 +179,7 @@ std::vector<dwt_context> compression_routines<T>::preprocess_image(dwt_context c
 		});
 	if (largest_segment != cx.channel_cx.session_cx.seg_settings.cend()) {
 		largest_segment_size = largest_segment->second.size;
-	}
-	else {
+	} else {
 		largest_segment_size = max_frame_width;
 	}
 
@@ -172,7 +200,7 @@ std::vector<dwt_context> compression_routines<T>::preprocess_image(dwt_context c
 		frame_item.width = frame_width;
 		frame_item.depth = 1;
 
-		frames.emplace_back(generate_dwt_id(), cx.channel_cx, frame_item);
+		frames.emplace_back(generate_dwt_id(), cx.channel_cx, frame_item, cx.data);
 
 		x += frame_width;
 
@@ -195,32 +223,36 @@ std::vector<dwt_context> compression_routines<T>::preprocess_image(dwt_context c
 		}
 	}
 
-	cx.channel_cx.register_operations(frames);
+	cx.channel_cx.descriptors.register_operations(frames);
 	return frames;
 }
 
 template <typename T>
 template <typename iT>
 void compression_routines<T>::transform_fragment(dwt_context cx) {
-	auto op_state_token = cx.channel_cx.register_operation_start(cx);
+	auto op_state_token = cx.channel_cx.descriptors.start_operation(cx);
 	auto& transformer = per_thread::compressors<T>::get_transformer(cx.channel_cx.session_cx);
 
 	if (cx.channel_cx.session_cx.settings_session.custom_shifts) {
 		transformer.get_scale().set_shifts(cx.channel_cx.session_cx.settings_session.shifts);
 	}
 
-	const bitmap<iT>& img = std::get<std::vector<bitmap<iT>>>(cx.channel_cx.session_cx.image_channels)[cx.frame.z];
-	auto& data = std::get<compression_data<T>>(cx.channel_cx.data);
+	image_memory_descriptor<iT>& descriptor = io_data_registry::get_data<image_selector<iT>>(cx.data);
+	bitmap<iT>& img = descriptor.image;
 
 	auto result_subbands = transformer.apply(img, cx.frame);
+
+	auto& data = std::get<compression_data<T>>(cx.channel_cx.data);
 
 	std::lock_guard lock(data.subband_fragments_mx);
 	data.subband_fragments.emplace_back(std::move(result_subbands), cx.frame);
 }
 
 template <typename T>
-segmentation_context<typename compression_routines<T>::subband_type> compression_routines<T>::preprocess_fragments(dwt_context cx) {
-	auto op_state_token = cx.channel_cx.register_operation_start(cx);
+segmentation_context<typename compression_routines<T>::subband_type, typename compression_routines<T>::segment_type> 
+compression_routines<T>::preprocess_fragments(dwt_context cx) {
+	auto op_state_token = cx.channel_cx.descriptors.start_operation(cx);
+	cx.channel_cx.session_cx.data_registry.free_descriptor(cx.data);
 	size_t image_width = cx.channel_cx.session_cx.settings_session.img_width;
 	image_width = ((image_width + 7) >> 3) << 3; // TODO: we should account for padding...
 
@@ -246,7 +278,7 @@ segmentation_context<typename compression_routines<T>::subband_type> compression
 	merged_frame.y = cx.frame.y;
 	merged_frame.z = cx.frame.z;
 	
-	segmentation_context<subband_type> result {
+	segmentation_context<subband_type, segment_type> result {
 		generate_segmentation_id(),
 		cx.channel_cx,
 		std::move(merged),
@@ -254,20 +286,16 @@ segmentation_context<typename compression_routines<T>::subband_type> compression
 		merged_frame
 	};
 
-	cx.channel_cx.register_operation(result);
+	cx.channel_cx.descriptors.register_operation(result);
 	return result;
 }
 
 template <typename T>
 std::vector<subbands_t<typename compression_routines<T>::subband_type>> compression_routines<T>::collect_contiguous_fragments(dwt_context cx) {
 	auto& data = std::get<compression_data<T>>(cx.channel_cx.data);
-	// using fragment_description_t = decltype(data.subband_fragments)::value_type;
 
 	using view_iterator_t = decltype(data.subband_fragments)::const_iterator;
 	std::vector<view_iterator_t> fragments_view;
-	// (
-	// std::vector<std::reference_wrapper<fragment_description_t>> fragments_view(
-	// 	data.subband_fragments.cbegin(), data.subband_fragments.cend());
 
 	view_iterator_t view_begin_it;
 	view_iterator_t view_end_it;
@@ -329,7 +357,6 @@ std::vector<subbands_t<typename compression_routines<T>::subband_type>> compress
 				);
 		});
 
-	// std::vector<subbands_t<subband_type>> result;
 	decltype(data.subband_fragments) splice_buffer;
 	// TODO: current implementation does not support merging subbands in several passes, 
 	// only whole image at once.
@@ -343,9 +370,6 @@ std::vector<subbands_t<typename compression_routines<T>::subband_type>> compress
 	typename decltype(fragments_view)::iterator view_it = std::partition_point(
 		sorted_begin, sorted_end,
 		[x = next_x, y = next_y, z = cx.frame.z](const auto& item) -> bool {
-			// return (item->second.x < x) &
-			// 	(item->second.y <= y) &
-			// 	(item->second.z <= z);
 			// return
 			// 	(item->second.z < z) |
 			// 	(
@@ -373,7 +397,6 @@ std::vector<subbands_t<typename compression_routines<T>::subband_type>> compress
 		while ((view_it != sorted_end) &&
 				(((*view_it)->second.x == next_x) & ((*view_it)->second.y == next_y))) {
 			view_iterator_t& it = *view_it;
-			// result.push_back(std::move(item->first));
 			
 			// splice for single item is expected in constant time
 			splice_buffer.splice(splice_buffer.end(), data.subband_fragments, it);
@@ -398,7 +421,6 @@ std::vector<subbands_t<typename compression_routines<T>::subband_type>> compress
 
 	// output items are sorted and are going to be merged. Transfer elements to vector
 	std::vector<subbands_t<subband_type>> result;
-	//std::move(splice_buffer.begin(), splice_buffer.end(), std::back_inserter(result));
 	std::for_each(splice_buffer.begin(), splice_buffer.end(), 
 		[&result](auto& item) -> void {
 			result.push_back(std::move(item.first));
@@ -461,10 +483,6 @@ std::array<subbands_t<typename compression_routines<T>::subband_type>, 2> compre
 		// TODO: error handling
 	}
 
-	// using subT = typename types::subband_type;
-
-	// size_t image_width = context.settings_session.img_width;
-	// image_width = ((image_width + 7) >> 3) << 3; // TODO: we should account for padding...
 	size_t fragment_height = fragments[0][0].get_meta().height << 3;
 
 	subbands_t<subband_type> tail;
@@ -619,8 +637,8 @@ std::array<subbands_t<typename compression_routines<T>::subband_type>, 2> compre
 }
 
 template <typename T>
-std::vector<compression_context<typename compression_routines<T>::segment_type>> compression_routines<T>::assemble_segments(segmentation_context<typename compression_routines<T>::subband_type> cx) {
-	auto op_state_token = cx.channel_cx.register_operation_start(cx);
+std::vector<compression_context<typename compression_routines<T>::segment_type>> compression_routines<T>::assemble_segments(segmentation_context<typename compression_routines<T>::subband_type, typename compression_routines<T>::segment_type> cx) {
+	auto op_state_token = cx.channel_cx.descriptors.start_operation(cx);
 	// input subbands is a rectangular continious fragment of input image with the width 
 	// equal to the source image. 
 	// or it may be accumulative subband container, containing transformed so far image 
@@ -650,7 +668,7 @@ std::vector<compression_context<typename compression_routines<T>::segment_type>>
 	//
 
 	auto result = dispatch_segments(cx.channel_cx, assembler.apply(std::move(cx.subband_data)));
-	cx.channel_cx.register_operations(result);
+	cx.channel_cx.descriptors.register_operations(result);
 	return result;
 }
 
@@ -672,8 +690,7 @@ std::vector<compression_context<typename compression_routines<T>::segment_type>>
 	// 	context.allocated_segment_id.second + data.tail.size() + segments.size());
 	size_t next_available_id = context.allocated_segment_id.second + data.tail.size() + segments.size();
 	context.allocated_segment_id.second = next_available_id;
-
-	// using segT = types::segment_type;
+	
 	std::vector<compression_context<segment_type>> dispatched_segments;
 	std::vector<compression_descriptor> dispatched_descriptors;
 
@@ -689,19 +706,10 @@ std::vector<compression_context<typename compression_routines<T>::segment_type>>
 			compression_context<segment_type> segment_context {
 				context_id, 
 				context,
-				make_sink<compression_context<segment_type>::sink_value_type>(context.session_cx, segment_id, context.session_cx.dst_type, context.channel_index),
-				//std::make_unique<segment<segment_type>>(std::move(*it))
-				std::move(*it)
+				//make_sink<compression_context<segment_type>::sink_value_type>(context.session_cx, context.session_cx.dst_type, segment_id, context.channel_index),
+				std::move(*it),
+				make_output_segment_descriptor(context.session_cx, segment_id, context.channel_index)
 			};
-			// compression_descriptor segment_descriptor {
-			// 	context_id,
-			// 	operation_state::pending,
-			// 	segment_id
-			// };
-			// 
-			// // TODO: sync!
-			// // context.compression_descriptors.push_back(std::move(segment_descriptor));
-			// dispatched_descriptors.push_back(std::move(segment_descriptor));
 			dispatched_segments.push_back(std::move(segment_context));
 		}
 
@@ -709,35 +717,6 @@ std::vector<compression_context<typename compression_routines<T>::segment_type>>
 		return it;
 	};
 
-	// {
-	// 	size_t next_registered_segment_id = 0;
-	// 	if (!dispatched_descriptors.empty()) {
-	// 		next_registered_segment_id = dispatched_descriptors.front().segment_id;
-	// 	} else {
-	// 		// TODO: oops? Error handling?
-	// 	}
-	// 
-	// 	std::lock_guard lock(context.compression_descriptors_mx);
-	// 
-	// 	[[unlikely]]
-	// 	if (context.compression_descriptors.size() != next_registered_segment_id) {
-	// 		// oops?
-	// 	}
-	// 
-	// 	for (ptrdiff_t i = 0; i < dispatched_descriptors.size(); ++i) {
-	// 		auto [it, inserted] = context.compression_segment_id_map.insert(
-	// 			{ dispatched_descriptors[i].context_id, next_registered_segment_id + i });
-	// 
-	// 		[[unlikely]]
-	// 		if (!inserted) {
-	// 			// oops?
-	// 		}
-	// 	}
-	// 
-	// 	std::move(dispatched_descriptors.begin(), dispatched_descriptors.end(), 
-	// 		std::back_inserter(context.compression_descriptors));
-	// }
-	context.register_operations(dispatched_segments);
 
 	{
 		decltype(data.tail) local_tail;
@@ -759,32 +738,31 @@ std::vector<compression_context<typename compression_routines<T>::segment_type>>
 		{
 			std::lock_guard lock(data.tail_mx);
 			std::move(tail_start_it, segments.end(), std::back_inserter(data.tail));
+			// TODO: move to local buffer first, then splice to global tail end?
 		}
 	}
 
+	// TODO: refactor special segments hanlers when control flow is redesigned
+	if (!dispatched_segments.empty()) {
+		dispatched_segments.front().channel_start = true;
+		dispatched_segments.back().channel_end = true;
+
+		if (context.channel_index == 0) {
+			dispatched_segments.front().image_start = true;
+		}
+		if (context.channel_index == (context.session_cx.channel_contexts.size() - 1)) {
+				// channel_contexts at least contains single element that has to be context
+			dispatched_segments.back().image_end = true;
+		}
+	}
+
+	context.descriptors.register_operations(dispatched_segments);
 	return dispatched_segments;
 }
 
-// template <typename T>
-// void compression_routines<T>::free_compressed_segment_data(channel_context& context) {
-// 	auto& data = std::get<compression_data<T>>(context.data);
-// 	ptrdiff_t next_allocated_id = context.allocated_segment_id.first;
-// 	size_t last_allocated_id = context.allocated_segment_id.second;
-// 
-// 	{
-// 		std::shared_lock lock(context.compression_descriptors_mx);
-// 		while ((next_allocated_id != last_allocated_id) && 
-// 				(context.compression_descriptors[next_allocated_id].state.load() == operation_state::done)) {
-// 			++next_allocated_id;
-// 		}
-// 	}
-// 
-// 	context.allocated_segment_id.first = next_allocated_id;
-// }
-
 template <typename T>
 void compression_routines<T>::compress_segment(compression_context<typename compression_routines<T>::segment_type> cx) {
-	auto op_state_token = cx.channel_cx.register_operation_start(cx);
+	auto op_state_token = cx.channel_cx.descriptors.start_operation(cx);
 	auto& encoder = per_thread::compressors<T>::get_encoder(cx.channel_cx.session_cx);
 	auto [param_compr, flag_compr] = get_compression_settings(cx.channel_cx.session_cx, cx.segment_data->id);
 	auto [param_seg, flag_seg] = get_segment_settings(cx.channel_cx.session_cx, cx.segment_data->id);
@@ -794,82 +772,612 @@ void compression_routines<T>::compress_segment(compression_context<typename comp
 	if (param_compr.early_termination) {
 		encoder.set_stop_after_DC(param_compr.DC_stop);
 		encoder.set_stop_at_bplane(param_compr.bplane_stop, param_compr.stage_stop);
-	}
-	else {
+	} else {
 		// refactor default params
 		encoder.set_stop_after_DC(false);
 		encoder.set_stop_at_bplane(0, 0b11);
 	}
 
-	// TODO: refactor somehow???
+	auto sink = make_sink<size_t>(cx.channel_cx.session_cx, cx.data);
+
 	ccsds_file_protocol specific_protocol(*(cx.segment_data), cx.segment_data->id);
-	std::vector<std::byte> header_storage(specific_protocol.header_size());
-	specific_protocol.set_compression_params(param_compr);
-	specific_protocol.set_segment_params(param_seg);
-	specific_protocol.commit(std::span(header_storage));
-	// TODO: last/first?
-	cx.dst->setup_session(param_seg, param_compr, flag_seg, flag_compr);
+
+	if (cx.image_start) {
+		bool valid = true;
+		valid &= flag_compr;
+		valid &= flag_seg;
+
+		if (!valid) {
+			// TODO: error handling
+		}
+
+		specific_protocol.init_session(cx.channel_cx.session_cx.settings_session, param_seg, param_compr);
+	} else {
+		specific_protocol.set_first(cx.channel_start);
+		if (flag_seg) {
+			specific_protocol.set_segment_params(param_seg);
+		}
+		if (flag_compr) {
+			specific_protocol.set_compression_params(param_compr);
+		}
+	}
+
+	if (cx.channel_end) {
+		specific_protocol.set_last(cx.channel_cx.session_cx.settings_session.rows_pad_count);
+
+		size_t image_width = cx.channel_cx.session_cx.settings_session.img_width;
+		// cast to LL3 dims
+		image_width = (image_width + ((1 << 3) - 1)) >> 3;
+		if (param_seg.size > image_width) {
+			// if the segment length is greater than the image width, it is necessary to 
+			// specify actual segment size via segment header part 3. Otherwise it's not 
+			// possible to decode image demensions unambigiously and correctly.
+			//
+
+			segment_settings last_segment_settings = param_seg;
+			last_segment_settings.size = cx.segment_data->size;
+			specific_protocol.set_segment_params(last_segment_settings);
+		}
+		// no special handling for cx.image_end
+	}
+
+	sink->setup_session();
 
 	try {
-		ptrdiff_t header_offset = specific_protocol.ccsds_protocol::header_size() - specific_protocol.header_size();
-		cx.dst->get_bitwrapper().set_byte_limit(param_compr.seg_byte_limit, header_offset);
-		cx.dst->get_bitwrapper().write_bytes(std::span(header_storage));
-		encoder.encode(*(cx.segment_data), cx.dst->get_bitwrapper());
-		cx.dst->finish_session();
-	}
-	catch (const ccsds::bpe::byte_limit_exception& ex) {
-		cx.dst->handle_early_termination();
+		specific_protocol.commit(sink->get_bitwrapper(), param_compr);
+		encoder.encode(*(cx.segment_data), sink->get_bitwrapper());
+		sink->finish_session();
+	} catch (const ccsds::bpe::byte_limit_exception& ex) {
+		sink->handle_early_termination();
 	}
 
-	specific_protocol.set_segment_size(cx.dst->get_bitwrapper().get_byte_count());
+	specific_protocol.set_segment_size(sink->get_bitwrapper().get_byte_count());
 	// TODO: override protocol header?
-	
-	// TODO: context descriptor should contain info about compression result, some kind of 
-	// sink handle that can be used to access the result.
 }
 
 
-// template <typename T>
-// std::vector<compression_context<typename compression_routines<T>::segment_type>> compression_routines<T>::dispatch_segments(const session_context& context, std::vector<std::unique_ptr<segment<typename compression_routines<T>::segment_type>>>&& segments) {
-// 	// handle segment preprocessing work: allocate sink, make necessary sink configs
-// 	// 
-// 	free_compressed_segment_data(context);
-// 
-// 	size_t next_id = context.allocated_segment_id.second + 1;
-// 	size_t next_allocated_id = context.allocated_segment_id.first;
-// 
-// 	next_id &= 255;
-// 	bool id_available = (next_id != next_allocated_id);
-// 
-// 	bool range_wrap = next_id > next_allocated_id;
-// 	next_allocated_id += zeropred(256, range_wrap);
-// 	size_t available_id_range_length = next_allocated_id - next_id;
-// 
-// 	auto& data = std::get<session_context::compression_data<T>>(context.compr_data);
-// 
-// 	// using segT = types::segment_type;
-// 	std::vector<std::reference_wrapper<compression_context<segment_type>>> dispatched_segments;
-// 
-// 	std::array<std::reference_wrapper<decltype(segments)>, 2> segment_sets{ data.tail, segments };
-// 	for (decltype(segments)& item : segment_sets) {
-// 		size_t segment_num_to_dispatch = std::min(available_id_range_length, item.size());
-// 
-// 		for (ptrdiff_t i = 0; i < segment_num_to_dispatch; ++i) {
-// 			ptrdiff_t context_index = (next_id + i) & 255;
-// 			data.compression_contexts[context_index] = compression_context<segment_type>{
-// 				make_sink<compression_context<segment_type>::sink_data_type>(context, next_id + i, context.dst_type),
-// 				std::move(item[i]), context_index
-// 			};
-// 			dispatched_segments.push_back(data.compression_contexts[context_index]);
-// 		}
-// 		available_id_range_length -= segment_num_to_dispatch;
-// 		next_id += segment_num_to_dispatch;
-// 
-// 		item.erase(item.begin(), std::advance(item.begin(), segment_num_to_dispatch));
-// 	}
-// 	std::move(segments.begin(), segments.end(), std::back_inserter(data.tail));
-// 
-// 	context.allocated_segment_id.second = next_id;
-// 
-// 	return dispatched_segments;
-// }
+
+template <typename T>
+template <typename iT>
+void compression_routines<T>::decode_segment(compression_context<segment_type> cx) {
+	auto op_state_token = cx.channel_cx.descriptors.start_operation(cx);
+	auto& decoder = per_thread::decompressors<T>::get_decoder(cx.channel_cx.session_cx);
+
+	auto [param_compr, flag_compr] = get_compression_settings(cx.channel_cx.session_cx, cx.segment_data->id);
+	auto [param_seg, flag_seg] = get_segment_settings(cx.channel_cx.session_cx, cx.segment_data->id);
+
+	cx.segment_data->size = param_seg.size;
+	cx.segment_data->bit_shifts = cx.channel_cx.session_cx.settings_session.shifts;
+
+	auto src = make_source<iT>(cx.channel_cx.session_cx, cx.data);
+	src->setup_session();
+
+	try {
+		auto specific_protocol = ccsds_header_parser<ccsds_file_protocol>::parse_header(src->get_bitwrapper());
+		
+		constexpr size_t segment_count_mask = (1 << 8) - 1;
+
+		bool valid = true;
+		valid &= !(flag_compr ^ specific_protocol.if_contains_compression_params());
+		valid &= !(flag_seg ^ specific_protocol.if_contains_segment_params());
+		valid &= (specific_protocol.get_segment_count() == (cx.segment_data->id & segment_count_mask));
+		if (!valid) {
+			// TODO: handle error
+		}
+
+		cx.segment_data->bdepthAc = specific_protocol.get_bit_depth_AC();
+		cx.segment_data->bdepthDc = specific_protocol.get_bit_depth_DC();
+
+		if (specific_protocol.if_last()) {
+			// the standard does not require to include header part 3 for the last segment if its 
+			// size is less than the effectively encoded expected segment size in the last header 
+			// part 3. Thus it is necessary to compute encoded image dimensions at this point, so 
+			// that true last segment size can be set in segment structure, to prevent corruption 
+			// during decoding.
+			//
+			// However, the last segment must contain header part 3 if effective segment size lays 
+			// across multiple (more than 1) image rows. Otherwise it is not possible to properly 
+			// decode the segment and compute original image height.
+			//
+
+			size_t rows_pad_count = specific_protocol.get_pad_rows_count();
+			size_t image_width = cx.channel_cx.session_cx.settings_session.img_width;
+			uintmax_t blocks_total = 0;
+
+			const auto& segmentation_settings = cx.channel_cx.session_cx.seg_settings;
+			size_t next_setting_segment_id = cx.segment_data->id;
+
+			std::for_each(segmentation_settings.crbegin(), segmentation_settings.crend(),
+				[&next_setting_segment_id, &blocks_total](const auto& item_pair) -> void {
+					blocks_total += item_pair.second.size * (next_setting_segment_id - item_pair.first);
+					next_setting_segment_id = item_pair.first;
+				});
+
+			// cast to LL3 dims
+			// TODO: account padding needed here?
+			image_width = (image_width + ((1 << 3) - 1)) >> 3;
+			size_t image_height = (blocks_total + param_seg.size) / image_width;
+			cx.segment_data->size = image_height * image_width - blocks_total;
+			// cx.channel_cx.session_cx.settings_session.rows_pad_count = rows_pad_count;
+		}
+
+		if (param_compr.early_termination) {
+			decoder.set_stop_after_DC(param_compr.DC_stop);
+			decoder.set_stop_at_bplane(param_compr.bplane_stop, param_compr.stage_stop);
+		} else {
+			// refactor default params
+			decoder.set_stop_after_DC(false);
+			decoder.set_stop_at_bplane(0, 0b11);
+		}
+
+		decoder.decode(*(cx.segment_data), src->get_bitwrapper());
+	} catch (const ccsds::bpe::byte_limit_exception& ex) {
+		// TODO: error handling? is this scenario needed?
+	}
+
+	src.reset();
+	cx.channel_cx.session_cx.data_registry.free_descriptor(cx.data);
+
+	auto& data = std::get<compression_data<T>>(cx.channel_cx.data);
+	{
+		std::lock_guard lock(data.tail_mx);
+		data.tail.push_back(std::move(cx.segment_data));
+	}
+}
+
+template <typename T>
+std::vector<segmentation_context<typename compression_routines<T>::subband_type, typename compression_routines<T>::segment_type>> 
+compression_routines<T>::disassemble_segments(segmentation_context<subband_type, segment_type> cx) {
+	auto op_state_token = cx.channel_cx.descriptors.start_operation(cx);
+	auto& data = std::get<compression_data<T>>(cx.channel_cx.data);
+
+	decltype(data.tail) local_tail;
+	{
+		std::lock_guard lock(data.tail_mx);
+		local_tail.swap(data.tail);
+	}
+	std::vector<decltype(local_tail)::value_type> segments;
+	segments.reserve(local_tail.size());
+	std::move(local_tail.begin(), local_tail.end(), std::back_inserter(segments));
+
+	std::sort(segments.begin(), segments.end(), 
+		[](const auto& lhs, const auto& rhs) -> bool {
+			return lhs->id < rhs->id;
+		});
+
+	bool valid = true;
+	valid &= !segments.empty();
+	if (!valid) {
+		// TODO: error handling
+	}
+
+	auto it = segments.cbegin();
+	size_t prev_segment_id = (*it)->id;
+
+	valid &= ((*it)->id == 0);
+	it++;
+	std::for_each(it, segments.cend(),
+		[&prev_segment_id, &valid](const auto& item) -> void {
+			++prev_segment_id;
+			valid &= (item->id == prev_segment_id);
+		});
+	if (!valid) {
+		// TODO: error handling, segment id sequence is broken
+	}
+
+	auto& disassembler = per_thread::decompressors<T>::get_disassembler(cx.channel_cx.session_cx);
+
+	// TODO: 
+	// segment disassembler inherently returns collection of subbands for target image fragments, 
+	// because target image height is not known yet for the general case (and for concurrent 
+	// processing in particular). This incourages using concurrent backward dwt transform for 
+	// corresponding image fragments, with a subsequent image postprocessing, comprised of
+	// fragments merging and rows/columns padding cuts.
+	// As for now, fragment-aware implementations of backward dwt and segment disassembly are 
+	// not compatible: segment disassembler adds top overlay for every subband item proportionally 
+	// to some target image dimension overlay, and backward dwt optimizes internal buffers dimension 
+	// for minimal overlay required for correct transformation; this causes incompatible [subband 
+	// item] and [dwt internal buffer] dimensions, and dwt transform is not applicable to those when 
+	// combined in same backward dwt pass.
+	// Use dummy subband merging logic from test cases temporarily. Segment assembly and dwt are to 
+	// be refactored slightly, implement compatible logic then. 
+	// 
+	// Proposed implementation:
+	// subband fragments are to be stored in consumer contexts, segmentation task splits on those 
+	// contexts. Each restored image fragment is stored in output data registry; output handles/
+	// descriptors are stored in a dedicated collection in channel context, access sync is needed.
+	// Image postprocessing is performed when all backward dwt tasks are completed; image fragments 
+	// are extracted from descriptor collection {, maybe sorted} and merged into target image.
+	// In backward dwt implementation, it may be needed to reduce input subband items' dimensions:
+	// cut furst rows and cut first columns. Those can be effectively implemented for current 
+	// bitmap implementation, however, image data alignment is to be broken for columns cut, and 
+	// care should be taken for image data buffer end and image stride/past-the-end buffers/offsets 
+	// handling.
+	// It may be reasonable to implement bitmap cuts as part of bitmap view/splice interface, and 
+	// move non-modifying transformations (transpose and copy-cast) there as well.
+	//
+
+	size_t image_width = cx.channel_cx.session_cx.settings_session.img_width;
+	disassembler.set_image_width(image_width);
+	// auto merged = merge_subbands(image_width, std::move(disassembler.apply(std::move(segments))));
+	// cx.subband_data = std::move(merged[0]);
+	// cx.frame = cx.subband_data[0].single_frame_params();
+	// 
+	// // tail dimension should be 0, whole image is expected to be decoded at this point
+	// auto tail_dims = merged[1][0].get_meta();
+	// 
+	// valid &= (tail_dims.width == 0);
+	// valid &= (tail_dims.height == 0);
+	// if (!valid) {
+	// 	// TODO: error handling
+	// }
+	// 
+	// // reuse context
+	// op_state_token.unlock();
+	// cx.id = generate_segmentation_id();
+	// cx.channel_cx.descriptors.register_operation(cx);
+	// 
+	// return cx;
+
+	decltype(segments) segments_copy(segments.size());
+	for (ptrdiff_t i = 0; i < segments.size(); ++i) {
+		segments_copy[i] = std::make_unique<segment<segment_type>>(*segments[i]);
+	}
+
+	auto fragments = disassembler.apply(std::move(segments));
+	std::vector<segmentation_context<subband_type, segment_type>> result;
+	result.reserve(fragments.size());
+	size_t fragment_y = 0;
+	constexpr size_t top_overlap = 4;
+	constexpr size_t bottom_overlap = 3;
+	bool first_fragment = true;
+	// for (auto&& item : fragments) {
+	for (ptrdiff_t i = 0; i < fragments.size(); ++i) {
+		auto& item = fragments[i];
+		size_t fragment_top_overlap = zeropred(top_overlap, !first_fragment);
+		img_pos fragment_frame = item[0].single_frame_params();
+		fragment_frame.y = fragment_y;
+		fragment_frame.height -= fragment_top_overlap;
+		fragment_frame.height -= bottom_overlap;
+		fragment_frame.height <<= 3;
+		fragment_frame.width <<= 3;
+
+		segmentation_context<subband_type, segment_type> fragment_context{
+			generate_segmentation_id(), 
+			cx.channel_cx, 
+			std::move(item), 
+			std::move(segments_copy[i]),
+			fragment_frame, 
+			fragment_top_overlap,
+			bottom_overlap
+		};
+		result.push_back(std::move(fragment_context));
+
+		fragment_y += fragment_frame.height;
+		first_fragment = false;
+	}
+	// result.back().frame.height += result.back().bottom_overlap << 3;
+	// result.back().bottom_overlap = 0;
+	result.back().frame.height = (fragments.back()[0].get_meta().height - result.back().top_overlap) << 3;
+	result.back().bottom_overlap = 0;
+
+	{
+		std::lock_guard lock(data.fragments_mx);
+		data.fragments.reserve(result.size());
+	}
+
+	cx.channel_cx.descriptors.register_operations(result);
+	return result;
+}
+
+template <typename T>
+template <typename oT>
+void compression_routines<T>::restore_image(segmentation_context<subband_type, segment_type> cx) {
+	auto op_state_token = cx.channel_cx.descriptors.start_operation(cx);
+	auto& transformer = per_thread::decompressors<T>::get_transformer(cx.channel_cx.session_cx);
+
+	if (cx.channel_cx.session_cx.settings_session.custom_shifts) {
+		transformer.get_scale().set_shifts(cx.channel_cx.session_cx.settings_session.shifts);
+	}
+
+	auto& data = std::get<compression_data<T>>(cx.channel_cx.data);
+
+	auto fragment = transformer.apply<oT>(cx.subband_data, cx.top_overlap);
+	fragment.shrink(fragment.get_meta().height - (cx.bottom_overlap << 3));
+
+	image_memory_descriptor<oT> descriptor_data(std::move(fragment), cx.channel_cx.channel_index);
+
+	const data_descriptor& descriptor = 
+		cx.channel_cx.session_cx.data_registry.put_output(cx.channel_cx.session_cx, std::move(descriptor_data));
+
+	{
+		std::lock_guard lock(data.fragments_mx);
+		data.fragments.emplace_back(cx.frame, descriptor);
+	}
+
+	// dwt_context consumer_cx{
+	// 	generate_dwt_id(), 
+	// 	cx.channel_cx, 
+	// 	cx.frame, 
+	// 	descriptor
+	// };
+	// 
+	// cx.channel_cx.descriptors.register_operation(consumer_cx);
+	// return consumer_cx;
+}
+
+template <typename T>
+template <typename oT>
+void compression_routines<T>::postprocess_image(segmentation_context<subband_type, segment_type> cx) {
+	auto op_state_token = cx.channel_cx.descriptors.start_operation(cx);
+
+	auto& data = std::get<compression_data<T>>(cx.channel_cx.data);
+	decltype(data.fragments) local_fragments;
+	{
+		std::lock_guard lock(data.fragments_mx);
+		data.fragments.swap(local_fragments);
+	}
+
+	std::sort(local_fragments.begin(), local_fragments.end(),
+		[](const auto& lhs_pair, const auto& rhs_pair) -> bool {
+			return lhs_pair.first.y < rhs_pair.first.y;
+		});
+
+	bitmap<oT> result;
+	for (auto&& item : local_fragments) {
+		auto& fragment_data = io_data_registry::get_data<image_selector<oT>>(item.second);
+		result.append(fragment_data.image);
+		cx.channel_cx.session_cx.data_registry.free_descriptor(item.second);
+	}
+
+	image_memory_descriptor<oT> descriptor_data(std::move(result), cx.channel_cx.channel_index);
+
+	const data_descriptor& descriptor =
+		cx.channel_cx.session_cx.data_registry.put_output(cx.channel_cx.session_cx, std::move(descriptor_data));
+
+	// TODO: drop padded rows and columns
+
+	return;
+}
+
+// using decompression_parameters = std::tuple<
+// 	std::vector<std::reference_wrapper<const data_descriptor>>, 
+// 	size_t>;
+
+#include <optional> // really need optional?
+// decompression_parameters 
+size_t collect_decompression_session_params(session_context& cx, std::vector<std::reference_wrapper<const data_descriptor>>& handles) {
+	using word_t = size_t;
+	bool valid = true;
+
+	std::optional<session_settings> session_params;
+	std::optional<size_t> img_pad_row_count;
+	decltype(session_context::compr_settings) compression_params;
+	decltype(session_context::seg_settings) segment_params;
+
+	size_t channel_start_count = 0;
+	size_t channel_end_count = 0;
+	for (auto item : handles) {
+		auto segment_descriptor_parser = 
+			[](const io_data_registry& registry, const data_descriptor& handle) -> segment_descriptor_base& {
+				switch (registry.get_segment_storage_type()) {
+				case storage_type::file: {
+					return io_data_registry::get_data<segment_selector<storage_type::file>>(handle);
+					break;
+				}
+				case storage_type::memory: {
+					return io_data_registry::get_data<segment_selector<storage_type::memory>>(handle);
+					break;
+				}
+				default:
+					break;
+				}
+				throw ccsds::exception{};
+			};
+
+		segment_descriptor_base& descriptor = segment_descriptor_parser(cx.data_registry, item);
+		auto source = make_source<word_t>(cx, item);	// TODO: need to pass context as parameter? 
+		source->setup_session();
+		// But legitimate use case is to check headers prior to context creation
+
+		auto proto = ccsds_header_parser<ccsds_file_protocol>::parse_header(source->get_bitwrapper());
+		if (proto.if_contains_compression_params()) {
+			// TODO: valid compressor *could* apply different settings set for different channels.
+			// Major refactor would be needed to support this scenario.
+			// Note applies to the corresponding logic below throughout the function, apply 
+			// changes there as well when this issue being fixed.
+			compression_params.push_back({ descriptor.segment_id, proto.get_compression_params() });
+		}
+		if (proto.if_contains_segment_params()) {
+			segment_params.push_back({ descriptor.segment_id, proto.get_segment_params() });
+		}
+		if (proto.if_first()) {
+			if (proto.if_contains_session_params()) {
+				valid &= (descriptor.segment_id == 0);
+				valid &= !session_params.has_value();
+				if (!valid) {
+					// TODO: error handling
+				}
+				session_params = proto.get_session_params();
+			} // otherwise this is just another image channel of the same image session
+			++channel_start_count;
+		}
+		if (proto.if_last()) {
+			if (!img_pad_row_count.has_value()) {
+				img_pad_row_count = proto.get_pad_rows_count();
+			}
+			++channel_end_count;
+		}
+	}
+
+	valid &= session_params.has_value();
+	valid &= (img_pad_row_count.has_value() && (img_pad_row_count.value() < 8)); // TODO: magic numbers; pad_rows is guaranteed to be less than 8 by bitfield implementation
+	valid &= !compression_params.empty();
+	valid &= !segment_params.empty();
+	valid &= (channel_start_count == channel_end_count);
+	if (!valid) {
+		// TODO: handle
+	}
+
+	size_t channel_count = channel_start_count;
+	(*session_params).rows_pad_count = img_pad_row_count.value();
+
+	auto validate_params_collection = [channel_count](auto& collection) -> void {
+		std::sort(collection.begin(), collection.end(),
+			[](const auto& lhs, const auto& rhs) -> bool {
+				return lhs.first < rhs.first;
+			});
+
+		const auto* prev_item = &(collection.front());
+		size_t same_count = 0;
+		for (const auto& item : collection) {
+			bool same_index = (item.first == prev_item->first);
+			if (!same_index) {
+				bool valid = true;
+				valid &= (same_count == channel_count);
+				if (!valid) {
+					// TODO: handle error, throw
+				}
+
+				prev_item = &item;
+				same_count = 0;
+			}
+			++same_count;
+		}
+		if (same_count != channel_count) {
+			// TODO: handle error, throw
+		}
+
+		auto new_end_it = std::unique(collection.begin(), collection.end());
+		collection.erase(new_end_it, collection.end());
+	};
+
+	validate_params_collection(compression_params);
+	validate_params_collection(segment_params);
+
+	cx.settings_session = *std::move(session_params);
+	cx.compr_settings = std::move(compression_params);
+	cx.seg_settings = std::move(segment_params);
+
+	// std::move(handles);
+	// return {
+	// 	*std::move(session_params), 
+	// 	std::move(compression_params), 
+	// 	std::move(segment_params), 
+	// 	channel_count
+	// };
+	// return { std::move(handles) , channel_count };
+	return channel_count;
+}
+
+template <template<typename /*ibwT*/, typename /*imgT*/, typename /*dwtT*/> typename DecompressorRoutineSet>
+struct decompression_parameter_parser {
+private:
+	using context_parameters = std::tuple<
+		session_context,
+		std::vector<std::reference_wrapper<const data_descriptor>>,
+		size_t>;
+public:
+	static void apply(session_context&& cx, size_t channel_count, std::vector<std::reference_wrapper<const data_descriptor>>&& handles) {
+		parse_codeword_size({ std::move(cx), std::move(handles), channel_count });
+	}
+
+private:
+	template <typename ibwT, dwt_type_t dwt_type, bool pixel_signed>
+	static void parse_pixel_bdepth(context_parameters&& params) {
+		session_context& cx = std::get<session_context>(params);
+
+		auto& values = bdepth_implementation_catalog<dwt_type, pixel_signed>::values;
+
+		bool valid = true;
+		valid &= (cx.settings_session.pixel_bdepth < values.back());
+		if (!valid) {
+			// TODO: parsing error
+		}
+
+		size_t target_bdepth = *std::lower_bound(values.cbegin(), values.cend(), cx.settings_session.pixel_bdepth);
+
+		auto dispatch_bdepth = [&]<size_t index>(size_t) -> void {
+			constexpr size_t static_bdepth = bdepth_implementation_catalog<dwt_type, pixel_signed>::values[index];
+			if (target_bdepth == static_bdepth) {
+				using types = img_type_params<dwt_type, static_bdepth, pixel_signed>;
+				using img_t = types::bitmap_type;
+				using dwt_t = types::dwt_param_type;
+				using ibw_t = ibwT;
+
+				auto cx_session = std::make_shared<session_context>(std::move(cx));
+				cx_session->id = generate_session_id();
+				cx_session->init_channel_contexts<dwt_t>(std::get<size_t>(params));
+
+				DecompressorRoutineSet<ibw_t, img_t, dwt_t>::decompress(
+					std::move(cx_session),
+					std::move(std::get<std::vector<std::reference_wrapper<const data_descriptor>>>(params)));
+			}
+		};
+
+		std::apply([&](auto... values) -> void {
+			unroll<>::apply(dispatch_bdepth, values...);
+			},
+			bdepth_implementation_catalog<dwt_type, pixel_signed>::values);
+	}
+
+	template <typename ibwT, dwt_type_t dwt_type>
+	static void parse_pixel_signed(context_parameters&& params) {
+		const session_context& cx = std::get<session_context>(params);
+		switch (cx.settings_session.signed_pixel) {
+		case true: {
+			parse_pixel_bdepth<ibwT, dwt_type, true>(std::move(params));
+			break;
+		}
+		default: {
+			parse_pixel_bdepth<ibwT, dwt_type, false>(std::move(params));
+			break;
+		}
+		}
+	}
+
+	template <typename ibwT>
+	static void parse_dwt_type(context_parameters&& params) {
+		const session_context& cx = std::get<session_context>(params);
+		switch (cx.settings_session.dwt_type) {
+		case dwt_type_t::idwt: {
+			parse_pixel_signed<ibwT, dwt_type_t::idwt>(std::move(params));
+			break;
+		}
+		case dwt_type_t::fdwt: {
+			parse_pixel_signed<ibwT, dwt_type_t::fdwt>(std::move(params));
+			break;
+		}
+		default: {
+			// TODO: parsing error
+		}
+		}
+	}
+
+	static void parse_codeword_size(context_parameters&& params) {
+		const session_context& cx = std::get<session_context>(params);
+		switch (cx.settings_session.codeword_size) {
+		case 64: {
+			parse_dwt_type<int64_t>(std::move(params));
+			break;
+		}
+		case 32: {
+			parse_dwt_type<int32_t>(std::move(params));
+			break;
+		}
+		default: {
+			constexpr size_t bindex_mask = (1 << 3) - 1;
+
+			bool valid = true;
+			valid &= ((cx.settings_session.codeword_size & bindex_mask) == 0);
+			valid &= (cx.settings_session.codeword_size <= 64);
+			if (!valid) {
+				// TODO: parsing error
+			}
+
+			parse_dwt_type<int8_t>(std::move(params));
+			break;
+		}
+		}
+	}
+};

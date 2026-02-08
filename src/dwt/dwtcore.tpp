@@ -1,12 +1,13 @@
 #pragma once
 #include <type_traits>
 
-// TODO: consider passing alligmnent value as template parameter
+// TODO: consider passing aligmnent value as template parameter
 template <typename T = unsigned int>
 struct _dwtcore_i {
-	void fwd(T const * src, T* hdst, T* ldst, size_t count) {
+	template <typename iT>
+	void fwd(iT const * src, T* hdst, T* ldst, size_t count) {
 		// requires src to have allocated offset ranges to the left and to the rigth: [-2, 62]
-		T const * alligned_src = src - 2;
+		iT const * aligned_src = src - 2;
 		constexpr size_t vector_step = 16;
 		constexpr size_t move_prepipeline_boundary = 2 * /*2 **/ vector_step;
 		constexpr size_t h_prepipeline_boundary = 1 * vector_step;
@@ -22,8 +23,8 @@ struct _dwtcore_i {
 				// Intermediate results for highpass are added to highpass
 				// buffer, but input coefficents for highpass intermediate
 				// are even and therefore are fetched from lowpass buffer.
-				ldst[i + j] = alligned_src[(i + j) << 1];
-				hdst[i + j] = alligned_src[((i + j) << 1) + 3];		// index -1 is never used, start from +1
+				ldst[i + j] = aligned_src[(i + j) << 1];
+				hdst[i + j] = aligned_src[((i + j) << 1) + 3];		// index -1 is never used, start from +1
 			}
 		}
 		for (ptrdiff_t i = 0; i < h_prepipeline_boundary; i += vector_step) {
@@ -33,7 +34,7 @@ struct _dwtcore_i {
 			}
 		}
 
-		T const * p_move_src = alligned_src + move_prepipeline_boundary * 2;
+		iT const * p_move_src = aligned_src + move_prepipeline_boundary * 2;
 		T* p_move_hdst = hdst + move_prepipeline_boundary/* / 2*/;
 		T* p_move_ldst = ldst + move_prepipeline_boundary/* / 2*/;
 		T const * p_hsrc = ldst + h_prepipeline_boundary;
@@ -149,13 +150,15 @@ struct _dwtcore_i {
 		return;
 	}
 
-	inline void extfwd(T* begining) {
+	template <typename iT>
+	inline void extfwd(iT* begining) {
 		begining[-1] = begining[1]; // TODO: source index -1 is never used? no need to copy?
 		begining[-2] = begining[2];
 		begining[-4] = begining[4]; // TODO: source index -4 is never used? no need to copy?
 	}
 
-	inline void rextfwd(T* ending) {
+	template <typename iT>
+	inline void rextfwd(iT* ending) {
 		ending[0] = ending[-2];
 		ending[2] = ending[-4];
 	}
@@ -180,11 +183,37 @@ struct _dwtcore_i {
 	}
 
 	// should be called before backward DWT to correct first element of ldst
-	inline void corrlfwd(T const * src, T const * hdst, T* ldst) {
+	template <typename iT>
+	inline void corrlfwd(iT const * src, T const * hdst, T* ldst) {
 		ldst[0] = src[0] - ((-hdst[0] + 1) >> 1);
 	}
 
-	inline void corrhfwd(T const * src, T* hdst, T const * ldst) { }
+	template <typename iT>
+	inline void corrhfwd(iT const * src, T* hdst, T const * ldst) { }
+};
+
+template <typename T = float>
+struct _dwtcore_f {
+	// TODO: not implemented
+	template <typename iT>
+	void fwd(iT const* src, T* hdst, T* ldst, size_t count) {}
+
+	void bwd(T const* hsrc, T const* lsrc, T* dst, size_t count) {}
+
+	template <typename iT>
+	inline void extfwd(iT* begining) {}
+	template <typename iT>
+	inline void rextfwd(iT* ending) {}
+
+	inline void exthbwd(T* begining) {}
+	inline void rexthbwd(T* ending) {}
+	inline void extlbwd(T* begining) {}
+	inline void rextlbwd(T* ending) {}
+
+	template <typename iT>
+	inline void corrlfwd(iT const* src, T const* hdst, T* ldst) {}
+	template <typename iT>
+	inline void corrhfwd(iT const* src, T* hdst, T const* ldst) {}
 };
 
 template <typename T, bool is_int>
@@ -193,6 +222,11 @@ struct _dwtcore;
 template <typename T>
 struct _dwtcore<T, true> {
 	using type = typename _dwtcore_i<T>;
+};
+
+template <typename T>
+struct _dwtcore<T, false> {
+	using type = typename _dwtcore_f<T>;
 };
 
 template <typename T>

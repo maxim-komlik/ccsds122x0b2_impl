@@ -133,6 +133,9 @@ public:
 	template <typename ibwT>
 	void decode(segment<T>& output, ibitwrapper<ibwT>& input);
 
+	// TODO: implement early truncation
+	void set_stop_after_DC(bool value);
+	void set_stop_at_bplane(size_t bplane_index, size_t stage_index /* = 0b11 == stage_4 */);
 private:
 	template <typename D, typename obwT>
 	void kReverse(kParams<D>& params, ibitwrapper<obwT>& input_stream);
@@ -1146,7 +1149,7 @@ void BitPlaneEncoder<T, alignment>::set_stop_at_bplane(size_t bplane_index, size
 template <typename T>
 template <typename ibwT>
 void BitPlaneDecoder<T>::decode(segment<T>& output, ibitwrapper<ibwT>& input) {
-	// segment initalization
+	// segment initialization
 	// TODO: check initialization logic
 	output.data = decltype(output.data)(output.size);
 	output.referenceSample = 0;
@@ -1381,6 +1384,14 @@ void BitPlaneDecoder<T>::decodeBpeStages(segment<T>& output, ibitwrapper<ibwT>& 
 	size_t last_gaggle_size = output.size & gaggle_size_mask;
 
 	ptrdiff_t b = output.bdepthAc;
+	// TODO: segment decoding should leave the segment data in a valid state when exception 
+	// is thrown due to end of data/byte limit.
+	// The segment data should be upscaled to it's target bitness, last partially decoded 
+	// bitplane should be decomposed into corresponding coefficient values; all adjustment 
+	// handlers should be executed on segment data.
+	// 
+	// It can be done via local handler types destructors.
+	//
 	while (b > 0) {
 		for (ptrdiff_t i = 0; i < output.bit_shifts.size(); ++i) {
 			if (output.bit_shifts[i] == b) {
@@ -1531,6 +1542,8 @@ void BitPlaneDecoder<T>::decodeBpeStages(segment<T>& output, ibitwrapper<ibwT>& 
 		--b;
 	}
 
+	// TODO: handlers below should also execute on function exit due to exception!
+	// 
 	{
 		auto sign_acc = [](T& dst, uint64_t src) -> void {
 			// better be vectorizable, therefore branchless needed
@@ -1539,12 +1552,24 @@ void BitPlaneDecoder<T>::decodeBpeStages(segment<T>& output, ibitwrapper<ibwT>& 
 		accumulate_bplane<uint64_t, T>(block_signs.data(), output.data.data()->content, output.size * items_per_block, sign_acc);
 	}
 
+	// TODO: should be correctly handled on exceptions! see above
+	// move to BitPlaneDecoder::decode?
+	// 
 	// trick segment decoder to handle DC subband as unscaled already
 	output.q = relu(((ptrdiff_t)(output.q)) - output.bit_shifts[0]);
 	output.bdepthDc = relu(((ptrdiff_t)(output.bdepthDc)) - output.bit_shifts[0]);
 	output.bit_shifts[0] = 0;
 }
 
+template <typename T>
+void BitPlaneDecoder<T>::set_stop_after_DC(bool value) {
+	// TODO: implement logic
+}
+
+template <typename T>
+void BitPlaneDecoder<T>::set_stop_at_bplane(size_t bplane_index, size_t stage_index /* = 0b11 == stage_4 */) {
+	// TODO: implement logic
+}
 
 //
 // see 4.1, p. 4-3, eqs. (12) and (13)

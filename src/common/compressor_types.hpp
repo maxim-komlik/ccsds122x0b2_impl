@@ -8,8 +8,23 @@
 
 template <typename dwtT>
 struct compressor_type_params {
+private:
+	template <typename NonIntT, bool is_integral>
+	struct make_dwt_type_impl {
+		using type = NonIntT;
+	};
+
+	template <typename IntT>
+	struct make_dwt_type_impl<IntT, true> {
+		using type = IntT;
+	};
+
+	template <typename T>
+	using make_dwt_type = make_dwt_type_impl<T, std::is_integral_v<T>>::type;
+
+public:
 	// underlying dwt type has to be signed. std::make_signed is defined for integrals only
-	using dwt_type = std::conditional_t<std::is_signed_v<dwtT>, dwtT, std::make_signed_t<dwtT>>;
+	using dwt_type = make_dwt_type<dwtT>;
 	using subband_type = dwt_type;
 	using block_type = sufficient_integral<dwt_type>;
 	using segment_type = block_type;
@@ -26,43 +41,50 @@ struct img_type_params;
 template <>
 struct img_type_params<dwt_type_t::idwt, 4> {
 	using bitmap_type = int8_t;
-	using compressor_types = compressor_type_params<int8_t>;
+	using dwt_param_type = int8_t;
+	using compressor_types = compressor_type_params<dwt_param_type>;
 };
 
 template <>
 struct img_type_params<dwt_type_t::idwt, 7> {
 	using bitmap_type = int8_t;
-	using compressor_types = compressor_type_params<int16_t>;
+	using dwt_param_type = int16_t;
+	using compressor_types = compressor_type_params<dwt_param_type>;
 };
 
 template <>
 struct img_type_params<dwt_type_t::idwt, 12> {
 	using bitmap_type = int16_t;
-	using compressor_types = compressor_type_params<int16_t>;
+	using dwt_param_type = int16_t;
+	using compressor_types = compressor_type_params<dwt_param_type>;
 };
 
 template <>
 struct img_type_params<dwt_type_t::idwt, 15> {
 	using bitmap_type = int16_t;
-	using compressor_types = compressor_type_params<int32_t>;
+	using dwt_param_type = int32_t;
+	using compressor_types = compressor_type_params<dwt_param_type>;
 };
 
 template <>
 struct img_type_params<dwt_type_t::idwt, 28> {
 	using bitmap_type = int32_t;
-	using compressor_types = compressor_type_params<int32_t>;
+	using dwt_param_type = int32_t;
+	using compressor_types = compressor_type_params<dwt_param_type>;
 };
 
 template <>
 struct img_type_params<dwt_type_t::idwt, 31> {
 	using bitmap_type = int32_t;
-	using compressor_types = compressor_type_params<int64_t>;
+	using dwt_param_type = int64_t;
+	using compressor_types = compressor_type_params<dwt_param_type>;
 };
 
 template <>
 struct img_type_params<dwt_type_t::idwt, 60> {
 	using bitmap_type = int64_t;
-	using compressor_types = compressor_type_params<int64_t>;
+	using dwt_param_type = int64_t;
+	using compressor_types = compressor_type_params<dwt_param_type>;
 };
 
 
@@ -72,43 +94,50 @@ struct img_type_params<dwt_type_t::idwt, 60> {
 template <>
 struct img_type_params<dwt_type_t::idwt, 4, false> {
 	using bitmap_type = uint8_t;
-	using compressor_types = compressor_type_params<int8_t>;
+	using dwt_param_type = int8_t;
+	using compressor_types = compressor_type_params<dwt_param_type>;
 };
 
 template <>
 struct img_type_params<dwt_type_t::idwt, 8, false> {
 	using bitmap_type = uint8_t;
-	using compressor_types = compressor_type_params<int16_t>;
+	using dwt_param_type = int16_t;
+	using compressor_types = compressor_type_params<dwt_param_type>;
 };
 
 template <>
 struct img_type_params<dwt_type_t::idwt, 12, false> {
 	using bitmap_type = uint16_t;
-	using compressor_types = compressor_type_params<int16_t>;
+	using dwt_param_type = int16_t;
+	using compressor_types = compressor_type_params<dwt_param_type>;
 };
 
 template <>
 struct img_type_params<dwt_type_t::idwt, 16, false> {
 	using bitmap_type = uint16_t;
-	using compressor_types = compressor_type_params<int32_t>;
+	using dwt_param_type = int32_t;
+	using compressor_types = compressor_type_params<dwt_param_type>;
 };
 
 template <>
 struct img_type_params<dwt_type_t::idwt, 28, false> {
 	using bitmap_type = uint32_t;
-	using compressor_types = compressor_type_params<int32_t>;
+	using dwt_param_type = int32_t;
+	using compressor_types = compressor_type_params<dwt_param_type>;
 };
 
 template <>
 struct img_type_params<dwt_type_t::idwt, 32, false> {
 	using bitmap_type = uint32_t;
-	using compressor_types = compressor_type_params<int64_t>;
+	using dwt_param_type = int64_t;
+	using compressor_types = compressor_type_params<dwt_param_type>;
 };
 
 template <>
 struct img_type_params<dwt_type_t::idwt, 60, false> {
 	using bitmap_type = uint64_t;
-	using compressor_types = compressor_type_params<int64_t>;
+	using dwt_param_type = int64_t;
+	using compressor_types = compressor_type_params<dwt_param_type>;
 };
 
 
@@ -121,31 +150,36 @@ struct img_type_params<dwt_type_t::idwt, 60, false> {
 template <>
 struct img_type_params<dwt_type_t::fdwt, 7> {
 	using bitmap_type = int8_t;
-	using compressor_types = compressor_type_params<float>;
+	using dwt_param_type = float;
+	using compressor_types = compressor_type_params<dwt_param_type>;
 };
 
 template <>
 struct img_type_params<dwt_type_t::fdwt, 15> {
 	using bitmap_type = int16_t;
-	using compressor_types = compressor_type_params<float>;
+	using dwt_param_type = float;
+	using compressor_types = compressor_type_params<dwt_param_type>;
 };
 
 template <>
 struct img_type_params<dwt_type_t::fdwt, 21> {
 	using bitmap_type = int32_t;
-	using compressor_types = compressor_type_params<float>;
+	using dwt_param_type = float;
+	using compressor_types = compressor_type_params<dwt_param_type>;
 };
 
 template <>
 struct img_type_params<dwt_type_t::fdwt, 31> {
 	using bitmap_type = int32_t;
-	using compressor_types = compressor_type_params<double>;
+	using dwt_param_type = double;
+	using compressor_types = compressor_type_params<dwt_param_type>;
 };
 
 template <>
 struct img_type_params<dwt_type_t::fdwt, 50> {
 	using bitmap_type = int64_t;
-	using compressor_types = compressor_type_params<double>;
+	using dwt_param_type = double;
+	using compressor_types = compressor_type_params<dwt_param_type>;
 };
 
 
@@ -155,30 +189,35 @@ struct img_type_params<dwt_type_t::fdwt, 50> {
 template <>
 struct img_type_params<dwt_type_t::fdwt, 8, false> {
 	using bitmap_type = uint8_t;
-	using compressor_types = compressor_type_params<float>;
+	using dwt_param_type = float;
+	using compressor_types = compressor_type_params<dwt_param_type>;
 };
 template <>
 struct img_type_params<dwt_type_t::fdwt, 16, false> {
 	using bitmap_type = uint16_t;
-	using compressor_types = compressor_type_params<float>;
+	using dwt_param_type = float;
+	using compressor_types = compressor_type_params<dwt_param_type>;
 };
 
 template <>
 struct img_type_params<dwt_type_t::fdwt, 21, false> {
 	using bitmap_type = uint32_t;
-	using compressor_types = compressor_type_params<float>;
+	using dwt_param_type = float;
+	using compressor_types = compressor_type_params<dwt_param_type>;
 };
 
 template <>
 struct img_type_params<dwt_type_t::fdwt, 32, false> {
 	using bitmap_type = uint32_t;
-	using compressor_types = compressor_type_params<double>;
+	using dwt_param_type = double;
+	using compressor_types = compressor_type_params<dwt_param_type>;
 };
 
 template <>
 struct img_type_params<dwt_type_t::fdwt, 50, false> {
 	using bitmap_type = uint64_t;
-	using compressor_types = compressor_type_params<double>;
+	using dwt_param_type = double;
+	using compressor_types = compressor_type_params<dwt_param_type>;
 };
 
 
@@ -187,6 +226,30 @@ struct bdepth_edge_values {
 	static constexpr std::array<size_t, 7> idwt_unsigned_input = { 4, 8, 12, 16, 28, 32, 60 };
 	static constexpr std::array<size_t, 5> fdwt_signed_input = { 7, 15, 21, 31, 50 };
 	static constexpr std::array<size_t, 5> fdwt_unsigned_input = { 8, 16, 21, 32, 50 };
+};
+
+
+template <dwt_type_t dwt_type, bool is_signed>
+struct bdepth_implementation_catalog;
+
+template <>
+struct bdepth_implementation_catalog<dwt_type_t::idwt, true> {
+	static constexpr std::array<size_t, 7> values = { 4, 7, 12, 15, 28, 31, 60 };
+};
+
+template <>
+struct bdepth_implementation_catalog<dwt_type_t::idwt, false> {
+	static constexpr std::array<size_t, 7> values = { 4, 8, 12, 16, 28, 32, 60 };
+};
+
+template <>
+struct bdepth_implementation_catalog<dwt_type_t::fdwt, true> {
+	static constexpr std::array<size_t, 5> values = { 7, 15, 21, 31, 50 };
+};
+
+template <>
+struct bdepth_implementation_catalog<dwt_type_t::fdwt, false> {
+	static constexpr std::array<size_t, 5> values = { 8, 16, 21, 32, 50 };
 };
 
 

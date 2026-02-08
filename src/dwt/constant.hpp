@@ -98,7 +98,7 @@ namespace constants {
 		//		+=4		LL1 dependency overlap (direct source for level 2 transform)
 		//		*=2		LL1 -> source level resolution downstep
 		//		== 24
-		//		+=4		source dependency overlap? (directo source for level 1 transform) ? // TODO: 
+		//		+=4		source dependency overlap? (direct source for level 1 transform) ? // TODO: 
 		//	overlap region size is the same for vertical and horizontal data.
 		// 
 		static constexpr size_t overlap_img_range = 28; // 24;
@@ -107,5 +107,7 @@ namespace constants {
 		static constexpr size_t lowpass_dependency_radius = 4;
 		static constexpr size_t highpass_dependency_radius = 3;
 
+		static constexpr size_t fwd_buffers_offset_value = 32;	// dwtcore.fwd() reads up to 62 items oob
+		static constexpr size_t bwd_buffers_offset_value = 32;	// dwtcore.bwd() writes up to 48 items oob
 	};
 }

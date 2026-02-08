@@ -114,6 +114,9 @@ void bplane(T* data, size_t size, size_t b, obitwrapper<obwT>& ostream,
 	std::make_unsigned_t<sufficient_integral_i<(alignment >> 3)>> serial_buffer;
 
 	for (ptrdiff_t i = 0; i < size; i += alignment) {
+		if (i != 0) {
+			ostream << vlw_t{ alignment, serial_buffer };
+		}
 		serial_buffer = 0;
 		for (ptrdiff_t j = 0; j < alignment; ++j) {
 			buffer[j] = (data[i + j] & masks[j]);
@@ -126,8 +129,14 @@ void bplane(T* data, size_t size, size_t b, obitwrapper<obwT>& ostream,
 		for (ptrdiff_t j = 0; j < alignment; ++j) {
 			serial_buffer |= buffer[j];
 		}
-		ostream << vlw_t{ alignment, serial_buffer };
 	}
+
+	constexpr size_t v_mask = alignment - 1;
+	size_t v_size_tail = size & v_mask;
+	v_size_tail += zeropred(alignment, v_size_tail == 0);
+	
+	serial_buffer >>= alignment - v_size_tail;
+	ostream << vlw_t{ v_size_tail, serial_buffer };
 }
 
 template <size_t b, typename T, typename obwT, size_t alignment>
