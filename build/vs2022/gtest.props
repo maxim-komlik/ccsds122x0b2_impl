@@ -6,6 +6,7 @@
     <TestOutputDir>$(SolutionDir)out\$(ProjectName)\</TestOutputDir>
     <TestIntDir>$(RepositoryOutputDir)obj\</TestIntDir>
     <TargetOutputDir>$(RepositoryOutputDir).\$(Platform)\$(Configuration)\</TargetOutputDir>
+    <DebugRuntimeWorkingDir>$(RepositoryOutputDir)runtime\workdir\</DebugRuntimeWorkingDir>
   </PropertyGroup>
   <PropertyGroup>
     <OutDir>$(TestOutputDir)$(Platform)\$(Configuration)\</OutDir>
@@ -29,6 +30,9 @@
     </BuildMacro>
     <BuildMacro Include="TargetOutputDir">
       <Value>$(TargetOutputDir)</Value>
+    </BuildMacro>
+    <BuildMacro Include="DebugRuntimeWorkingDir">
+      <Value>$(DebugRuntimeWorkingDir)</Value>
     </BuildMacro>
   </ItemGroup>
 </Project>

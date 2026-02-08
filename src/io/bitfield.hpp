@@ -348,7 +348,11 @@ private:
 		result_bv.compound = std::rotr(result_bv.compound, ballign_shift);
 		result_bv.compound &= mask_bv.compound;
 
-		return signext(result_bv.compound, balloc.width);
+		// as for now, there's no 2-complement or signed fields in the protocol.
+		// if constexpr (std::is_signed_v<T>) {
+		//	result_bv.compound = signext(result_bv.compound, balloc.width);
+		// }
+		return result_bv.compound;
 	}
 
 	consteval static bool validate_fields() {

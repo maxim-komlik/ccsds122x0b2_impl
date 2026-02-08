@@ -62,8 +62,7 @@ void ccsds_protocol::init_session(const session_settings& session_params,
 	header_p4.set_TransposeImg(session_params.transpose);
 	if (session_params.dwt_type == dwt_type_t::idwt) {
 		header_p4.set_CustomWt(session_params.shifts);
-	}
-	else {
+	} else {
 		header_p4.set_CustomWtFlag(false);
 	}
 	header_p1a.set_Part4Flag(true);
@@ -105,8 +104,8 @@ bool ccsds_protocol::if_last() const {
 void ccsds_protocol::set_segment_params(const segment_settings& params) {
 	auto& [header_p3, flag_p3] = std::get<header_record_t<HeaderPart_3>>(this->headers);
 	header_p3.set_S(params.size);
-	header_p3.set_OptDCSelect(params.heuristic_quant_DC);
-	header_p3.set_OptACSelect(params.heuristic_bdepth_AC);
+	header_p3.set_OptDCSelect(!params.heuristic_quant_DC);
+	header_p3.set_OptACSelect(!params.heuristic_bdepth_AC);
 
 	auto& [header_p1a, flag_p1a] = std::get<header_record_t<HeaderPart_1A>>(this->headers);
 	header_p1a.set_Part3Flag(true);
@@ -121,8 +120,7 @@ void ccsds_protocol::set_compression_params(const compression_settings& params) 
 		header_p2.set_DCStop(params.DC_stop);
 		header_p2.set_BitPlaneStop(params.bplane_stop);
 		header_p2.set_StageStop(params.stage_stop);
-	}
-	else {
+	} else {
 		header_p2.set_DCStop(false);
 		header_p2.set_BitPlaneStop(0);
 		header_p2.set_StageStop(0b11);		// TODO: enum type for stages, because here stage 4 is meant to be used
@@ -130,6 +128,131 @@ void ccsds_protocol::set_compression_params(const compression_settings& params) 
 
 	auto& [header_p1a, flag_p1a] = std::get<header_record_t<HeaderPart_1A>>(this->headers);
 	header_p1a.set_Part2Flag(true);
+}
+
+bool ccsds_protocol::if_contains_segment_params() const {
+	auto& [header_p1a, flag_p1a] = std::get<header_record_t<HeaderPart_1A>>(this->headers);
+	return header_p1a.get_Part3Flag();
+}
+
+bool ccsds_protocol::if_contains_compression_params() const {
+	auto& [header_p1a, flag_p1a] = std::get<header_record_t<HeaderPart_1A>>(this->headers);
+	return header_p1a.get_Part2Flag();
+}
+
+bool ccsds_protocol::if_contains_session_params() const {
+	auto& [header_p1a, flag_p1a] = std::get<header_record_t<HeaderPart_1A>>(this->headers);
+	return header_p1a.get_Part4Flag();
+}
+
+segment_settings ccsds_protocol::get_segment_params() const {
+	auto& [header_p1a, flag_p1a] = std::get<header_record_t<HeaderPart_1A>>(this->headers);
+
+	bool valid = true;
+	valid &= header_p1a.get_Part3Flag();
+	if (!valid) {
+		// TODO: error handling. throw.
+	}
+
+	segment_settings result;
+
+	auto& [header_p3, flag_p3] = std::get<header_record_t<HeaderPart_3>>(this->headers);
+	result.size = header_p3.get_S();
+	result.heuristic_quant_DC = !header_p3.get_OptDCSelect();
+	result.heuristic_bdepth_AC = !header_p3.get_OptACSelect();
+
+	return result;
+}
+
+compression_settings ccsds_protocol::get_compression_params() const {
+	auto& [header_p1a, flag_p1a] = std::get<header_record_t<HeaderPart_1A>>(this->headers);
+
+	bool valid = true;
+	valid &= header_p1a.get_Part2Flag();
+	if (!valid) {
+		// TODO: error handling. throw.
+	}
+
+	constexpr size_t max_byte_limit = 1 << 27;
+
+	compression_settings result;
+
+	auto& [header_p2, flag_p2] = std::get<header_record_t<HeaderPart_2>>(this->headers);
+	result.seg_byte_limit = header_p2.get_SegByteLimit();
+	result.bplane_stop = header_p2.get_BitPlaneStop();
+	result.stage_stop = header_p2.get_StageStop();
+	result.DC_stop = header_p2.get_DCStop();
+	result.use_fill = header_p2.get_UseFill();
+
+	result.early_termination = !(
+		(result.DC_stop == false) &
+		(result.bplane_stop == 0) &
+		(result.stage_stop == to_underlying(bpe_stage_index_t::stage_4)));
+
+	result.seg_byte_limit += max_byte_limit & (size_t)(-(result.seg_byte_limit == 0));
+
+	return result;
+}
+
+session_settings ccsds_protocol::get_session_params() const {
+	auto& [header_p1a, flag_p1a] = std::get<header_record_t<HeaderPart_1A>>(this->headers);
+
+	bool valid = true;
+	valid &= header_p1a.get_Part4Flag();
+	if (!valid) {
+		// TODO: error handling. throw.
+	}
+
+	session_settings result;
+
+	auto& [header_p4, flag_p4] = std::get<header_record_t<HeaderPart_4>>(this->headers);
+	result.img_width = header_p4.get_ImageWidth();
+	result.pixel_bdepth = header_p4.get_PixelBitDepth();
+	result.signed_pixel = header_p4.get_SignedPixels();
+	result.transpose = header_p4.get_TransposeImg();
+	result.dwt_type = header_p4.get_DWTtype();
+	result.codeword_size = parse_codeword_length_value(header_p4.get_CodeWordLength());
+	result.rows_pad_count = 0; // parsing postponed, will be set from HeaderPart_1B of the last segment
+
+	if (header_p4.get_CustomWtFlag()) {
+		result.shifts = header_p4.get_CustomWt();
+	} else {
+		if (result.dwt_type == dwt_type_t::idwt) {
+			result.shifts = { 3, 3, 3, 2, 2, 2, 1, 1, 1, 0 };
+		} else {
+			result.shifts = { 0, 0, 0, 0, 0, 0, 0, 0, 0, 0 };
+		}
+	}
+
+	return result;
+}
+
+size_t ccsds_protocol::get_pad_rows_count() const {
+	auto& [header_p1a, flag_p1a] = std::get<header_record_t<HeaderPart_1A>>(this->headers);
+
+	bool valid = true;
+	valid &= header_p1a.get_EndImgFlag();
+	if (!valid) {
+		// TODO: error handling. throw.
+	}
+
+	auto& [header_p1b, flag_p1b] = std::get<header_record_t<HeaderPart_1B>>(this->headers);
+	return header_p1b.get_PadRows();
+}
+
+size_t ccsds_protocol::get_segment_count() const {
+	auto& [header_p1a, flag_p1a] = std::get<header_record_t<HeaderPart_1A>>(this->headers);
+	return header_p1a.get_SegmentCount();
+}
+
+size_t ccsds_protocol::get_bit_depth_DC() const {
+	auto& [header_p1a, flag_p1a] = std::get<header_record_t<HeaderPart_1A>>(this->headers);
+	return header_p1a.get_BitDepthDC();
+}
+
+size_t ccsds_protocol::get_bit_depth_AC() const {
+	auto& [header_p1a, flag_p1a] = std::get<header_record_t<HeaderPart_1A>>(this->headers);
+	return header_p1a.get_BitDepthAC();
 }
 
 size_t ccsds_protocol::header_size() const {
@@ -151,18 +274,23 @@ size_t ccsds_protocol::header_size() const {
 	return result;
 }
 
-std::span<std::byte> ccsds_protocol::write_headers(std::span<std::byte> dst) {
+std::span<std::byte> ccsds_protocol::commit(std::span<std::byte> dst) {
 	bool valid = true;
-	valid &= (dst.size() >= HeaderPart_1A::size());
+	valid &= (dst.size() >= this->header_size());
+	valid &= this->if_headers_overridable();
 	if (!valid) {
 		// TODO: error handling
 	}
 
-	if (this->if_headers_overridable()) {
-
-	}
+	std::vector<std::span<const std::byte>> extension_headers;
+	this->commit_extension_headers(extension_headers);
 
 	auto current_header_area = dst;
+
+	for (auto& item : extension_headers) {
+		std::copy_n(item.begin(), item.size(), current_header_area.begin());
+		current_header_area = current_header_area.subspan(item.size());
+	}
 
 	auto& [header_p1a, flag_p1a] = std::get<header_record_t<HeaderPart_1A>>(this->headers);
 	const auto& content_p1a = header_p1a.commit();

@@ -2,6 +2,7 @@
 
 #include <vector>
 #include <variant>
+#include <type_traits>
 
 #include "core_types.hpp"
 #include "compressor_types.hpp"
@@ -11,7 +12,7 @@
 #include "io_contexts.hpp"
 #include "constant.hpp"
 
-// #include "experimental/weak_memory_sync.hpp"
+#include "io_data_registry_fwd.hpp"
 
 
 // session also has info about:
@@ -73,6 +74,14 @@ public:
 		operation_state expected_processing = operation_state::processing;
 		static_cast<Derived*>(this)->state.compare_exchange_strong(expected_processing, operation_state::done);
 	}
+
+protected:
+	~lockable_operation_descriptor() = default;
+	lockable_operation_descriptor(lockable_operation_descriptor&& other) noexcept = default;
+	lockable_operation_descriptor& operator=(lockable_operation_descriptor&& other) noexcept = default;
+	lockable_operation_descriptor(const lockable_operation_descriptor& other) noexcept = default;
+	lockable_operation_descriptor& operator=(const lockable_operation_descriptor& other) noexcept = default;
+	lockable_operation_descriptor() = default;
 };
 
 struct dwt_descriptor: public lockable_operation_descriptor<dwt_descriptor> {
@@ -102,53 +111,20 @@ struct compression_descriptor: public lockable_operation_descriptor<compression_
 		context_id(context_id), state(state), segment_id(segment_id) {}
 };
 
-struct session_context;
-
-template <typename T>
-struct compression_data {
-	using sT = compressor_type_params<T>::segment_type;
-	using sbT = compressor_type_params<T>::subband_type;
-
-
-	mutable std::mutex subband_fragments_mx;
-	std::list<std::pair<subbands_t<sbT>, img_pos>> subband_fragments;
-	std::list<std::unique_ptr<segment<sT>>> tail; // those segments that couldn't be dispatched
-	mutable std::mutex tail_mx;
-	std::unique_ptr<segment<sT>> incomplete_segment;	// TODO: integrate logic
-};
-
-struct channel_context {
+class descriptor_registry {
+private:
 	mutable std::shared_mutex decorrelation_descriptors_mx;
 	std::unordered_map<size_t, dwt_descriptor> decorrelation_descriptors;	// context id -> descriptor
-	
+
 	mutable std::shared_mutex segmentation_descriptors_mx;
 	std::unordered_map<size_t, segmentation_descriptor> segmentation_descriptors;	// context id -> descriptor
-	
-	mutable std::shared_mutex compression_descriptors_mx; 
+
+	mutable std::shared_mutex compression_descriptors_mx;
 	std::deque<compression_descriptor> compression_descriptors;		// segment id as index, 0-based
 	std::unordered_map<size_t, size_t> compression_segment_id_map;	// context id -> segment id [== compression_descriptors index]
-	std::pair<size_t, size_t> allocated_segment_id = { 0, 0 }; // first is lower bound, second is upper
 
-	std::variant<
-			compression_data<int8_t>,
-			compression_data<int16_t>,
-			compression_data<int32_t>,
-			compression_data<int64_t>
-			// segment types for other dwt transformations are same as one of the above
-		> data;
-
-	session_context& session_cx;
-	const size_t channel_index;
-
-	template <typename T>
-	channel_context(session_context& cx, size_t z, T dummy = T{}) :
-			session_cx(cx), channel_index(z), data(std::in_place_type<compression_data<T>>)		// msvc implementation couldn't deduce variant(T&& t) for some reason
-	{
-		auto& compr_data = std::get<compression_data<T>>(this->data);
-		compr_data.incomplete_segment = std::make_unique<segment<typename compression_data<T>::sT>>();
-	}
-
-	std::unique_lock<dwt_descriptor> register_operation_start(const dwt_context& cx) {
+public:
+	std::unique_lock<dwt_descriptor> start_operation(const dwt_context& cx) {
 		auto get_descriptor = [this](size_t context_id) -> dwt_descriptor& {
 			std::shared_lock lock(this->decorrelation_descriptors_mx);
 			return this->decorrelation_descriptors.at(context_id);
@@ -156,8 +132,8 @@ struct channel_context {
 		return std::unique_lock(get_descriptor(cx.id));
 	}
 
-	template <typename T>
-	std::unique_lock<segmentation_descriptor> register_operation_start(const segmentation_context<T>& cx) {
+	template <typename T, typename D>
+	std::unique_lock<segmentation_descriptor> start_operation(const segmentation_context<T, D>& cx) {
 		auto get_descriptor = [this](size_t context_id) -> segmentation_descriptor& {
 			std::shared_lock lock(this->segmentation_descriptors_mx);
 			return this->segmentation_descriptors.at(context_id);
@@ -166,7 +142,7 @@ struct channel_context {
 	}
 
 	template <typename T>
-	std::unique_lock<compression_descriptor> register_operation_start(const compression_context<T>& cx) {
+	std::unique_lock<compression_descriptor> start_operation(const compression_context<T>& cx) {
 		auto get_descriptor = [this](size_t segment_id) -> compression_descriptor& {
 			std::shared_lock lock(this->compression_descriptors_mx);
 			return this->compression_descriptors.at(segment_id);
@@ -180,8 +156,8 @@ struct channel_context {
 		this->register_operation_impl(cx);
 	}
 
-	template <typename T>
-	void register_operation(const segmentation_context<T>& cx) {
+	template <typename T, typename D>
+	void register_operation(const segmentation_context<T, D>& cx) {
 		std::lock_guard lock(this->segmentation_descriptors_mx);
 		this->register_operation_impl(cx);
 	}
@@ -201,13 +177,40 @@ struct channel_context {
 		this->register_operation_impl(cx);
 	}
 
+	size_t compression_done_lower_bound(size_t segment_id_begin, size_t segment_id_end) {
+		std::shared_lock lock(this->compression_descriptors_mx);
+		while ((segment_id_begin != segment_id_end) &&
+			(this->compression_descriptors.at(segment_id_begin).state.load() == operation_state::done)) {
+			++segment_id_begin;
+		}
+
+		return segment_id_begin;
+	}
+
+private:
 	template <typename Context>
 	struct register_operations_impl;
 
 	template <>
+	struct register_operations_impl<dwt_context>;
+
+	template <typename T, typename D>
+	struct register_operations_impl<segmentation_context<T, D>>;
+
+	template <typename T>
+	struct register_operations_impl<compression_context<T>>;
+
+public:
+	template <typename Collection>
+	void register_operations(const Collection& contexts) {
+		register_operations_impl<typename Collection::value_type>::apply(*this, contexts);
+	}
+
+private:
+	template <>
 	struct register_operations_impl<dwt_context> {
 		template <typename Collection>
-		static void apply(channel_context& target_cx, const Collection& contexts) {
+		static void apply(descriptor_registry& target_cx, const Collection& contexts) {
 			std::lock_guard lock(target_cx.decorrelation_descriptors_mx);
 			// std::count_if could be used if register_operation_impl returned bool, that 
 			// would weaken strong sequencing provided by std::for_each
@@ -218,15 +221,15 @@ struct channel_context {
 		}
 	};
 
-	template <typename T>
-	struct register_operations_impl<segmentation_context<T>> {
+	template <typename T, typename D>
+	struct register_operations_impl<segmentation_context<T, D>> {
 		template <typename Collection>
-		static void apply(channel_context& target_cx, const Collection& contexts) {
+		static void apply(descriptor_registry& target_cx, const Collection& contexts) {
 			std::lock_guard lock(target_cx.segmentation_descriptors_mx);
 			// std::count_if could be used if register_operation_impl returned bool, that 
 			// would weaken strong sequencing provided by std::for_each
 			std::for_each(contexts.cbegin(), contexts.cend(),
-				[&target_cx](const segmentation_context<T>& item) -> void {
+				[&target_cx](const segmentation_context<T, D>& item) -> void {
 					target_cx.register_operation_impl(item);
 				});
 		}
@@ -235,7 +238,7 @@ struct channel_context {
 	template <typename T>
 	struct register_operations_impl<compression_context<T>> {
 		template <typename Collection>
-		static void apply(channel_context& target_cx, const Collection& contexts) {
+		static void apply(descriptor_registry& target_cx, const Collection& contexts) {
 			if (!contexts.empty()) {
 				auto it = contexts.cbegin();
 				size_t prev_segment_id = it->segment_data->id;
@@ -244,8 +247,8 @@ struct channel_context {
 				bool valid = true;
 				std::for_each(it, contexts.cend(),
 					[&prev_segment_id, &valid](const compression_context<T>& item) -> void {
-						valid &= (item.segment_data->id == prev_segment_id);
 						++prev_segment_id;
+						valid &= (item.segment_data->id == prev_segment_id);
 					});
 				if (!valid) {
 					// TODO: error handling, segment id sequence is broken
@@ -269,26 +272,6 @@ struct channel_context {
 		}
 	};
 
-	template <typename Collection>
-	void register_operations(const Collection& contexts) {
-		register_operations_impl<typename Collection::value_type>::apply(*this, contexts);
-	}
-
-	void free_compressed_segment_data() {
-		ptrdiff_t next_allocated_id = this->allocated_segment_id.first;
-		size_t next_available_id = this->allocated_segment_id.second;
-
-		{
-			std::shared_lock lock(this->compression_descriptors_mx);
-			while ((next_allocated_id != next_available_id) &&
-				(this->compression_descriptors.at(next_allocated_id).state.load() == operation_state::done)) {
-				++next_allocated_id;
-			}
-		}
-
-		this->allocated_segment_id.first = next_allocated_id;
-	}
-
 	void register_operation_impl(const dwt_context& cx) {
 		auto [it, inserted] = decorrelation_descriptors.try_emplace(cx.id,
 			cx.id, operation_state::pending, cx.frame);
@@ -297,8 +280,8 @@ struct channel_context {
 		}
 	}
 
-	template <typename T>
-	void register_operation_impl(const segmentation_context<T>& cx) {
+	template <typename T, typename D>
+	void register_operation_impl(const segmentation_context<T, D>& cx) {
 		auto [it, inserted] = segmentation_descriptors.try_emplace(cx.id,
 			cx.id, operation_state::pending, cx.frame);
 		if (!inserted) {
@@ -321,6 +304,64 @@ struct channel_context {
 
 		compression_descriptors.emplace_back(cx.id, operation_state::pending, cx.segment_data->id);
 	}
+};
+
+struct session_context;
+
+template <typename T>
+struct compression_data {
+	using sT = compressor_type_params<T>::segment_type;
+	using sbT = compressor_type_params<T>::subband_type;
+
+
+	mutable std::mutex subband_fragments_mx;
+	std::list<std::pair<subbands_t<sbT>, img_pos>> subband_fragments;
+	std::list<std::unique_ptr<segment<sT>>> tail; // those segments that couldn't be dispatched
+	mutable std::mutex tail_mx;
+	std::unique_ptr<segment<sT>> incomplete_segment;	// TODO: integrate logic
+	std::vector<std::pair<img_pos, std::reference_wrapper<const data_descriptor>>> fragments;
+	mutable std::mutex fragments_mx;
+};
+
+struct channel_context {
+	descriptor_registry descriptors;
+	std::pair<size_t, size_t> allocated_segment_id = { 0, 0 }; // first is lower bound, second is upper
+
+	std::variant<
+			compression_data<int8_t>,
+			compression_data<int16_t>,
+			compression_data<int32_t>,
+			compression_data<int64_t>, 
+			compression_data<float>, 
+			compression_data<double>
+			// segment types for other dwt transformations are same as one of the above
+		> data;
+
+	session_context& session_cx;
+	const size_t channel_index;
+
+	template <typename T>
+	channel_context(session_context& cx, size_t z, std::type_identity<T>) :
+			session_cx(cx), channel_index(z), data(std::in_place_type<compression_data<T>>)		// msvc implementation couldn't deduce variant(T&& t) for some reason
+	{
+		auto& compr_data = std::get<compression_data<T>>(this->data);
+		compr_data.incomplete_segment = std::make_unique<segment<typename compression_data<T>::sT>>();
+	}
+
+	void free_compressed_segment_data() {
+		ptrdiff_t next_allocated_id = this->allocated_segment_id.first;
+		size_t next_available_id = this->allocated_segment_id.second;
+
+		this->allocated_segment_id.first = descriptors.compression_done_lower_bound(
+			next_allocated_id, next_available_id);
+	}
+};
+
+struct decompression_context_params {
+	session_settings session_params;
+	std::vector<std::pair<size_t, compression_settings>> compression_params;
+	std::vector<std::pair<size_t, segment_settings>> segment_params;
+	size_t channel_count = 1;
 };
 
 // Input image may have arbitrary pixel depth, i.e. single pixel can be representable by 
@@ -355,28 +396,29 @@ struct session_context {
 	// std::vector would require value_type to be copy-constructible for emplace_back
 	std::deque<channel_context> channel_contexts;
 
-	// TODO: int64_t can handle all types specified in the standard, but bitmap underlying type should be configurable
-	std::variant<
-		// TODO: or we can always dynamically choose sufficient signed one when parsing image
-			std::vector<bitmap<int8_t>>,
-			std::vector<bitmap<uint8_t>>,
-			std::vector<bitmap<int16_t>>,
-			std::vector<bitmap<uint16_t>>,
-			std::vector<bitmap<int32_t>>,
-			std::vector<bitmap<uint32_t>>,
-			std::vector<bitmap<int64_t>>,
-			std::vector<bitmap<uint64_t>>
-		> image_channels;
+	io_data_registry& data_registry;
+	// session_context is movable and copyable. Mind proper handling of reference member
+	
+	session_context(io_data_registry& registry) : data_registry(registry) {}
 
-	sink_type dst_type = sink_type::memory;
 
-	template <typename T, typename dwtT = std::make_signed_t<T>>
-	session_context(std::vector<bitmap<T>>&& img, sink_type target_dst_type = sink_type::memory) :
-			image_channels(std::move(img)), dst_type(target_dst_type) {
-		auto& img_channels = std::get<std::vector<bitmap<T>>>(this->image_channels);
-		for (size_t i = 0; i < img_channels.size(); ++i) {
-			this->channel_contexts.emplace_back(*this, i, dwtT{});
+	template <typename dwtT>
+	void init_channel_contexts(size_t channel_num = 1) {
+		for (size_t i = 0; i < channel_num; ++i) {
+			this->channel_contexts.emplace_back(*this, i, std::type_identity<dwtT>{});
 		}
+
+		// TODO: if the data decoded sequentially, compression and segment settings will be
+		// populated on the fly, that would cause reallocations if std::vector is used.
+		// The scenario should be examined on the subject of data races: no concurrent read
+		// is allowed when settings data is populated; for seqential decoding it should be 
+		// well-behaved due to lack of concurrent execution; for concurrent approaches, the 
+		// data should be populated before the processing begins.
+		//
+	}
+
+	size_t get_channel_num() const noexcept {
+		return this->channel_contexts.size();
 	}
 };
 
@@ -450,98 +492,51 @@ inline size_t generate_session_id() {
 //
 
 
-// template <typename T> // TODO: type dependencies
-// struct compression_data {
-// 	using sT = compressor_type_params<T>::segment_type;
-// 	using sbT = compressor_type_params<T>::subband_type;
-// 
-// 
-// 	std::list<std::pair<subbands_t<sbT>, img_pos>> subband_fragments;
-// 	std::list<std::unique_ptr<segment<sT>>> tail; // those segments that didn't fit into 
-// 	std::unique_ptr<segment<sT>> incomplete_segment;
-// 
-// 
-// 	std::vector<std::vector<subbands_t<sbT>>> subbands_accumulated; // per channel
-// 	std::vector<compression_context<sT>> compression_contexts; // max size is 256
-// };
 
-// // TODO:
-// // couldn't decide whether the following scenario is data race and therefore UB:
-// //	deque::operator[] is const for the purpose of data races
-// //	deque::push_back is modifier, and invalidates all iterators, but doesn't invalidate 
-// //		references to data elements; it possibly reallocates intermediate transparent 
-// //		buffers/reorganazies memory batches
-// // 
-// // Having 2 concurrent flows:
-// //	globals[shared]:
-// //		deque deq;
-// //		weak_memory_synchronizer sync;
-// // 
-// //	writer: 
-// //			(T val)
-// //		w1.	deq.push_back(val);
-// //		w2. sync.publish();		// release operation
-// // 
-// //	reader:
-// //			(ptrdiff_t i)
-// //		r1. sync.sync_acquire();
-// //		r2. T& val = deq[i];
-// // 
-// // w1 happens-before r2 ( <=> r2 happens-after w1), via sync access: r1 sequenced before r2, 
-// // r1 synchronized with w2, w1 sequenced before w2.
-// // 
-// // Per the standard (N4917, 6.9.2.2-13):
-// //		A visible side effect A on a scalar object or bit-field M with respect to a value 
-// //			computation B of M satisfies the conditions:
-// //			— A happens before B and
-// //			— there is no other side effect X to M such that A happens before X and X happens 
-// //				before B.
-// //		The value of a non-atomic scalar object or bit-field M, as determined by evaluation B, 
-// //			shall be the value stored by the visible side effect A.
-// //		
-// //		[Note 12: If there is ambiguity about which side effect to a non-atomic object or 
-// //			bit-field is visible, then the behavior is either unspecified or undefined.— end note]
-// // 
-// // Scenario:
-// //	1. Writer W1 executes w1-w2.
-// //	2. Reader R1 executes R1, then context switch happens
-// //	3. Writer W2 executes w1-w2.
-// //	4. Reader R1 resumes execution and executes r2.
-// //		UB?
-// // 
-// // 3. and 4. contain potentially concurrent actions, and neither happens before the other:
-// // 1. does not happen-before 3. (because release semantics instead of SC). UB?
-// // 
-// //
-// weak_memory_synchronizer decorrelation_descriptors_sync;
-// weak_memory_synchronizer segmentation_descriptors_sync;
-// weak_memory_synchronizer compression_descriptors_sync;
+
+// template <typename dwtT>
+// session_context(std::vector<result_handle>&& handles, size_t channel_count = 1) :
+// 	data_handles(std::move(handles)) {
+// 	for (size_t i = 0; i < channel_count; ++i) {
+// 		this->channel_contexts.emplace_back(*this, i, dwtT{});
+// 	}
+// }
+
+// session_context(std::vector<std::unique_ptr<result_handle>>&& handles) :
+// 	data_handles(std::move(handles)) {
+// }
+// 
+// template <typename dwtT>
+// void setup_channels(size_t channel_count = 1) {
+// 	for (size_t i = 0; i < channel_count; ++i) {
+// 		this->channel_contexts.emplace_back(*this, i, dwtT{});
+// 	}
+// }
 
 
 
-// // TODO: allocated id range accounting should be per image channel.
-// // allocated_segment_id
-// std::pair<size_t, size_t> allocated_segment_id = { 0, 0 }; // first is lower bound, second is upper. Both values are in range [0, 255]
+// template <typename T, typename dwtT = std::make_signed_t<T>>
+// session_context(std::vector<bitmap<T>>&& img, storage_type target_dst_type = storage_type::memory) :
+// 		image_channels(std::move(img)), dst_type(target_dst_type) {
+// 	auto& img_channels = std::get<std::vector<bitmap<T>>>(this->image_channels);
+// 	for (size_t i = 0; i < img_channels.size(); ++i) {
+// 		this->channel_contexts.emplace_back(*this, i, std::type_identity<dwtT>{});
+// 	}
+// }
 // 
-// std::deque<dwt_descriptor> decorrelation_descriptors;
-// std::deque<segmentation_descriptor> segmentation_descriptors;
-// std::deque<compression_descriptor> compression_descriptors;
+// template <typename dwtT>
+// session_context(decompression_context_params&& params, std::type_identity<dwtT>) : 
+// 		data_handles(std::move(params.data_handles)), settings_session(std::move(params.session_params)), 
+// 		compr_settings(std::move(params.compression_params)), seg_settings(std::move(params.segment_params)) {
+// 	for (size_t i = 0; i < params.channel_count; ++i) {
+// 		this->channel_contexts.emplace_back(*this, i, std::type_identity<dwtT>{});
+// 	}
 // 
-// template <typename T> // TODO: type dependencies
-// struct compression_data {
-// 	using sT = compressor_type_params<T>::segment_type;
-// 	using sbT = compressor_type_params<T>::subband_type;
-// 
-// 
-// 	std::list<std::pair<subbands_t<sbT>, img_pos>> subband_fragments;
-// 	std::list<std::unique_ptr<segment<sT>>> tail; // those segments that didn't fit into 
-// 	std::unique_ptr<segment<sT>> incomplete_segment;
-// };
-// 
-// std::variant<
-// 		compression_data<int8_t>, 
-// 		compression_data<int16_t>, 
-// 		compression_data<int32_t>, 
-// 		compression_data<int64_t>
-// 		// segment types for other dwt transformations are same as one of the above
-// 	> compr_data;
+// 	// TODO: if the data decoded sequentially, compression and segment settings will be
+// 	// populated on the fly, that would cause reallocations if std::vector is used.
+// 	// The scenario should be examined on the subject of data races: no concurrent read
+// 	// is allowed when settings data is populated; for seqential decoding it should be 
+// 	// well-behaved due to lack of concurrent execution; for concurrent approaches, the 
+// 	// data should be populated before the processing begins.
+// 	//
+// }

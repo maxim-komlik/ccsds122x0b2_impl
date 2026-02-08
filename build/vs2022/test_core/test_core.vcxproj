@@ -61,6 +61,7 @@
       <AssemblerOutput>AssemblyAndSourceCode</AssemblerOutput>
       <GenerateSourceDependencies>true</GenerateSourceDependencies>
       <DebugInformationFormat>EditAndContinue</DebugInformationFormat>
+      <AdditionalOptions>/bigobj %(AdditionalOptions)</AdditionalOptions>
     </ClCompile>
     <Link>
       <GenerateDebugInformation>true</GenerateDebugInformation>

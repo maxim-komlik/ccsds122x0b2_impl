@@ -285,23 +285,19 @@
 
 #include <vector>
 #include <deque>
+#include <list>
 #include <unordered_set>
 #include <tuple>
+#include <memory>
 #include <atomic>
 #include <mutex>
-#include <condition_variable>
-#include <semaphore>
-#include <list>
 #include <thread>
+#include <utility>
+#include <type_traits>
+#include <cstddef>
+
 
 #include "utils.hpp"
-// #include "experimental/weak_memory_sync.hpp"
-
-// class scheduler {
-// public:
-// 	virtual ~scheduler() = default;
-// 	virtual void schedule() = 0; // parameter type?
-// };
 
 class task_pool {
 	class task_executor;
@@ -357,8 +353,6 @@ class task_pool {
 			// TODO: static callables? C++23 introduces static lambdas
 			// maybe use SFINAE depending on accessibility of static operator()
 			return std::apply(callable, std::move(this->payload_params));
-
-			// TODO: check how rvalue reference parameters are handled/stored
 		}
 	};
 
@@ -395,15 +389,6 @@ class task_pool {
 
 			for (auto&& item : result) {
 				pool.put_task(split_consumer(std::move(item)));
-				// if constexpr (is_tuple_v<typename decltype(result)::value_type>) {
-				// 	auto construct_consumer_with_params = [](auto... params) {
-				// 		return split_consumer(params...);
-				// 	};
-				// 	pool.put_task(std::apply(construct_consumer_with_params, std::move(item)));
-				// }
-				// else {
-				// 	pool.put_task(split_consumer(std::move(item)));
-				// }
 			}
 		}
 	};
@@ -424,396 +409,8 @@ class task_pool {
 		}
 	};
 
-
-	struct task_descriptor {
-		// is not part of task_concept due to locality considerations
-		size_t id;
-		task_state state;
-	};
-
-	struct managed_task_item {
-		// should have no constructors to be an aggregate
-		// but should be forced to be move-only type?
-		std::unique_ptr<task_concept> task;
-		task_descriptor descriptor;
-
-		explicit operator bool() {
-			return this->task != nullptr;
-		}
-	};
-
-private:
-	// implement two-level schedule queue access syncronization:
-	//		sync access the whole list or the whole scheduling action (to prevent several threads from 
-	//			concurrent scheduling)
-	//		sync access to the last schedule queue item to allow queue population while schedule action 
-	//			is in progress (to prevent excessive efficiency loss due to uneffective scheduling)
-	//
-	void enqueue_scheduler(std::list<managed_task_item>&& tasks) {
-		std::lock_guard lock(this->schedule_queue_mx);
-		global_schedule_queue.splice(global_schedule_queue.cend(), std::move(tasks));
-	}
-
-	void enqueue_scheduler(std::list<managed_task_item>& tasks) {
-		std::lock_guard lock(this->schedule_queue_mx);
-		global_schedule_queue.splice(global_schedule_queue.cend(), tasks);
-	}
-
-private:
-	void notify_executor_state_change() {
-		++(this->state_subscription_counter);
-		this->state_subscription_counter.notify_all();
-	}
-
-	bool schedule(task_executor& executor) {
-		std::unique_lock lock(this->scheduling_mx, std::try_to_lock);
-		if (lock.owns_lock()) {
-			struct update_epoch_on_return {
-				std::atomic<ptrdiff_t>& counter;
-				bool epoch_ended = false;
-
-				~update_epoch_on_return() {
-					counter.fetch_add(1);	// TODO: relax mem order? load+store?
-					counter.fetch_xor(-epoch_ended);
-					counter.notify_all();
-				};
-
-				update_epoch_on_return(std::atomic<ptrdiff_t>& counter) noexcept : counter(counter) {}
-
-				void queue_exhausted() noexcept {
-					epoch_ended = true;
-				}
-			} epoch_updater(this->schedule_epoch_counter);
-
-			std::list<managed_task_item> schedule_queue_local_buffer;
-			{
-				std::lock_guard lock(this->schedule_queue_mx);
-				schedule_queue_local_buffer.swap(this->global_schedule_queue);
-			}
-
-			// happens-before with some preceding write via lock acquire
-			if (schedule_queue_local_buffer.empty()) {
-			// if (this->global_schedule_queue.empty()) {	
-				// handle unseccuessful scheduling - return from function
-				bool result = executor.steal_cycle([this]() -> bool {
-						std::lock_guard lock(this->schedule_queue_mx);
-						return this->global_schedule_queue.empty();
-					});
-
-				if (!result) {
-					// wait on all executors state
-					{
-						std::vector<task_executor*> busy_executors;
-						for (auto& item : this->executors) {
-							if (item->get_state() == task_executor::state::busy &&
-									item.get() != &executor) {
-								busy_executors.push_back(item.get());
-							}
-						}
-
-						ptrdiff_t old = 0;
-						this->state_subscription_counter = old; // reset counter 
-						do {
-							decltype(busy_executors)::iterator it = busy_executors.begin();
-							while (it != busy_executors.end()) {
-								if ((*it)->get_state() > task_executor::state::busy) {
-									it = busy_executors.erase(it);
-								} else {
-									++it;
-								}
-							}
-
-							if (busy_executors.empty()) {
-								break;
-							}
-
-							old = (this->state_subscription_counter -= old);
-							this->state_subscription_counter.wait(0);
-
-						// happens-before with some preceding write via acquire in 
-						// state_subscription_counter
-						} while (this->global_schedule_queue.empty());	
-					}
-
-					std::lock_guard lock(this->schedule_queue_mx);
-					if (this->global_schedule_queue.empty()) {
-						// scheduling unsuccessful: ran out of tasks, nothing to schedule
-						epoch_updater.queue_exhausted();
-						return false;
-					}
-					schedule_queue_local_buffer.swap(this->global_schedule_queue);
-				} // global queue is not empty otherwise
-				else {
-					// else branch to avoid consequtive excessive locking =(
-					std::lock_guard lock(this->schedule_queue_mx);
-					schedule_queue_local_buffer.swap(this->global_schedule_queue);
-				}
-			}
-			std::vector<size_t> enqueued_counts(this->executors.size());
-			
-			for (ptrdiff_t i = 0; i < this->executors.size(); ++i) {
-				enqueued_counts[i] = this->executors[i]->enqueued_count();
-			}
-
-			size_t total_task_count =
-				// std::reduce(enqueued_counts.cbegin(), enqueued_counts.cend(), this->global_schedule_queue.size());
-				std::reduce(enqueued_counts.cbegin(), enqueued_counts.cend(), schedule_queue_local_buffer.size());
-
-			std::vector<size_t> enqueue_amount(this->executors.size(), 
-				(total_task_count + (this->executors.size() - 1)) / this->executors.size());
-			for (ptrdiff_t i = 0; i < this->executors.size(); ++i) {
-				// take care of unsigned underflow
-				using signed_amount_t = std::make_signed_t<decltype(enqueue_amount)::value_type>;
-				enqueue_amount[i] = relu(((signed_amount_t)enqueue_amount[i]) - enqueued_counts[i] + 
-					(enqueued_counts[i] == 0));
-			}
-
-			ptrdiff_t executor_index = this->executor_index_map[&executor];
-
-			bool schedule_next_batch = true;
-			constexpr size_t unscheduled_remainder_threshold = 0;
-			do {
-				// size_t queue_remaining_size = this->global_schedule_queue.size();
-				// auto current_task = this->global_schedule_queue.begin();
-				size_t queue_remaining_size = schedule_queue_local_buffer.size();
-				auto current_task = schedule_queue_local_buffer.begin();
-				for (ptrdiff_t i = 0; i < enqueue_amount.size(); ++i) {
-					size_t tasks_to_enqueue = std::min(enqueue_amount[executor_index], queue_remaining_size);
-					auto end_iterator = std::next(current_task, tasks_to_enqueue);
-
-					// this op potentially syncs with other executors that may try stealing
-					std::list<managed_task_item> enqueue_buffer(std::make_move_iterator(current_task),
-						std::make_move_iterator(end_iterator));
-					this->executors[executor_index]->enqueue(std::move(enqueue_buffer));
-					this->executors[executor_index]->wake_up(); // check if necessary here or should be implemented another way
-					current_task = end_iterator;
-
-					queue_remaining_size -= tasks_to_enqueue;
-					if (queue_remaining_size == 0) {
-						break;
-					}
-
-					executor_index &= -(++executor_index < executors.size()); // round-up bound limit
-				}
-
-				// // sync queue access
-				// this->global_schedule_queue.erase(this->global_schedule_queue.begin(), current_task);
-				// if (this->global_schedule_queue.size() > 0) {
-				// 	std::fill(enqueue_amount.begin(), enqueue_amount.end(), 
-				// 		(this->global_schedule_queue.size() + (this->executors.size() - 1)) / this->executors.size());
-				// }
-
-				schedule_queue_local_buffer.clear();
-				{
-					std::lock_guard lock(this->schedule_queue_mx);
-					schedule_next_batch = (this->global_schedule_queue.size() > unscheduled_remainder_threshold);
-					if (schedule_next_batch) {
-						schedule_queue_local_buffer.swap(this->global_schedule_queue);
-					}
-				}
-				std::fill(enqueue_amount.begin(), enqueue_amount.end(),
-					(schedule_queue_local_buffer.size() + (this->executors.size() - 1)) / this->executors.size());
-			// } while (this->global_schedule_queue.size() > unscheduled_remainder_threshold);
-			} while (schedule_next_batch);
-
-			// scheduling is successful, schedule next scheduling task
-			this->enqueue_scheduling_task(*(this->executors[executor_index]));
-		} else {
-			// debug me, several scheduling tasks attempted to execute simultaneously.
-		}
-
-		return lock.owns_lock();
-	}
-
-	// Task stealing is used in several flows: 
-	//		on scheduling, in a context of a scheduling task, if global queue is empty 
-	//			before end of scheduling sequence
-	//		on local task fetch, if local queue is empty, in a context of a task switch
-	// In both flow, custom action should be taken on every stealing step after every 
-	// stolen task is completed. On steal attempt fail, new neighbor should be selected.
-	// 
-	//
-
-	ptrdiff_t round_wrap_index(ptrdiff_t index, size_t count) noexcept {
-		// works for indexes (boundary +- count), out of bound if greater dynamic range
-		return index 
-			+ (ptrdiff_t)(count & (-(index < 0)))
-			- (ptrdiff_t)(count & (-(index >= (ptrdiff_t)(count))));
-	}
-
-	// task_executor* get_next_stealing_target(task_executor& initiator, task_executor& previous) {
-	// 	// TODO: fix self-targeting
-	// 	// check collection boundaries handling (the rest of items should be processed 
-	// 	// subsequently in any scenario)
-	// 
-	// 	// returns pointer because result is expected to be rebound
-	// 
-	// 	ptrdiff_t initiator_index = this->executor_index_map[&initiator];
-	// 	ptrdiff_t target_index = this->executor_index_map[&previous];
-	// 
-	// 	ptrdiff_t offset = target_index - initiator_index;
-	// 	// last bit is a sign, the rest are offset modulo
-	// 
-	// 	ptrdiff_t offset_sign = (offset >> ((sizeof(offset) >> 3) - 1));
-	// 	ptrdiff_t index = ((offset ^ offset_sign) << 1) | (offset_sign & 0x01);
-	// 
-	// 	++index;
-	// 	offset = (index >> 1) ^ (-(index & 0x01));
-	// 	return this->executors[round_wrap_index(initiator_index + offset, this->executors.size())].get();
-	// 
-	// 	// 0b0 self
-	// 	// 0b01		-1	0b1111
-	// 	// 0b10		+1	0b0001
-	// 	// 0b11		-2 	0b1110
-	// 	// 0b100	+2	0b0010
-	// 	// 0b101	-3	0b1101
-	// 	// 0b110	+3	0b0011
-	// 	// 0b111	-4	0b1100
-	// 	//
-	// }
-
-	std::vector<task_executor*> get_stealing_target_sequence(task_executor& initiator) {
-		// TODO: check collection boundaries handling (the rest of items should be processed 
-		// subsequently in any scenario)
-
-		std::vector<task_executor*> result(this->executors.size() - 1, nullptr); // omit initiator self 
-
-		ptrdiff_t initiator_index = this->executor_index_map[&initiator];
-		for (ptrdiff_t i = 0; i < result.size(); ++i) {
-			ptrdiff_t offset = ((i + 1) >> 1) ^ (-((i + 1) & 0x01));
-			result[i] = this->executors[round_wrap_index(initiator_index + offset, this->executors.size())].get();
-		}
-
-		return result;
-	}
-
-	class schedule_task {
-	public:
-		void execute(task_executor& pool) {
-			pool.handle_scheduling();
-		}
-	};
-
-	void enqueue_scheduling_task(task_executor& executor) {
-		executor.enqueue(this->generator.create_task(schedule_task()));
-		// TODO: generator.create_task is potentially concurrent with generator.create_task 
-		// in public add tasks; the first executed by some executor during scheduling [under 
-		// mutex], the latter executed by external code owning task_pool instance.
-		//
-	}
-
-	static constexpr size_t get_target_executors_count() noexcept {
-		// TODO: implement strategy
-		return 3;
-	}
-
 public:
-	task_pool(): threads(get_target_executors_count()), executors(get_target_executors_count()) {
-		// this->threads[0] remains default-initialized, placeholder for this_thread to cope 
-		// with index shifting relative to this->executors.
-		// this->executors[0] is reserved for current thread, does not execute concurrently.
-
-		for (ptrdiff_t i = 0; i < this->executors.size(); ++i) {
-			this->executors[i] = std::make_unique<task_executor>(*this);
-			// this->executor_index_map[this->executors[i].get()] = i;
-			this->executor_index_map.insert({ this->executors[i].get(), i });
-		}
-	}
-
-	~task_pool() {
-		for (ptrdiff_t i = 1; i < this->executors.size(); ++i) {
-			if (this->threads[i].joinable()) {
-				this->executors[i]->shutdown();
-				this->threads[i].join();
-			}
-		}
-	}
-
-	template <typename... Ts>
-	void add_tasks(Ts&&... tasks) {
-		std::list<managed_task_item> temp_task_buffer;
-		((temp_task_buffer.push_back(this->generator.create_task(std::forward<Ts>(tasks)))), ...);
-		// TODO: generator.create_task is potentially concurrent
-		this->enqueue_scheduler(std::move(temp_task_buffer));
-	}
-
-	void execute_flow(bool async = false) {
-		bool valid = true;
-		valid &= !this->executors.empty();
-		valid &= !(async & (this->executors.size() < 2));
-		if (!valid) {
-			// TODO: error handling
-		}
-
-		// well, preconditions...
-		valid &= this->executors[0] != nullptr;
-		if (!valid) {
-			// TODO: error handling
-		}
-
-		bool initialized = std::any_of(this->executors.begin(), this->executors.end(),
-			[](const auto& executor_ptr) -> bool {
-				return (executor_ptr->get_state() != task_executor::state::init);
-			});
-
-		if (initialized) {
-			// skip this->executors[0], reserved for calling thread
-			bool need_scheduling = std::all_of(std::next(this->executors.begin()), this->executors.end(),
-				[](const auto& executor_ptr) -> bool {
-					task_executor::state current_state = executor_ptr->get_state();
-					return (current_state == task_executor::state::halted) |
-						// for the purpose of makind decision on scheduling necessity 
-						// halted, pending_shutdown and shutdown are equivalent
-						(current_state == task_executor::state::pending_shutdown) |
-						(current_state == task_executor::state::shutdown);
-				});
-			if (need_scheduling) {
-				this->schedule_epoch_counter.store(0);
-				this->schedule(*(this->executors[0]));
-			} // otherwise running executors will eventually schedule tasks from global queue
-
-			// TODO: should we restart executors explicitly?
-			// for (ptrdiff_t i = 1; i < this->executors.size(); ++i) {
-			// 	task_executor::state current_state = this->executors[i]->get_state();
-			// 	if (current_state == task_executor::state::pending_shutdown) {
-			// 		if (this->threads[i].joinable()) {
-			// 			// restart thread and executor
-			// 			this->threads[i].join();
-			// 			this->threads[i] = std::thread(&task_executor::start_asynchronous_execution, this->executors[i].get());
-			// 		}
-			// 		else {
-			// 			// TODO: invariant violation, debug me
-			// 		}
-			// 	}
-			// }
-		} else {
-			// we can always keep executor[0] for calling thread.
-			this->schedule(*(this->executors[0]));
-
-			for (ptrdiff_t i = 1; i < this->executors.size(); ++i) {
-				// TODO: check std::thread join/move preconditions
-				this->threads[i] = std::thread(&task_executor::start_asynchronous_execution, this->executors[i].get());
-			}
-		}
-
-		if (!async) {
-			// join pool
-			this->executors[0]->start_synchronous_execution();
-		}
-	}
-
-public:
-	
-	class FlowGraph {
-	public:
-	
-		template <typename T>
-		class is_std_array: public std::false_type { };
-	
-		template <typename T, size_t N>
-		class is_std_array<std::array<T, N>>: public std::true_type { };
-	
-	
+	class flow_graph {
 		template <typename T>
 		struct split_token;
 	
@@ -980,8 +577,6 @@ public:
 			// cannot pass their output to the sync node as parameters.
 		};
 	
-		struct root: public branch<task_fork_node_t<>>{};
-	
 	
 		template <typename T>
 		struct graph_parser;
@@ -1056,35 +651,79 @@ public:
 		public:
 			using parsed = node_parser<root_node_t>::type;
 		};
-		
+
+	public:
+		struct root : public branch<task_fork_node_t<>> {};
+
 		template <typename T>
 		using parse = graph_parser<T>::parsed;
 	};
 
 private:
+	struct task_descriptor {
+		// is not part of task_concept due to locality considerations
+		size_t id;
+		task_state state;
+	};
 
+	struct managed_task_item {
+		// should have no constructors to be an aggregate
+		// but should be forced to be move-only type?
+		std::unique_ptr<task_concept> task;
+		task_descriptor descriptor;
+
+		explicit operator bool() {
+			return this->task != nullptr;
+		}
+	};
+
+public:
+	~task_pool();
+	task_pool();
+
+	template <typename... Ts>
+	void add_tasks(Ts&&... tasks);
+
+	void execute_flow(bool async = false);
+	
+private:
+	void enqueue_scheduling_task(task_executor& executor);
+	bool schedule(task_executor& executor);
+
+	// Task stealing is used in several flows: 
+	//		on scheduling, in a context of a scheduling task, if global queue is empty 
+	//			before end of scheduling sequence
+	//		on local task fetch, if local queue is empty, in a context of a task switch
+	// In both flow, custom action should be taken on every stealing step after every 
+	// stolen task is completed. On steal attempt fail, new neighbor should be selected.
+	// 
+	//
+
+	// implement two-level schedule queue access syncronization:
+	//		sync access the whole list or the whole scheduling action (to prevent several threads from 
+	//			concurrent scheduling)
+	//		sync access to the last schedule queue item to allow queue population while schedule action 
+	//			is in progress (to prevent excessive efficiency loss due to uneffective scheduling)
+	//
+	void enqueue_scheduler(std::list<managed_task_item>&& tasks) noexcept;
+	void enqueue_scheduler(std::list<managed_task_item>& tasks) noexcept;
+
+	void notify_executor_state_change() noexcept;
+	std::vector<task_executor*> get_stealing_target_sequence(task_executor& initiator);
+
+private:
 	class task_generator {
 	public:
 		template <typename T>
-		managed_task_item create_task(T&& task, task_state state = task_state::schedule) {
-			return {
-				std::make_unique<task_model<T>>(std::forward<T>(task)),
-				{
-					this->generate_task_id(),
-					state
-				}
-			};
-		}
+		managed_task_item create_task(T&& task, task_state state = task_state::schedule);
 
 	private:
-		size_t generate_task_id() noexcept {
-			size_t unque_seed = 0; // TODO: implement id uniqueness guarantee
-			return ++(this->last_task_id);
-		}
+		inline size_t generate_task_id() noexcept;
 
 	private:
 		size_t last_task_id = 0;
 	};
+	
 
 	class task_executor: protected task_generator {
 	public:
@@ -1096,363 +735,34 @@ private:
 			shutdown
 		};
 
-		task_executor(task_pool& parent_pool) : parent_pool(parent_pool), current_state(state::init) {}
+		task_executor(task_pool& parent_pool);
 
-		template <typename T>
-		void put_task(T&& task) {
-			std::lock_guard lock(this->execution_queue_mx);
-			local_schedule_queue.push_back(this->create_task(std::forward<T>(task)));
-		}
-
-		void handle_scheduling() {
-			// supposed to happen either in the context of normal flow, either in the context of
-			// task stealing
-			bool scheduling_successful = this->parent_pool.schedule(*this);
-		}
-
-		size_t enqueued_count() const noexcept {
-			// this->execution_queue_mem_sync.sync_acquire();
-			// return this->local_execution_queue.size();
-
-			return this->weak_execution_queue_size.load(std::memory_order_relaxed);
-		}
-
-		// template <typename Iter>
-		// void enqueue(std::move_iterator<Iter> begin, const std::move_iterator<Iter>& end) {
-		// 	// sync access between stealers and scheduler
-		// 	while (begin != end) {
-		// 		this->local_execution_queue.push_back(*begin);
-		// 		++begin;
-		// 	}
-		// }
+		void start_synchronous_execution();
+		void start_asynchronous_execution();
 		
-		void enqueue(managed_task_item&& task_item) {
-			std::lock_guard lock(this->execution_queue_mx);
-			this->local_execution_queue.push_back(std::move(task_item));
-		}
-
-		void enqueue(std::list<managed_task_item>&& tasks) noexcept {
-			// noexcept in declaration because std::list::splice "Throws: Nothing." per the standard
-			std::lock_guard lock(this->execution_queue_mx);
-			this->local_execution_queue.splice(this->local_execution_queue.end(), std::move(tasks));
-			// this->execution_queue_mem_sync.publish();
-			this->weak_execution_queue_size.store(this->local_execution_queue.size(),
-				std::memory_order_relaxed);
-		}
+		template <typename T>
+		void put_task(T&& task);
+		void enqueue(managed_task_item&& task_item);
+		void enqueue(std::list<managed_task_item>&& tasks) noexcept;
 
 		template <typename F>
-		bool steal_cycle(F&& pred) {
-			// copy-paste from execution cycle. Keep this predicated version until it is clear
-			// how to implement this interface properly
+		bool steal_cycle(F&& pred);
+		void handle_scheduling();
 
-			std::vector<task_executor*> steal_targets = this->parent_pool.get_stealing_target_sequence(*this);
-			decltype(steal_targets)::iterator it = steal_targets.begin();
-			// do {
-			while (pred()) {
-				if (it == steal_targets.end()) {
-					return false;
-				}
+		void wake_up();
+		void shutdown();
 
-				if (this->execute_task((*it)->try_steal_task())) {
-					++it;
-				} else {
-					it = steal_targets.erase(it);
-				}
-
-				// round wrap
-				if (it == steal_targets.end()) {
-					it = steal_targets.begin();
-				}
-			} 
-			// } while (pred());
-
-			return true;
-		}
-
-		void wake_up() {
-			// bool change_applied = false;
-			// {
-			// 	std::lock_guard lock(this->state_mx);
-			// 	if (this->current_state == state::halted) {
-			// 		this->current_state = state::busy;
-			// 		change_applied = true;
-			// 	}
-			// }
-			// if (change_applied) {
-			// 	this->state_cv.notify_all();
-			// }
-
-			state expected_halted = state::halted;
-			bool change_applied = this->current_state.compare_exchange_strong(expected_halted, state::busy);
-			if (change_applied) {
-				this->current_state.notify_all();
-			}
-		}
-
-		void shutdown() {
-			// precondition: state is not init
-			// 
-			// potentially races with execution cycle. 
-			// 
-			// Mitigation:
-			//	1. compare_excchange_strong from init to shutdown
-			//	2. if (1.) successful, there may be race, but it's caller to blame himself.
-			//		behavior is well-defined, but maybe throw is reasonable
-			//	3. if (2.) is not successfull, exchange to pending_shutdown
-			//	4. if result of (3.) is shutdown, store shutdown.
-			//		behavior is well-defined, but race is possible, winner unspecified
-			// 
-
-			state old = state::init;
-			bool valid = !this->current_state.compare_exchange_strong(old, state::shutdown);
-			if (!valid) {
-				// throw?
-			}
-			else {
-				old = this->current_state.exchange(state::pending_shutdown);
-				if (old == state::shutdown) {
-					this->current_state.store(state::shutdown);
-				}
-				this->current_state.notify_all();
-			}
-
-			// {
-			// 	std::lock_guard lock(this->state_mx);
-			// 	this->current_state = state::pending_shutdown;
-			// }
-			// this->state_cv.notify_all();
-		}
-
-		state get_state() const {
-			return this->current_state;
-		}
-
-		void start_synchronous_execution() {
-			auto on_halt_handler = [this](/*auto& lock*/) -> void {
-				// shutdown current executor so that execution cycle exits. The flow then 
-				// returns to the caller.
-				
-				// // precondition: lock is acquired
-				// this->current_state = state::pending_shutdown;
-
-				// flow execution always ends with failed scheduling attempt. If scheduling fails, 
-				// then all executors are halted and no tasks available in schediling queue.
-				// 
-				// after scheduling is completed, there're either available tasks in execution queue, 
-				// either other executors are busy, either the end of flow reached.
-				//
-
-				// state expected_halted = state::halted;
-				// this->current_state.compare_exchange_strong(expected_halted, state::pending_shutdown);
-
-				// seq_cst is needed here
-				ptrdiff_t epoch = parent_pool.schedule_epoch_counter.load();
-				state expected_halted = this->current_state.load();
-				// no need to wait for scheduling if executor is waken up since state was set to halted
-				if ((expected_halted == state::halted) & (epoch >= 0)) {
-					// there's a chance that after scheduling is done we get some tasks, 
-					// or some neighbour gets tasks and we could try stealing
-					parent_pool.schedule_epoch_counter.wait(epoch);
-					epoch = parent_pool.schedule_epoch_counter.load();
-				}
-
-				if (epoch < 0) {
-					// end of flow reached
-					this->current_state.store(state::pending_shutdown);
-				}
-			};
-
-			this->execution_cycle(on_halt_handler);
-		}
-
-		void start_asynchronous_execution() {
-			auto on_halt_handler = [this](/*auto& lock*/) -> void {
-				// // precondition: lock is acquired
-				// 
-				// state_cv.wait(lock, [this]() -> bool {
-				// 	return this->current_state != state::halted;
-				// });
-				this->current_state.wait(state::halted);
-			};
-
-			this->execution_cycle(on_halt_handler);
-		}
+		state get_state() const;
+		size_t enqueued_count() const noexcept;
 
 	private:
-		// void set_state(state new_state) {
-		// 	{
-		// 		std::lock_guard lock(this->state_mx);
-		// 		this->current_state = new_state;
-		// 	}
-		// 	this->state_cv.notify_all();
-		// }
-
-		class dummy_task {
-		public:
-			void execute(task_executor& pool) {
-				return;
-			}
-		};
+		template <typename F>
+		void execution_cycle(F&& on_halt_handler);
 
 		[[nodiscard]]
-		managed_task_item try_steal_task() noexcept {
-			managed_task_item stolen_task;
+		managed_task_item try_steal_task() noexcept;
 
-			if (this->execution_queue_mx.try_lock()) {
-				std::lock_guard lock(this->execution_queue_mx, std::adopt_lock);
-
-				state self_state = this->current_state.load(std::memory_order_relaxed);
-				bool proceed_stealing =
-					// do not pop the last element in the queue to meet precondition for pop_front
-					// in the execution cycle code
-					(this->local_execution_queue.size() > 1);
-
-				proceed_stealing |= 
-					// if the executor is not active, the last task would not be executed otherwise, 
-					// that would result in tasking locks or scheduling failures
-					((self_state == state::init) | 
-					(self_state == state::shutdown)) & 
-					(this->local_execution_queue.size() > 0);
-
-				if (proceed_stealing) {
-					// get the task from the end of the queue: the latest task that could be scheduled
-					// to the executor that initiates task steal if the scheduler was a bit more lucky
-					stolen_task = std::move(local_execution_queue.back());
-					local_execution_queue.pop_back();
-					// this->execution_queue_mem_sync.publish();
-					this->weak_execution_queue_size.store(this->local_execution_queue.size(),
-						std::memory_order_relaxed);
-				}
-			}
-			else {
-				// behave as stealing attempt was successfull, so that this neighbour is 
-				// not removed from stealing sequence collection. Maybe the next time lucky.
-				stolen_task = this->create_task(dummy_task());
-				// TODO: task_generator::create_task here is potentially concurrent with 
-				// task_generator::create_task in put_task; the first is performed by 
-				// neighbour executor on *this executor context, the latter is performed 
-				// by *this executor on task finish (inside task_base derived classes)
-				//
-			}
-			return stolen_task;
-		}
-
-		// bool task_stealing_tick(task_executor& stealing_target) {
-		// 	bool result = false;
-		// 	if (!this->current_task) {
-		// 		this->current_task = stealing_target.try_steal_task();
-		// 		result = this->execute_current_task();
-		// 	} else {
-		// 		// debug me, illegal steal
-		// 	}
-		// 	return result;
-		// }
-
-		bool execute_task(managed_task_item&& task_item) {
-			bool result = false;
-			if (task_item) {
-				try {
-					task_item.task->execute(*this);
-					result = true;
-				}
-				catch (const std::exception& e) {
-
-				}
-				catch (...) {
-
-				}
-
-				// Move members should be noexcept here. If exception is thrown for push_back, 
-				// let it propogate up to the stack root (likely we ran out of memory).
-				// Is it reasonable to trigger std::terminate in that case?
-				//
-				// this->retired_tasks.push_back(std::move(task_item));
-				this->retired_tasks.push_back(std::move(task_item.descriptor));
-
-				if (!this->local_schedule_queue.empty()) {
-					this->parent_pool.enqueue_scheduler(this->local_schedule_queue);
-				}
-			}
-			else {
-				// debug me, illegal concurrent execution attempt
-			}
-			return result;
-		}
-
-		template <typename F>
-		void execution_cycle(F&& on_halt_handler) {
-			{
-				state expected_init = state::init;
-				state expected_shutdown = state::shutdown;
-				bool valid =
-					this->current_state.compare_exchange_strong(expected_init, state::busy) |
-					this->current_state.compare_exchange_strong(expected_shutdown, state::busy);
-				if (!valid) {
-					// TODO: handle initialization error: likely concurrent initialization attempt
-					// 
-					// use expected_shutdown value for error analysis
-					//
-				}
-			}
-
-			bool should_try_stealing = false;
-			{
-				// need to sync with potentially concurrent steal attempt
-				std::lock_guard lock(this->execution_queue_mx);
-				should_try_stealing = this->local_execution_queue.empty();
-			}
-
-			while (this->current_state.load(std::memory_order_acquire) != state::pending_shutdown) {
-				if (should_try_stealing) {
-					auto pred = [this, &should_try_stealing]() -> bool {
-						std::lock_guard lock(this->execution_queue_mx);
-						// this->execution_queue_mem_sync.sync_acquire();
-						// this->weak_execution_queue_size.load(std::memory_order_relaxed);
-						return (should_try_stealing = this->local_execution_queue.empty());
-					};
-
-					// // the last task could be scheduling, and local queue could be just populated.
-					// // Check if the queue is empty first, then try stealing
-					// if (pred() && !this->steal_cycle(pred)) {
-					if (!this->steal_cycle(pred)) {
-						// std::unique_lock lock(state_mx);
-						// this->current_state = state::halted;
-
-						state expected_busy = state::busy;
-						if (this->current_state.compare_exchange_strong(expected_busy, state::halted)) {
-							parent_pool.notify_executor_state_change();
-
-							// state_cv.wait(lock, [this]() -> bool {
-							// 	return this->current_state != state::halted;
-							// });
-							on_halt_handler();
-						}
-						else {
-							// concurrent state change, the only valid one is shutdown request
-						}
-					}
-				} else {
-					auto acquire_task = [this, &should_try_stealing]() {
-						std::lock_guard lock(this->execution_queue_mx);
-						managed_task_item current_task = std::move(this->local_execution_queue.front());
-						this->local_execution_queue.pop_front();
-						should_try_stealing = this->local_execution_queue.empty();
-
-						// this->execution_queue_mem_sync.publish();
-						this->weak_execution_queue_size.store(this->local_execution_queue.size(),
-							std::memory_order_relaxed);
-
-						return current_task;
-					};
-
-					this->execute_task(acquire_task());
-				}
-			}
-
-			// std::unique_lock lock(state_mx);
-			this->current_state = state::shutdown; // TODO: mem order?
-			parent_pool.notify_executor_state_change();
-		}
+		bool execute_task(managed_task_item&& task_item);
 
 	private:
 		task_pool& parent_pool;
@@ -1460,7 +770,6 @@ private:
 		std::list<managed_task_item> local_execution_queue;
 		mutable std::mutex execution_queue_mx;
 		std::atomic<size_t> weak_execution_queue_size = 0;
-		// mutable weak_memory_synchronizer execution_queue_mem_sync;
 
 		// buffer to dump locally created/forked tasks to the global schedule queue
 		std::list<managed_task_item> local_schedule_queue;
@@ -1469,26 +778,66 @@ private:
 		std::deque<task_descriptor> retired_tasks;
 
 		std::atomic<state> current_state = state::init;
-		// state current_state;
-		// mutable std::mutex state_mx;
-		// std::condition_variable state_cv;
 	};
 
-
 private:
-	std::list<managed_task_item> global_schedule_queue;
 	mutable std::mutex schedule_queue_mx;
+	std::list<managed_task_item> global_schedule_queue;
 	std::vector<std::thread> threads;
 	std::vector<std::unique_ptr<task_executor>> executors;
 	std::unordered_map<task_executor*, ptrdiff_t> executor_index_map;
 
 	task_generator generator;
 
-	std::mutex scheduling_mx;
+	mutable std::mutex scheduling_mx;	// TODO: prevent false sharing?
 
 	std::atomic<ptrdiff_t> state_subscription_counter = 0;
 	std::atomic<ptrdiff_t> schedule_epoch_counter = 0;
 };
+
+
+// task_pool implementation section:
+//
+
+template <typename... Ts>
+void task_pool::add_tasks(Ts&&... tasks) {
+	std::list<managed_task_item> temp_task_buffer;
+	((temp_task_buffer.push_back(this->generator.create_task(std::forward<Ts>(tasks)))), ...);
+	// TODO: generator.create_task is potentially concurrent
+	this->enqueue_scheduler(std::move(temp_task_buffer));
+}
+
+
+// task_executor implementation section:
+// 
+
+template <typename T>
+void task_pool::task_executor::put_task(T&& task) {
+	std::lock_guard lock(this->execution_queue_mx);
+	this->local_schedule_queue.push_back(this->create_task(std::forward<T>(task)));
+}
+// other templated member functions are never used in other translation except tasking one
+
+
+// task_generator implementation section:
+// 
+
+template <typename T>
+task_pool::managed_task_item task_pool::task_generator::create_task(T&& task, task_state state) {
+	return {
+		std::make_unique<task_model<T>>(std::forward<T>(task)),
+		{
+			this->generate_task_id(),
+			state
+		}
+	};
+}
+
+inline size_t task_pool::task_generator::generate_task_id() noexcept {
+	size_t unque_seed = 0; // TODO: implement id uniqueness guarantee
+	return ++(this->last_task_id);
+}
+
 
 // scheduling task: every scheduling cycle puts a schedule task into some executor's queue.
 // Since the task is on the tip (end) of the queue, it is either ececuted by owning executor, 
@@ -1568,95 +917,3 @@ private:
 // but anyway local queue access syncronization is needed!
 // as well as for global queue!
 //
-
-
-// class polymorphic_collection {
-// 	class task_concept {
-// 	public:
-// 		virtual ~task_concept() = default;
-// 
-// 		task_concept(const task_concept& other) = delete;
-// 		task_concept& operator=(const task_concept& other) = delete;
-// 
-// 		task_concept() = default;
-// 
-// 		virtual void execute() = 0;
-// 	};
-// 
-// 	template <typename T>
-// 	class task_model : public task_concept{
-// 		T content;
-// 	public:
-// 		task_model(T&& item) : content(std::move(item)) {}
-// 
-// 		void execute() override {
-// 			this->content.execute();
-// 		}
-// 	};
-// 
-// 	std::vector<std::unique_ptr<task_concept>> collection;
-// 	
-// public:
-// 	template <typename T>
-// 	void put(T&& item) {
-// 		collection.push_back(std::make_unique<task_model<T>>(std::forward<T>(item)));
-// 	}
-// };
-// 
-// template <typename payload_t>
-// class task_base {
-// protected:
-// 	call_arguments_types<payload_t> payload_params;
-// 
-// 	template <typename... Args>
-// 	task_base(Args&&... args) :
-// 			payload_params{std::forward<Args>(args)...} {}
-// 
-// 	decltype(auto) call_payload() {
-// 		payload_t callable; 
-// 		// TODO: static callables? C++23 introduces static lambdas
-// 		// maybe use SFINAE depending on accessibility of static operator()
-// 		return std::apply(callable, this->payload_params);
-// 
-// 		// TODO: check how rvalue reference parameters are handled/stored
-// 	}
-// public:
-// 	virtual void execute(task_pool& pool) = 0;
-// };
-// 
-// template <typename payload_t>
-// class terminal_task: public task_base<payload_t> {
-// 	void execute(task_pool& pool) {
-// 		this->call_payload();
-// 	}
-// };
-// 
-// template <typename payload_t, typename consumer>
-// class consequtive_task : public task_base<payload_t> {
-// 	void execute(task_pool& pool) {
-// 		pool.put_task(consumer(this->call_payload()));
-// 	}
-// };
-// 
-// template <typename payload_t, typename split_consumer>
-// class splitter_task : public task_base<payload_t> {
-// 	void execute(task_pool& pool) {
-// 		auto result = this->call_payload();
-// 
-// 		for (auto&& item : result) {
-// 			pool.put_task(split_consumer(item));
-// 		}
-// 	}
-// };
-// 
-// template <typename payload_t, typename... alternative_consumers>
-// class fork_task : public task_base<payload_t> {
-// 	void execute(task_pool& pool) {
-// 		auto result = this->call_payload();
-// 
-// 		// copies the result for every alternative conumer instance
-// 		// 
-// 		// we'd like to enforce move for the argument of the last task...
-// 		(pool.put_task(alternative_consumers(result)), ...);
-// 	}
-// };

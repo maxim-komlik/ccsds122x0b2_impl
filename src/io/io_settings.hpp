@@ -45,6 +45,8 @@ struct segment_settings {
 	size_t size;	// but actually stored in segment itself
 	bool heuristic_quant_DC;
 	bool heuristic_bdepth_AC;
+
+	friend bool operator==(const segment_settings& lhs, const segment_settings& rhs) = default;
 };
 
 struct compression_settings {
@@ -55,4 +57,6 @@ struct compression_settings {
 	bool DC_stop;
 	size_t bplane_stop;
 	size_t stage_stop;
+
+	friend bool operator==(const compression_settings& lhs, const compression_settings& rhs) = default;
 };

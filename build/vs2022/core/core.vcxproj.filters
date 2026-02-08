@@ -90,7 +90,7 @@
     <ClInclude Include="..\..\..\src\dwt\constant.hpp">
       <Filter>dwt\Header Files</Filter>
     </ClInclude>
-    <ClInclude Include="..\..\..\src\io\file_proto.hpp">
+    <ClInclude Include="..\..\..\src\io\file_protocol.hpp">
       <Filter>io\Header Files</Filter>
     </ClInclude>
     <ClInclude Include="..\..\..\src\io\headers.hpp">
@@ -100,12 +100,6 @@
       <Filter>io\Header Files</Filter>
     </ClInclude>
     <ClInclude Include="..\..\..\src\io\sink.hpp">
-      <Filter>io\Header Files</Filter>
-    </ClInclude>
-    <ClInclude Include="..\..\..\src\io\memory_sink.hpp">
-      <Filter>io\Header Files</Filter>
-    </ClInclude>
-    <ClInclude Include="..\..\..\src\io\file_sink.hpp">
       <Filter>io\Header Files</Filter>
     </ClInclude>
     <ClInclude Include="..\..\..\src\io\ccsds_protocol.hpp">
@@ -153,11 +147,17 @@
     <ClInclude Include="..\..\..\src\io\memory_protocol.hpp">
       <Filter>io\Header Files</Filter>
     </ClInclude>
-    <ClInclude Include="..\..\..\src\common\experimental\weak_memory_sync.hpp">
-      <Filter>common\Header Files\experimental</Filter>
+    <ClInclude Include="..\..\..\src\io\io_data_registry.hpp">
+      <Filter>io\Header Files</Filter>
     </ClInclude>
-    <ClInclude Include="..\..\..\src\common\experimental\weak_sync_mutex.hpp">
-      <Filter>common\Header Files\experimental</Filter>
+    <ClInclude Include="..\..\..\src\io\io_data_registry_fwd.hpp">
+      <Filter>io\Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="..\..\..\src\io\file_sink.tpp">
+      <Filter>io\Source Files</Filter>
+    </ClInclude>
+    <ClInclude Include="..\..\..\src\io\memory_sink.tpp">
+      <Filter>io\Source Files</Filter>
     </ClInclude>
   </ItemGroup>
   <ItemGroup>
@@ -192,6 +192,12 @@
       <Filter>common\librarian\Source Files</Filter>
     </ClCompile>
     <ClCompile Include="..\..\..\src\io\ccsds_protocol.cpp">
+      <Filter>io\Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="..\..\..\src\io\tasking.cpp">
+      <Filter>io\Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="..\..\..\src\io\io_data_registry.cpp">
       <Filter>io\Source Files</Filter>
     </ClCompile>
   </ItemGroup>

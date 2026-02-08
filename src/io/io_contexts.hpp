@@ -5,6 +5,7 @@
 #include "core_types.hpp"
 
 #include "sink.hpp"
+#include "io_data_registry_fwd.hpp"
 
 
 // compression context is created as soon as segment data is constructed
@@ -37,46 +38,25 @@
 // such fine-tuning should be discarded.
 // 
 
-// struct session_context;
 struct channel_context;
-
-// struct dwt_context { // name alternative: decorrelation_context?
-// 	size_t id;
-// 	session_context& session_cx;
-// 	img_pos frame;
-// };
-// 
-// template <typename segT>
-// struct segmentation_context {
-// 	size_t id;
-// 	session_context& session_cx;
-// 	subbands_t<segT> subband_data;
-// 	std::unique_ptr<segment<segT>> incomplete_segment_data;
-// };
-// 
-// template <typename segT>
-// struct compression_context {
-// 	using sink_value_type = size_t;
-// 
-// 	size_t id;
-// 	session_context& session_cx;
-// 	std::unique_ptr<sink<sink_value_type>> dst; // TODO: template parameter? Would like sink to be plain type, not template
-// 	std::unique_ptr<segment<segT>> segment_data;
-// };
 
 struct dwt_context { // name alternative: decorrelation_context?
 	size_t id;
 	channel_context& channel_cx;
 	img_pos frame;
+	const data_descriptor& data;
 };
 
-template <typename segT>
+template <typename subT, typename segT>
 struct segmentation_context {
 	size_t id;
 	channel_context& channel_cx;
-	subbands_t<segT> subband_data;
+	subbands_t<subT> subband_data;
 	std::unique_ptr<segment<segT>> incomplete_segment_data;
 	img_pos frame;
+
+	size_t top_overlap = 0;
+	size_t bottom_overlap = 0;
 };
 
 template <typename segT>
@@ -85,9 +65,24 @@ struct compression_context {
 
 	size_t id;
 	channel_context& channel_cx;
-	std::unique_ptr<sink<sink_value_type>> dst; // TODO: template parameter? Would like sink to be plain type, not template
+	// std::unique_ptr<sink<sink_value_type>> dst; // TODO: template parameter? Would like sink to be plain type, not template
 	std::unique_ptr<segment<segT>> segment_data;
+	const data_descriptor& data;
+	
+	bool image_start = false;
+	bool channel_start = false;
+	bool channel_end = false;
+	bool image_end = false;
 };
+
+// template <typename segT/*, typename srcT*/>
+// struct decompression_context {
+// 	size_t id;
+// 	channel_context& channel_cx;
+// 	// std::unique_ptr<source<srcT>> src;
+// 	std::unique_ptr<result_handle> src;
+// 	std::unique_ptr<segment<segT>> segment_data;
+// };
 
 inline size_t generate_compression_id() {
 	static std::atomic<size_t> current_id = 0;
