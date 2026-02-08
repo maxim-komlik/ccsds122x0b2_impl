@@ -168,4 +168,19 @@ TEST(implementation_props, integer_conversions) {
 	static_assert(std::is_same_v<decltype((intptr_t)(uwi) - swi), intptr_t>);
 
 	static_assert(std::is_same_v<std::make_signed_t<size_t>, ptrdiff_t>);
+
+	static_assert(std::is_signed_v<double>);
+}
+
+#include "io/constant.hpp"
+TEST(compliance, enum_conversions) {
+	static_assert(codeword_length::w64bit == get_codeword_length_value(sizeof(int64_t) << 3));
+	static_assert(codeword_length::w32bit == get_codeword_length_value(sizeof(int32_t) << 3));
+	static_assert(codeword_length::w16bit == get_codeword_length_value(sizeof(int16_t) << 3));
+	static_assert(codeword_length::w8bit == get_codeword_length_value(sizeof(uint8_t) << 3));
+
+	static_assert((sizeof(uint64_t) << 3) == parse_codeword_length_value(codeword_length::w64bit));
+	static_assert((sizeof(uint32_t) << 3) == parse_codeword_length_value(codeword_length::w32bit));
+	static_assert((sizeof(uint16_t) << 3) == parse_codeword_length_value(codeword_length::w16bit));
+	static_assert((sizeof(int8_t) << 3) == parse_codeword_length_value(codeword_length::w8bit));
 }

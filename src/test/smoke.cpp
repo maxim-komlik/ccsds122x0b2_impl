@@ -91,7 +91,7 @@ TEST(dwti, multilevelRound) {
 	}
 }
 
-TEST(tbitmap, DISABLED_bitmapMemorySmoke) {
+TEST(tbitmap, bitmapMemorySmoke) {
 	typedef long long item_t;
 	constexpr size_t alignment = 16;
 	constexpr size_t testIterations = 1 << 7;
@@ -106,20 +106,25 @@ TEST(tbitmap, DISABLED_bitmapMemorySmoke) {
 
 		props.width = generator() & img_dim_mask;
 		props.height = generator() & img_dim_mask;
+		props.width += (props.width == 0);
+		props.height += (props.height == 0);
+
 		size_t offset = generator() & img_offset_mask;
 		seed = ((seed + (props.width ^ props.height)) ^ generator()) ^ img_dim_mask;
 		bitmap<item_t> first = generateNoisyBitmap<item_t>(props.width, props.height, offset, seed);
 
 		props.width = generator() & img_dim_mask;
 		props.height = generator() & img_dim_mask;
+		props.width += (props.width == 0);
+		props.height += (props.height == 0);
+
 		offset = generator() & img_offset_mask;
 		seed = ((seed + (props.width ^ props.height)) ^ generator()) ^ img_dim_mask;
 		bitmap<item_t> second = generateNoisyBitmap<item_t>(props.width, props.height, offset, seed);
 
 		img_meta second_meta = second.get_meta();
-		size_t slice_x = generator() % second_meta.width;
-		size_t slice_y = generator() % second_meta.height;
-		size_t slice_len = generator() % (second_meta.width * (second_meta.height - slice_y) - slice_x);
+		size_t slice_pos = generator() % (second_meta.height * second_meta.width);
+		size_t slice_len = generator() % (second_meta.height * second_meta.width - slice_pos);
 		std::vector<item_t> first_slice(slice_len + 3 * alignment);
 		std::vector<item_t> second_slice(slice_len + 3 * alignment);
 		std::vector<item_t> control_slice(slice_len + 3 * alignment);
@@ -133,13 +138,13 @@ TEST(tbitmap, DISABLED_bitmapMemorySmoke) {
 
 		constexpr size_t palignment = alignment * sizeof(item_t);
 		item_t* second_slice_ptr = (item_t*)((((size_t)(second_slice.data())) + (2 * palignment - 1)) & (~(palignment - 1)));
-		second.linear(second_slice_ptr, slice_len, slice_x, slice_y);
+		second.linear(second_slice_ptr, slice_len, slice_pos);
 		first = std::move(second);
 		item_t* first_slice_ptr = (item_t*)((((size_t)(first_slice.data())) + (2 * palignment - 1)) & (~(palignment - 1)));
-		first.linear(first_slice_ptr, slice_len, slice_x, slice_y);
+		first.linear(first_slice_ptr, slice_len, slice_pos);
 		second = std::forward<bitmap<item_t>&>(first);
 		item_t* control_slice_ptr = (item_t*)((((size_t)(control_slice.data())) + (2 * palignment - 1)) & (~(palignment - 1)));
-		second.linear(control_slice_ptr, slice_len, slice_x, slice_y);
+		second.linear(control_slice_ptr, slice_len, slice_pos);
 
 		for (size_t j = 0; j < slice_len; ++j) {
 			EXPECT_EQ(first_slice_ptr[j], control_slice_ptr[j]) << " at index [" << j << "], iteration " << i << "";
@@ -397,7 +402,7 @@ TEST(bpe, EncoderSmoke) {
 	}
 
 	size_t size_compressed = bpe_debug_output_buffer.size();
-	size_t size_initial = input.get_meta().length;
+	size_t size_initial = input.get_meta().height * input.get_meta().width;
 
 	EXPECT_LE(size_compressed, size_initial) 
 		<< " compressed size increased! compressed = " << size_compressed 

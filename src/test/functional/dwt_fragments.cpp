@@ -243,3 +243,550 @@ TEST(dwti, narrowFrameTransform) {
 		}
 	}
 }
+
+#include <dwt/segment_assembly.hpp>
+
+TEST(segments, framedTransform) {
+	typedef long long item_t;
+	img_pos props;
+	props.width = (1 << 9) - 7;
+	props.height = (1 << 11) - 7;
+	bitmap<item_t> input = generateNoisyBitmap<item_t>(props.width, props.height, 64);
+
+	img_pos frame;
+	frame.width = 512;
+	frame.height = 128;
+	frame.depth = 1;
+	frame.x_step = frame.width;
+	frame.y_step = frame.height;
+	frame.x_stride = input.get_meta().stride;
+	frame.x = 0;
+	frame.y = 0;
+
+	ForwardWaveletTransformer<item_t> dwt;
+	dwt.preprocess_image(input);
+
+	std::vector<subbands_t<item_t>> subband_collection;
+	constexpr size_t padding_size = 8;
+	size_t img_width_padded = (props.width + padding_size - 1) & (~(padding_size - 1));
+	while ((frame.x < props.width) & (frame.y < props.height)) {
+		subband_collection.push_back(dwt.apply(input, frame));
+		frame.x += frame.x_step;
+		if (frame.x >= img_width_padded) {
+			frame.x -= img_width_padded;
+			frame.y += frame.y_step;
+		}
+	};
+
+	auto make_subbands = [](size_t img_width, size_t img_height) -> subbands_t<item_t> {
+		constexpr size_t src_padding_size = 8;
+		constexpr size_t family_num = 3;
+		constexpr size_t items_per_family = 3;
+		img_width = (img_width + src_padding_size - 1) & (~(src_padding_size - 1));
+		img_height = (img_height + src_padding_size - 1) & (~(src_padding_size - 1));
+
+		subbands_t<item_t> result;
+		for (ptrdiff_t i = 0; i < family_num; ++i) {
+			size_t shift_amount = (family_num - i);
+			for (ptrdiff_t j = 0; j < items_per_family; ++j) {
+				result[i * items_per_family + j + 1].resize(img_width >> shift_amount, img_height >> shift_amount);
+			}
+		}
+		result[0].resize(img_width >> 3, img_height >> 3);
+		return result;
+	};
+
+	subbands_t<item_t> merged_subbands = make_subbands(props.width, props.height);
+	frame.x = 0;
+	frame.y = 0;
+	props.width = (props.width + padding_size - 1) & (~(padding_size - 1));
+	props.height = (props.height + padding_size - 1) & (~(padding_size - 1));
+	for (auto& item : subband_collection) {
+		frame.width = item[0].get_meta().width << 3;
+		frame.height = item[0].get_meta().height << 3;
+		// ignore height?
+		auto factor_value_for_index = [](ptrdiff_t index) -> ptrdiff_t {
+			if (index < 4) {
+				return 3;
+			}
+			if (index < 7) {
+				return 2;
+			}
+			return 1;
+		};
+
+		for (ptrdiff_t i = 0; i < item.size(); ++i) {
+			img_pos aux_frame = item[i].single_frame_params();
+			ptrdiff_t s_x = frame.x >> factor_value_for_index(i);
+			ptrdiff_t s_y = frame.y >> factor_value_for_index(i);
+
+			size_t remaining_width = aux_frame.width;
+			while (aux_frame.x < item[i].get_meta().width) {
+				aux_frame.width = std::min(merged_subbands[i].get_meta().width - s_x, remaining_width);
+				remaining_width -= aux_frame.width;
+
+				img_pos m_frame = aux_frame;
+				m_frame.x = s_x;
+				m_frame.y = s_y;
+
+				merged_subbands[i].slice(m_frame).assign(item[i].slice(aux_frame));
+
+				s_x += m_frame.width;
+				if (s_x >= merged_subbands[i].get_meta().width) {
+					s_x = 0; 
+					s_y += m_frame.height;
+				}
+
+				aux_frame.x += aux_frame.width;
+			}
+		}
+
+		frame.x += frame.width;
+		if (frame.x >= props.width) {
+			frame.x -= props.width;
+			frame.y += frame.height;
+		}
+	}
+
+
+	SegmentAssembler<item_t> precoder;
+	precoder.set_shifts(dwt.get_scale().get_shifts());
+	precoder.set_segment_size(17);
+	auto coded = precoder.apply(std::move(merged_subbands));
+
+	SegmentDisassembler<item_t> postdecoder;
+	postdecoder.set_image_width(props.width);
+	auto decoded = postdecoder.apply(std::move(coded));
+
+	BackwardWaveletTransformer<item_t> reverser;
+	reverser.get_scale().set_shifts(dwt.get_scale().get_shifts());
+	reverser.set_skip_dc_scaling(false);
+
+	bitmap<item_t> output;
+	size_t fragment_overlap = 0;
+	for (ptrdiff_t i = 0; i < decoded.size(); ++i) {
+		if (i > 0) {
+			fragment_overlap = 4;
+			output.shrink(output.get_meta().height - (3 << 3)); // == lowpass_dependency_radius
+		}
+		output.append(reverser.apply(decoded[i], fragment_overlap));
+	}
+
+	img_meta input_props = input.get_meta();
+	img_meta output_props = output.get_meta();
+
+	for (size_t i = 0; i < input_props.height; ++i) {
+		for (size_t j = 0; j < input_props.width; ++j) {
+			EXPECT_EQ(input[i][j], output[i][j]) << " at index [" << i << "][" << j << "]";
+		}
+	}
+}
+
+#include "bpe/bpe.tpp"
+
+TEST(bpe, framedTransform) {
+	using item_t = int32_t;
+	using uitem_t = std::make_unsigned_t<item_t>;
+
+	img_pos props;
+	props.width = (1 << 9) - 7;
+	props.height = (1 << 12) - 7;
+	bitmap<item_t> input = generateNoisyBitmap<item_t>(props.width, props.height, 64, 713);
+
+	img_pos frame;
+	frame.width = 512;
+	frame.height = 128;
+	frame.depth = 1;
+	frame.x_step = frame.width;
+	frame.y_step = frame.height;
+	frame.x_stride = input.get_meta().stride;
+	frame.x = 0;
+	frame.y = 0;
+	
+	ForwardWaveletTransformer<item_t> dwt;
+	dwt.preprocess_image(input);
+	
+	std::vector<subbands_t<item_t>> subband_collection;
+	constexpr size_t padding_size = 8;
+	size_t img_width_padded = (props.width + padding_size - 1) & (~(padding_size - 1));
+	while ((frame.x < props.width) & (frame.y < props.height)) {
+		subband_collection.push_back(dwt.apply(input, frame));
+		frame.x += frame.x_step;
+		if (frame.x >= img_width_padded) {
+			frame.x -= img_width_padded;
+			frame.y += frame.y_step;
+		}
+	};
+	
+	auto make_subbands = [](size_t img_width, size_t img_height) -> subbands_t<item_t> {
+		constexpr size_t src_padding_size = 8;
+		constexpr size_t family_num = 3;
+		constexpr size_t items_per_family = 3;
+		img_width = (img_width + src_padding_size - 1) & (~(src_padding_size - 1));
+		img_height = (img_height + src_padding_size - 1) & (~(src_padding_size - 1));
+	
+		subbands_t<item_t> result;
+		for (ptrdiff_t i = 0; i < family_num; ++i) {
+			size_t shift_amount = (family_num - i);
+			for (ptrdiff_t j = 0; j < items_per_family; ++j) {
+				result[i * items_per_family + j + 1].resize(img_width >> shift_amount, img_height >> shift_amount);
+			}
+		}
+		result[0].resize(img_width >> 3, img_height >> 3);
+		return result;
+	};
+	
+	subbands_t<item_t> merged_subbands = make_subbands(props.width, props.height);
+	frame.x = 0;
+	frame.y = 0;
+	props.width = (props.width + padding_size - 1) & (~(padding_size - 1));
+	props.height = (props.height + padding_size - 1) & (~(padding_size - 1));
+	for (auto& item : subband_collection) {
+		frame.width = item[0].get_meta().width << 3;
+		frame.height = item[0].get_meta().height << 3;
+		// ignore height?
+		auto factor_value_for_index = [](ptrdiff_t index) -> ptrdiff_t {
+			if (index < 4) {
+				return 3;
+			}
+			if (index < 7) {
+				return 2;
+			}
+			return 1;
+		};
+	
+		for (ptrdiff_t i = 0; i < item.size(); ++i) {
+			img_pos aux_frame = item[i].single_frame_params();
+			ptrdiff_t s_x = frame.x >> factor_value_for_index(i);
+			ptrdiff_t s_y = frame.y >> factor_value_for_index(i);
+	
+			size_t remaining_width = aux_frame.width;
+			while (aux_frame.x < item[i].get_meta().width) {
+				aux_frame.width = std::min(merged_subbands[i].get_meta().width - s_x, remaining_width);
+				remaining_width -= aux_frame.width;
+	
+				img_pos m_frame = aux_frame;
+				m_frame.x = s_x;
+				m_frame.y = s_y;
+	
+				merged_subbands[i].slice(m_frame).assign(item[i].slice(aux_frame));
+	
+				s_x += m_frame.width;
+				if (s_x >= merged_subbands[i].get_meta().width) {
+					s_x = 0; 
+					s_y += m_frame.height;
+				}
+	
+				aux_frame.x += aux_frame.width;
+			}
+		}
+	
+		frame.x += frame.width;
+		if (frame.x >= props.width) {
+			frame.x -= props.width;
+			frame.y += frame.height;
+		}
+	}
+	
+	auto subbands_copy = merged_subbands;
+	
+	SegmentAssembler<item_t> precoder;
+	precoder.set_shifts(dwt.get_scale().get_shifts());
+	precoder.set_segment_size(1200);
+	auto coded = precoder.apply(std::move(merged_subbands));
+	decltype(coded) coded_copy(coded.size());
+	
+	std::vector<std::vector<uint64_t>> compressed_segments(coded.size());
+	BitPlaneEncoder<item_t> encoder;
+	encoder.set_use_heuristic_DC(false);
+	encoder.set_use_heuristic_bdepthAc(false);
+	
+	std::vector<std::unique_ptr<segment<item_t>>> decompressed_segments(compressed_segments.size());
+	decltype(decompressed_segments) decompressed_segments_copy(decompressed_segments.size());
+	
+	for (ptrdiff_t i = 0; i < coded.size(); ++i) {
+		coded[i]->id = i;
+	
+		decompressed_segments[i] = std::make_unique<segment<item_t>>();
+		decompressed_segments[i]->size = coded[i]->size;
+		decompressed_segments[i]->bdepthAc = coded[i]->bdepthAc;
+		decompressed_segments[i]->bdepthDc = coded[i]->bdepthDc;
+		decompressed_segments[i]->bit_shifts = coded[i]->bit_shifts;
+		decompressed_segments[i]->id = coded[i]->id;
+	
+		coded_copy[i] = std::make_unique<segment<item_t>>(*coded[i]);
+	
+		auto& segment_storage = compressed_segments[i];
+		auto bpe_debug_output_buffer_callback = [&segment_storage](uint64_t item) -> void {
+			segment_storage.push_back(item);
+		};
+		obitwrapper<uint64_t> boutput(bpe_debug_output_buffer_callback);
+		encoder.encode(*coded[i], boutput);
+		boutput.flush();
+	}
+	
+	BitPlaneDecoder<item_t> decoder;
+	for (ptrdiff_t i = 0; i < compressed_segments.size(); ++i) {
+		auto& segment_storage = compressed_segments[i];
+		auto& target_segment = *decompressed_segments[i];
+	
+		size_t compressed_index = 0;
+		auto bpe_debug_input_buffer_callback = [&segment_storage, &compressed_index]() -> uint64_t {
+			return segment_storage[compressed_index++];
+		};
+	
+		ibitwrapper<uint64_t> binput(bpe_debug_input_buffer_callback);
+	
+		decoder.decode(target_segment, binput);
+	
+		decompressed_segments_copy[i] = std::make_unique<segment<item_t>>(target_segment);
+	}
+	
+	SegmentDisassembler<item_t> postdecoder;
+	postdecoder.set_image_width(props.width);
+	// auto decoded = postdecoder.apply(std::move(coded));
+	auto decoded = postdecoder.apply(std::move(decompressed_segments));
+	auto decoded_copy = decoded;
+	
+	BackwardWaveletTransformer<item_t> reverser;
+	reverser.get_scale().set_shifts(dwt.get_scale().get_shifts());
+	
+	bitmap<item_t> output;
+	size_t fragment_overlap = 0;
+	for (ptrdiff_t i = 0; i < decoded.size(); ++i) {
+		if (i > 0) {
+			fragment_overlap = 4;
+			output.shrink(output.get_meta().height - (3 << 3)); // == lowpass_dependency_radius
+		}
+		output.append(reverser.apply(decoded[i], fragment_overlap));
+	}
+	
+	img_meta input_props = input.get_meta();
+	img_meta output_props = output.get_meta();
+	
+	size_t error_item_count = 0;
+	for (size_t i = 0; i < input_props.height; ++i) {
+		for (size_t j = 0; j < input_props.width; ++j) {
+			EXPECT_EQ(input[i][j], output[i][j]) << " at index [" << i << "][" << j << "]";
+			error_item_count += (input[i][j] != output[i][j]);
+		}
+		if (error_item_count > 100) {
+			break;
+		}
+	}
+}
+
+template <typename T>
+bitmap<T> image_round_transform(bitmap<T>& img, size_t frame_width, size_t segment_size) {
+	using item_t = T;
+	auto& input = img;
+
+	img_meta props = img.get_meta();
+
+	img_pos frame;
+	frame.width = frame_width;
+	frame.height = 128;
+	frame.depth = 1;
+	frame.x_step = frame.width;
+	frame.y_step = frame.height;
+	frame.x_stride = input.get_meta().stride;
+	frame.x = 0;
+	frame.y = 0;
+
+	ForwardWaveletTransformer<item_t> dwt;
+	dwt.preprocess_image(input);
+
+	std::vector<subbands_t<item_t>> subband_collection;
+	constexpr size_t padding_size = 8;
+	size_t img_width_padded = (props.width + padding_size - 1) & (~(padding_size - 1));
+	while ((frame.x < props.width) & (frame.y < props.height)) {
+		subband_collection.push_back(dwt.apply(input, frame));
+		frame.x += frame.x_step;
+		if (frame.x >= img_width_padded) {
+			frame.x -= img_width_padded;
+			frame.y += frame.y_step;
+		}
+	};
+
+	auto make_subbands = [](size_t img_width, size_t img_height) -> subbands_t<item_t> {
+		constexpr size_t src_padding_size = 8;
+		constexpr size_t family_num = 3;
+		constexpr size_t items_per_family = 3;
+		img_width = (img_width + src_padding_size - 1) & (~(src_padding_size - 1));
+		img_height = (img_height + src_padding_size - 1) & (~(src_padding_size - 1));
+
+		subbands_t<item_t> result;
+		for (ptrdiff_t i = 0; i < family_num; ++i) {
+			size_t shift_amount = (family_num - i);
+			for (ptrdiff_t j = 0; j < items_per_family; ++j) {
+				result[i * items_per_family + j + 1].resize(img_width >> shift_amount, img_height >> shift_amount);
+			}
+		}
+		result[0].resize(img_width >> 3, img_height >> 3);
+		return result;
+	};
+
+	subbands_t<item_t> merged_subbands = make_subbands(props.width, props.height);
+	frame.x = 0;
+	frame.y = 0;
+	props.width = (props.width + padding_size - 1) & (~(padding_size - 1));
+	props.height = (props.height + padding_size - 1) & (~(padding_size - 1));
+	for (auto& item : subband_collection) {
+		frame.width = item[0].get_meta().width << 3;
+		frame.height = item[0].get_meta().height << 3;
+		// ignore height?
+		auto factor_value_for_index = [](ptrdiff_t index) -> ptrdiff_t {
+			if (index < 4) {
+				return 3;
+			}
+			if (index < 7) {
+				return 2;
+			}
+			return 1;
+		};
+
+		for (ptrdiff_t i = 0; i < item.size(); ++i) {
+			img_pos aux_frame = item[i].single_frame_params();
+			ptrdiff_t s_x = frame.x >> factor_value_for_index(i);
+			ptrdiff_t s_y = frame.y >> factor_value_for_index(i);
+
+			size_t remaining_width = aux_frame.width;
+			while (aux_frame.x < item[i].get_meta().width) {
+				aux_frame.width = std::min(merged_subbands[i].get_meta().width - s_x, remaining_width);
+				remaining_width -= aux_frame.width;
+
+				img_pos m_frame = aux_frame;
+				m_frame.x = s_x;
+				m_frame.y = s_y;
+
+				merged_subbands[i].slice(m_frame).assign(item[i].slice(aux_frame));
+
+				s_x += m_frame.width;
+				if (s_x >= merged_subbands[i].get_meta().width) {
+					s_x = 0; 
+					s_y += m_frame.height;
+				}
+
+				aux_frame.x += aux_frame.width;
+			}
+		}
+
+		frame.x += frame.width;
+		if (frame.x >= props.width) {
+			frame.x -= props.width;
+			frame.y += frame.height;
+		}
+	}
+
+	auto subbands_copy = merged_subbands;
+
+	SegmentAssembler<item_t> precoder;
+	precoder.set_shifts(dwt.get_scale().get_shifts());
+	precoder.set_segment_size(segment_size);
+	auto coded = precoder.apply(std::move(merged_subbands));
+	decltype(coded) coded_copy(coded.size());
+
+	std::vector<std::vector<uint64_t>> compressed_segments(coded.size());
+	BitPlaneEncoder<item_t> encoder;
+	encoder.set_use_heuristic_DC(false);
+	encoder.set_use_heuristic_bdepthAc(false);
+	
+	std::vector<std::unique_ptr<segment<item_t>>> decompressed_segments(compressed_segments.size());
+	decltype(decompressed_segments) decompressed_segments_copy(decompressed_segments.size());
+	
+	for (ptrdiff_t i = 0; i < coded.size(); ++i) {
+		coded[i]->id = i;
+	
+		decompressed_segments[i] = std::make_unique<segment<item_t>>();
+		decompressed_segments[i]->size = coded[i]->size;
+		decompressed_segments[i]->bdepthAc = coded[i]->bdepthAc;
+		decompressed_segments[i]->bdepthDc = coded[i]->bdepthDc;
+		decompressed_segments[i]->bit_shifts = coded[i]->bit_shifts;
+		decompressed_segments[i]->id = coded[i]->id;
+
+		coded_copy[i] = std::make_unique<segment<item_t>>(*coded[i]);
+	
+		auto& segment_storage = compressed_segments[i];
+		auto bpe_debug_output_buffer_callback = [&segment_storage](uint64_t item) -> void {
+			segment_storage.push_back(item);
+		};
+		obitwrapper<uint64_t> boutput(bpe_debug_output_buffer_callback);
+		encoder.encode(*coded[i], boutput);
+		boutput.flush();
+	}
+	
+	BitPlaneDecoder<item_t> decoder;
+	for (ptrdiff_t i = 0; i < compressed_segments.size(); ++i) {
+		auto& segment_storage = compressed_segments[i];
+		auto& target_segment = *decompressed_segments[i];
+	
+		size_t compressed_index = 0;
+		auto bpe_debug_input_buffer_callback = [&segment_storage, &compressed_index]() -> uint64_t {
+			return segment_storage[compressed_index++];
+		};
+	
+		ibitwrapper<uint64_t> binput(bpe_debug_input_buffer_callback);
+	
+		decoder.decode(target_segment, binput);
+
+		decompressed_segments_copy[i] = std::make_unique<segment<item_t>>(target_segment);
+	}
+
+	SegmentDisassembler<item_t> postdecoder;
+	postdecoder.set_image_width(props.width);
+	// auto decoded = postdecoder.apply(std::move(coded));
+	auto decoded = postdecoder.apply(std::move(decompressed_segments));
+	auto decoded_copy = decoded;
+
+	BackwardWaveletTransformer<item_t> reverser;
+	reverser.get_scale().set_shifts(dwt.get_scale().get_shifts());
+
+	bitmap<item_t> output;
+	size_t fragment_overlap = 0;
+	for (ptrdiff_t i = 0; i < decoded.size(); ++i) {
+		if (i > 0) {
+			fragment_overlap = 4;
+			output.shrink(output.get_meta().height - (3 << 3)); // == lowpass_dependency_radius
+		}
+		output.append(reverser.apply(decoded[i], fragment_overlap));
+	}
+
+	return output;
+}
+
+TEST(bpe, framedTransformParameterized) {
+	typedef long long item_t;
+	img_pos props;
+	props.width = (1 << 9) - 7;
+	props.height = (1 << 11) - 7;
+	bitmap<item_t> input = generateNoisyBitmap<item_t>(props.width, props.height, 64);
+
+	std::array<size_t, 3> frame_widths = { 128, 400, 512 };
+	std::array<size_t, 16> segment_sizes;
+
+	constexpr size_t base_segment_size = 17;
+	for (ptrdiff_t i = 0; i < segment_sizes.size(); ++i) {
+		segment_sizes[i] = base_segment_size + i;
+	}
+
+	for (ptrdiff_t i_frame = 0; i_frame < frame_widths.size(); ++i_frame) {
+		for (ptrdiff_t i_segment = 0; i_segment < segment_sizes.size(); ++i_segment) {
+			auto output = image_round_transform(input, frame_widths[i_frame], segment_sizes[i_segment]);
+
+			img_meta input_props = input.get_meta();
+			img_meta output_props = output.get_meta();
+
+			size_t error_item_count = 0;
+			for (size_t i = 0; i < input_props.height; ++i) {
+				for (size_t j = 0; j < input_props.width; ++j) {
+					EXPECT_EQ(input[i][j], output[i][j]) << " at index [" << i << "][" << j << "] "
+						"for setting {" << frame_widths[i_frame] << ", " << segment_sizes[i_segment] << "}";
+					error_item_count += (input[i][j] != output[i][j]);
+				}
+				if (error_item_count > 100) {
+					break;
+				}
+			}
+		}
+	}
+}
