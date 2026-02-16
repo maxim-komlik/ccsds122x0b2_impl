@@ -38,13 +38,15 @@
   </ImportGroup>
   <ImportGroup Label="PropertySheets" Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">
     <Import Project="$(UserRootDir)\Microsoft.Cpp.$(Platform).user.props" Condition="exists('$(UserRootDir)\Microsoft.Cpp.$(Platform).user.props')" Label="LocalAppDataPlatform" />
-    <Import Project="..\src.props" />
     <Import Project="..\CCSDS122x0b2.props" />
+    <Import Project="..\src.props" />
+    <Import Project="..\core.props" />
   </ImportGroup>
   <ImportGroup Label="PropertySheets" Condition="'$(Configuration)|$(Platform)'=='Release|x64'">
     <Import Project="$(UserRootDir)\Microsoft.Cpp.$(Platform).user.props" Condition="exists('$(UserRootDir)\Microsoft.Cpp.$(Platform).user.props')" Label="LocalAppDataPlatform" />
-    <Import Project="..\src.props" />
     <Import Project="..\CCSDS122x0b2.props" />
+    <Import Project="..\src.props" />
+    <Import Project="..\core.props" />
   </ImportGroup>
   <PropertyGroup Label="UserMacros" />
   <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Debug|x64'" />
@@ -85,7 +87,6 @@
     <ClInclude Include="..\..\..\src\common\constant.hpp" />
     <ClInclude Include="..\..\..\src\common\core_types.hpp" />
     <ClInclude Include="..\..\..\src\common\exception.hpp" />
-    <ClInclude Include="..\..\..\src\common\SegmentHeaders.h" />
     <ClInclude Include="..\..\..\src\common\utils.hpp" />
     <ClInclude Include="..\..\..\src\bpe\constant.hpp" />
     <ClInclude Include="..\..\..\src\bpe\entropy_types.hpp" />
@@ -123,7 +124,6 @@
     <ClCompile Include="..\..\..\src\dwt\segment_assembly.cpp" />
     <ClCompile Include="..\..\..\src\io\ccsds_protocol.cpp" />
     <ClCompile Include="..\..\..\src\io\io_data_registry.cpp" />
-    <ClCompile Include="..\..\..\src\io\proto.cpp" />
     <ClCompile Include="..\..\..\src\io\tasking.cpp" />
     <ClCompile Include="core.cpp" />
   </ItemGroup>

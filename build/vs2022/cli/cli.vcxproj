@@ -13,6 +13,23 @@
   <ItemGroup>
     <ClCompile Include="..\..\..\src\cli\cli.cpp" />
   </ItemGroup>
+  <ItemGroup>
+    <ClInclude Include="..\..\..\src\cli\exception\exception.hpp" />
+    <ClInclude Include="..\..\..\src\cli\expected.hpp" />
+    <ClInclude Include="..\..\..\src\cli\help_context.hpp" />
+    <ClInclude Include="..\..\..\src\cli\parameters\compress.hpp" />
+    <ClInclude Include="..\..\..\src\cli\parameters\compress\parameters.hpp" />
+    <ClInclude Include="..\..\..\src\cli\parameters\root.hpp" />
+    <ClInclude Include="..\..\..\src\cli\parameters_context.hpp" />
+    <ClInclude Include="..\..\..\src\cli\parsers\command_parser.hpp" />
+    <ClInclude Include="..\..\..\src\cli\parsers\enum_parser.hpp" />
+    <ClInclude Include="..\..\..\src\cli\parsers\flag_parser.hpp" />
+    <ClInclude Include="..\..\..\src\cli\parsers\integer_parser.hpp" />
+    <ClInclude Include="..\..\..\src\cli\utility.hpp" />
+  </ItemGroup>
+  <ItemGroup>
+    <None Include="..\..\..\src\cli\contextual_parser.tpp" />
+  </ItemGroup>
   <PropertyGroup Label="Globals">
     <VCProjectVersion>16.0</VCProjectVersion>
     <Keyword>Win32Proj</Keyword>
@@ -23,7 +40,6 @@
   <Import Project="$(VCTargetsPath)\Microsoft.Cpp.Default.props" />
   <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Debug|x64'" Label="Configuration">
     <ConfigurationType>Application</ConfigurationType>
-    <UseDebugLibraries>true</UseDebugLibraries>
     <CharacterSet>Unicode</CharacterSet>
     <PlatformToolset>v143</PlatformToolset>
   </PropertyGroup>
@@ -39,13 +55,17 @@
   </ImportGroup>
   <ImportGroup Label="Shared">
   </ImportGroup>
-  <ImportGroup Label="PropertySheets" Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">
+  <ImportGroup Condition="'$(Configuration)|$(Platform)'=='Debug|x64'" Label="PropertySheets">
     <Import Project="$(UserRootDir)\Microsoft.Cpp.$(Platform).user.props" Condition="exists('$(UserRootDir)\Microsoft.Cpp.$(Platform).user.props')" Label="LocalAppDataPlatform" />
     <Import Project="..\CCSDS122x0b2.props" />
+    <Import Project="..\src.props" />
+    <Import Project="..\cli.props" />
   </ImportGroup>
   <ImportGroup Label="PropertySheets" Condition="'$(Configuration)|$(Platform)'=='Release|x64'">
     <Import Project="$(UserRootDir)\Microsoft.Cpp.$(Platform).user.props" Condition="exists('$(UserRootDir)\Microsoft.Cpp.$(Platform).user.props')" Label="LocalAppDataPlatform" />
     <Import Project="..\CCSDS122x0b2.props" />
+    <Import Project="..\src.props" />
+    <Import Project="..\cli.props" />
   </ImportGroup>
   <PropertyGroup Label="UserMacros" />
   <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Debug|x64'" />
@@ -53,8 +73,10 @@
     <ClCompile>
       <WarningLevel>Level3</WarningLevel>
       <SDLCheck>true</SDLCheck>
-      <PreprocessorDefinitions>_DEBUG;_CONSOLE;%(PreprocessorDefinitions)</PreprocessorDefinitions>
+      <PreprocessorDefinitions>_CONSOLE;%(PreprocessorDefinitions)</PreprocessorDefinitions>
       <ConformanceMode>true</ConformanceMode>
+      <Optimization>Disabled</Optimization>
+      <InlineFunctionExpansion>Disabled</InlineFunctionExpansion>
     </ClCompile>
     <Link>
       <SubSystem>Console</SubSystem>

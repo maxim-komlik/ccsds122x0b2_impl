@@ -1,3 +1,11 @@
+cli:
+msbuild project for interfaces/cli does not have traditional Debug configuration. std::vector default 
+constructor in msvc implementation allocates memory, however, per standard it is noexcept, and 
+therefore shouldn't do so. This causes compilation failures for code like below:
+constexpr std::vector<item_t> collection;
+
+However, the pattern above is used for default parameters defititions for command line options.
+
 JPEG2000 does not use integer trasform 9/7, it uses 5/3 instead.
 Add references to open-source implementations
 
@@ -202,3 +210,5 @@ Compression rate: 0.248262
 [----------] 1 test from bpe (583 ms total)
 
 --gtest_filter=-tbitmap.*:sparse.*:bpe.*:segments.*:dwti.*:compute_graph.*
+
+--compress --src generate 1024 4096 --dst file --dwt --frame 800 128 --segment --id 0 --stream --id 0 

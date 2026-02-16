@@ -1,0 +1,46 @@
+#pragma once
+
+#include <string_view>
+#include <tuple>
+#include <optional>
+
+#include "parsers/flag_parser.hpp"
+
+template <typename Parser>
+struct parameter_description {
+	using parser_t = Parser;
+	using value_t = typename Parser::value_t;
+
+	std::string_view name;
+	std::optional<value_t> default_value;
+
+	std::string_view help_description;
+};
+
+template <typename... ImmediateParsers>
+using immediate_parameters_description_t = std::tuple<parameter_description<ImmediateParsers>...>;
+
+template <typename... NamedParsers>
+using named_parameters_description_t = std::tuple<parameter_description<NamedParsers>...>;
+
+
+struct parameter_context_default {
+	static constexpr immediate_parameters_description_t immediates{};
+	static constexpr named_parameters_description_t named{};
+	static constexpr named_parameters_description_t variable_length_arguments{}; // TODO: underlying type?
+};
+
+template <typename OptionT>
+struct parameter_context;
+
+
+namespace cli::parameters {
+
+using namespace std::literals;
+
+struct global_context {
+	static constexpr parameter_description<flag_parser> help{ "--help"sv, {}, "Displays description for usage of commands and parameters"sv };
+	static constexpr parameter_description<flag_parser> context_exit{ "--"sv, {}, "Indicates the end of parameters for the most nested parsing context"sv };
+};
+
+}

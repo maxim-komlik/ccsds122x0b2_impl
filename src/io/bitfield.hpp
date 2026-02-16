@@ -17,7 +17,7 @@
 // definitions.
 
 
-using namespace std::literals;
+using namespace std::literals;	// TODO: using namespace in header, better enclose into namespace
 
 struct bitfield_allocation {
 	ptrdiff_t offset;

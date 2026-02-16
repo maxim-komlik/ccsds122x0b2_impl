@@ -62,10 +62,13 @@ struct _unroll_init {
 
 template <bool Init = false, UnrollFoldType UT = left>
 struct _unroll_wrapper {
-	template <typename FT1, typename ... Args>
-	static constexpr void apply(FT1 func, Args ... args) {
-		_unroll<UT, sizeof...(Args) - 1>::apply(func, args...);
+	template <typename FT1, typename Arg, typename ... Args>
+	static constexpr void apply(FT1 func, Arg arg, Args ... args) {
+		_unroll<UT, sizeof...(Args)>::apply(func, arg, args...);
 	}
+
+	template <typename FT1>
+	static constexpr void apply(FT1 func) {}
 };
 
 template <UnrollFoldType UT>
@@ -466,19 +469,19 @@ T byteswap(T word) {
 
 // vectorizable alternative for abs
 template <typename T>
-inline std::make_unsigned_t<T> magnitude(T val) {
+constexpr std::make_unsigned_t<T> magnitude(T val) noexcept {
 	constexpr size_t bitsize = (sizeof(T) << 3) - 1;
 	return (val ^ (val >> bitsize)) - (val >> bitsize);
 }
 
 template <typename T>
-inline T signxor(T val) {
+constexpr T signxor(T val) noexcept {
 	constexpr size_t bitsize = (sizeof(T) << 3) - 1;
 	return (val ^ (val >> bitsize));
 }
 
 template <typename T>
-inline T signext(T val, size_t sign_pos) {
+constexpr T signext(T val, size_t sign_pos) noexcept {
 	T mask = ((T)(-1)) << (sign_pos - 1);
 	return (val & (~mask)) - (val & mask);
 	// return val | ((((T)(-1)) << (sign_pos - 1)) + val);
@@ -486,20 +489,20 @@ inline T signext(T val, size_t sign_pos) {
 
 // vectorizable negate controlled by predicate
 template <typename T>
-inline T negpred(T dst, bool predicate) {
+constexpr T negpred(T dst, bool predicate) noexcept {
 	std::make_signed_t<T> spredicate = predicate;
 	return (dst ^ (-spredicate)) + spredicate;
 }
 
 // vecotorizable value or zero controlled on predicate
 template <typename T>
-inline T zeropred(T val, bool predicate) {
+constexpr T zeropred(T val, bool predicate) noexcept {
 	std::make_signed_t<T> spredicate = predicate;
 	return val & (-spredicate);
 }
 
 template <typename T>
-inline T valuepickpred(T first, T second, bool predicate) {
+constexpr T valuepickpred(T first, T second, bool predicate) noexcept {
 	std::make_signed_t<T> spredicate = predicate;
 	return (first & (~(-spredicate))) ^ (second & (-spredicate));
 	// return zeropred(first, !predicate) | zeropred(second, predicate);
@@ -512,7 +515,7 @@ inline T valuepickpred(T first, T second, bool predicate) {
 // 
 // constexpr is implicitly inline
 template <typename T>
-constexpr T relu(T val) {
+constexpr T relu(T val) noexcept {
 	using sT = std::make_signed_t<T>;
 	constexpr size_t bitsize = (sizeof(sT) << 3) - 1;
 	return val & (~(((sT)(val)) >> bitsize));

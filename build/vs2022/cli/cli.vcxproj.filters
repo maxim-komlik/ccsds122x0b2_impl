@@ -13,10 +13,65 @@
       <UniqueIdentifier>{67DA6AB6-F800-4c08-8B7A-83BB121AAD01}</UniqueIdentifier>
       <Extensions>rc;ico;cur;bmp;dlg;rc2;rct;bin;rgs;gif;jpg;jpeg;jpe;resx;tiff;tif;png;wav;mfcribbon-ms</Extensions>
     </Filter>
+    <Filter Include="Header Files\parsers">
+      <UniqueIdentifier>{ab4a865e-f194-407b-96ef-cb305b7c085b}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="Header Files\parameters">
+      <UniqueIdentifier>{fe5f2f81-ed70-437d-91ee-faee15130fbf}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="Header Files\exception">
+      <UniqueIdentifier>{11079cc2-d493-47c2-9811-d1ff36aed73d}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="Header Files\parameters\compress">
+      <UniqueIdentifier>{e7909fcd-2dad-4a3c-8fca-27b93cc80595}</UniqueIdentifier>
+    </Filter>
   </ItemGroup>
   <ItemGroup>
     <ClCompile Include="..\..\..\src\cli\cli.cpp">
       <Filter>Source Files</Filter>
     </ClCompile>
+  </ItemGroup>
+  <ItemGroup>
+    <ClInclude Include="..\..\..\src\cli\expected.hpp">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="..\..\..\src\cli\parsers\flag_parser.hpp">
+      <Filter>Header Files\parsers</Filter>
+    </ClInclude>
+    <ClInclude Include="..\..\..\src\cli\parsers\integer_parser.hpp">
+      <Filter>Header Files\parsers</Filter>
+    </ClInclude>
+    <ClInclude Include="..\..\..\src\cli\parsers\enum_parser.hpp">
+      <Filter>Header Files\parsers</Filter>
+    </ClInclude>
+    <ClInclude Include="..\..\..\src\cli\parameters_context.hpp">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="..\..\..\src\cli\utility.hpp">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="..\..\..\src\cli\parameters\compress.hpp">
+      <Filter>Header Files\parameters</Filter>
+    </ClInclude>
+    <ClInclude Include="..\..\..\src\cli\parameters\root.hpp">
+      <Filter>Header Files\parameters</Filter>
+    </ClInclude>
+    <ClInclude Include="..\..\..\src\cli\parsers\command_parser.hpp">
+      <Filter>Header Files\parsers</Filter>
+    </ClInclude>
+    <ClInclude Include="..\..\..\src\cli\exception\exception.hpp">
+      <Filter>Header Files\exception</Filter>
+    </ClInclude>
+    <ClInclude Include="..\..\..\src\cli\help_context.hpp">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="..\..\..\src\cli\parameters\compress\parameters.hpp">
+      <Filter>Header Files\parameters\compress</Filter>
+    </ClInclude>
+  </ItemGroup>
+  <ItemGroup>
+    <None Include="..\..\..\src\cli\contextual_parser.tpp">
+      <Filter>Source Files</Filter>
+    </None>
   </ItemGroup>
 </Project>
