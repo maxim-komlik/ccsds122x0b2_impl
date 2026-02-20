@@ -3,6 +3,7 @@
 #include <array>
 #include <deque>
 #include <bit>
+#include <algorithm>
 #include <functional>
 
 #include "utils.hpp"
@@ -18,15 +19,18 @@ inline vlw_t combine_bword(T raw, T select_mask);
 template <typename T>
 inline T decompose_bword(T packed, T unpack_mask);
 
-template <typename T, typename obwT, size_t alignment = 16, bool omit_left_shifts = false>
+template <typename T, typename obwT, 
+	size_t alignment = std::min<size_t>(16, sizeof(T) << 3), bool omit_left_shifts = false>
 void bplane(T* data, size_t size, size_t b, obitwrapper<obwT>& ostream, 
 		std::function<void(T&)> transform = [](T&) -> void {});
 
-template <size_t b, typename T, typename obwT, size_t alignment = 16>
+template <size_t b, typename T, typename obwT, 
+	size_t alignment = std::min<size_t>(16, sizeof(T) << 3)>
 void bplane_static(T* data, size_t size, obitwrapper<obwT>& ostream, 
 		std::function<void(std::type_identity_t<T>&)> transform = [](T&) -> void {});
 
-template <typename T, typename obwT, size_t alignment = 16>
+template <typename T, typename obwT, 
+	size_t alignment = std::min<size_t>(16, sizeof(T) << 3)>
 void bplanev4(T* data, size_t size, size_t belder, std::array<std::reference_wrapper<obitwrapper<obwT>>, 4> ostreams);
 
 template <typename T, typename obwT, size_t alignment = 16>
@@ -97,6 +101,7 @@ void bplane(T* data, size_t size, size_t b, obitwrapper<obwT>& ostream,
 	// allocating several serial buffers of sizeof(T) as an array.
 	static_assert(alignment <= (sizeof(T) << 3), 
 		"Data loss: T is not capable of holding the number of bits equal to vector size.");
+
 	std::array<std::make_unsigned_t<T>, alignment> masks;
 	std::fill(masks.begin(), masks.end(), (((std::make_unsigned_t<T>)(0x01)) << b));
 
@@ -151,12 +156,18 @@ void bplane_static(T* data, size_t size, obitwrapper<obwT>& ostream,
 
 template <typename T, typename obwT, size_t alignment>
 void bplanev4(T* data, size_t size, size_t belder, std::array<std::reference_wrapper<obitwrapper<obwT>>, 4> ostreams) {
+	// will have to perform integral promotion on the whole vector unit 
+	// otherwise, meaning allocating additional vector registers. Or 
+	// allocating several serial buffers of sizeof(T) as an array.
+	static_assert(alignment <= (sizeof(T) << 3),
+		"Data loss: T is not capable of holding the number of bits equal to vector size.");
+
 	size_t b = relu(((std::make_signed_t<decltype(belder)>)(belder)) - ostreams.size() + 1);
 	std::make_unsigned_t<T> mask = ((T)(0x01) << b);
 
 	std::array<T, ostreams.size()> indicies{ 0 };
 	size_t elder_shift = std::min(belder, ostreams.size() - 1);
-	//  & (i < indicies.size()) is redandunt
+	//  & (i < indicies.size()) is redundant
 	for (ptrdiff_t i = 0; (elder_shift > 0) & (i < indicies.size()); ++i) {
 		indicies[i] = elder_shift;
 		--elder_shift;

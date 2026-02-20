@@ -77,6 +77,15 @@ namespace constants {
 	public:
 		static constexpr size_t level_num = 3;
 
+		static constexpr size_t image_dimension_padding_requirement = 8;
+		static constexpr size_t image_dimension_padding_mask = image_dimension_padding_requirement - 1;
+
+		static constexpr size_t frame_dimension_granularity = 8;
+		static constexpr size_t frame_dimension_granularity_mask = frame_dimension_granularity - 1;
+
+		static constexpr size_t max_image_bdepth_int = 25;
+		static constexpr size_t max_image_bdepth_fp_unsigned = 27;
+
 	protected:
 		static constexpr size_t horizontal_padding_length = 8;
 		static constexpr size_t horizontal_padding_mask = horizontal_padding_length - 1;

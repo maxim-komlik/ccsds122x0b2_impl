@@ -1,8 +1,10 @@
 #pragma once
 
-#include <array>
+#include <type_traits>
+#include <cstddef>
 
 #include "exception.hpp"
+#include "core_types.hpp"
 
 #include "bitmap.tpp"
 

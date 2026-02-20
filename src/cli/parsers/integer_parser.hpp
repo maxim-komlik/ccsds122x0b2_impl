@@ -6,11 +6,16 @@
 #include <limits>
 #include <cstddef>
 
+#include "cli.hpp"
 #include "expected.hpp"
 #include "utility.hpp"
 
+namespace cli::parsers {
+
 template <typename T, T max = std::numeric_limits<T>::max(), T min = std::numeric_limits<T>::min(), int base = 10>
 struct integer_parser_impl {
+	static_assert (min <= max);
+
 	using value_t = T;
 
 	cli::expected<T> parse(std::vector<std::string_view>& tokens) {
@@ -76,7 +81,7 @@ private:
 		return "<int>"sv;
 	}
 
-	static constexpr std::string_view invalid_parameter_description = "Couldn't parse number parameter. ";
+	static constexpr std::string_view invalid_parameter_description = "Couldn't parse number parameter. "sv;
 
 public:
 	static constexpr std::string_view requirements = generate_requirements();
@@ -88,3 +93,5 @@ using integer_parser = integer_parser_impl<ptrdiff_t, max, min>;
 
 template <size_t max = std::numeric_limits<size_t>::max(), size_t min = std::numeric_limits<size_t>::min()>
 using unsigned_integer_parser = integer_parser_impl<size_t, max, min>;
+
+}

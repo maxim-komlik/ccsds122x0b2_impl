@@ -84,7 +84,7 @@ namespace cli {
 		parameter_invalid(const parameter_invalid& other) = default;
 		parameter_invalid& operator=(const parameter_invalid& other) = default;
 
-		parameter_invalid(std::string_view name) : parsing_error(name) {}
+		parameter_invalid(std::string_view name) noexcept : parsing_error(name) {}
 
 		parameter_invalid(std::string_view name, std::string&& value, std::string_view reason) noexcept : 
 			parsing_error(name), value(std::move(value)), violated_requirement(reason) {}
@@ -187,6 +187,16 @@ namespace cli {
 		[[nodiscard]]
 		std::unique_ptr<help_context> get_help_context()&& {
 			return std::move(this->cx);
+		}
+	};
+
+	class envrironment_not_supported : public exception {
+		static constexpr std::string_view description = "Environment is not supported. Environment is required to be UTF-8 compatible. "sv;
+
+	public:
+		// TODO: refactor return type, some kind of noexcept string_view
+		std::string_view what() const noexcept override {
+			return description;
 		}
 	};
 }

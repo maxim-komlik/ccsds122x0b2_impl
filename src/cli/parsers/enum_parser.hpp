@@ -4,10 +4,13 @@
 #include <vector>
 #include <array>
 #include <utility>
+#include <functional>
 
+#include "cli.hpp"
 #include "expected.hpp"
-#include "common/utils.hpp"
 #include "utility.hpp"
+
+namespace cli::parsers {
 
 template <typename T>
 struct enum_parser {
@@ -17,23 +20,36 @@ private:
 	using mapping_t = meta::enumerators_mapping<T>;
 
 public:
-	cli::expected<T> parse(std::vector<std::string_view>& tokens) {
-		std::string_view token = tokens.back();
+	cli::expected<value_t> parse(std::vector<std::string_view>& tokens) {
+		const std::string_view token = tokens.back();
 		bool enumerator_found = false;
-		T result;
+		value_t result;
 
-		std::apply(
-			[&](auto... args) -> void {
-				unroll<>::apply(
-					[&]<size_t index>(auto) -> void {
-						if (token == enum_parser::get_mapping<index>().second) {
-							result = enum_parser::get_mapping<index>().first;
-							enumerator_found = true;
-						}
-					}, 
-					args...);
-			}, 
-			mapping_t::description);
+		// std::apply(
+		// 	[&](auto... args) -> void {
+		// 		unroll<>::apply(
+		// 			[&]<size_t index>(auto) -> void {
+		// 				if (token == enum_parser::get_mapping<index>().second) {
+		// 					result = enum_parser::get_mapping<index>().first;
+		// 					enumerator_found = true;
+		// 				}
+		// 			}, 
+		// 			args...);
+		// 	}, 
+		// 	mapping_t::description);
+
+		std::invoke(
+			[&]<size_t... indices>(std::index_sequence<indices...>) -> void {
+				auto item_handler = [&]<size_t index>() -> void {
+					if (token == enum_parser::get_mapping<index>().second) {
+						result = enum_parser::get_mapping<index>().first;
+						enumerator_found = true;
+					}
+				};
+
+				((item_handler.template operator()<indices>()), ...);
+			}, std::make_index_sequence<std::tuple_size_v<decltype(mapping_t::description)>>());
+
 		if (!enumerator_found) {
 			return cli::unexpected{ std::errc::invalid_argument, invalid_parameter_description };
 		}
@@ -77,11 +93,10 @@ private:
 	}
 
 	static consteval std::string_view generate_placeholder() {
-		using namespace std::literals;
 		return "<enum>"sv;
 	}
 
-	static constexpr std::string_view invalid_parameter_description = "Couldn't parse number parameter. ";
+	static constexpr std::string_view invalid_parameter_description = "Couldn't parse number parameter. "sv;
 
 public:
 	static constexpr std::string_view requirements = generate_requirements();
@@ -98,3 +113,5 @@ public:
 		throw "No mapping for enumerator!";
 	}
 };
+
+}

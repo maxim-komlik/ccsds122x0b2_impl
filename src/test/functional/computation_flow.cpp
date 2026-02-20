@@ -264,6 +264,54 @@ struct decompression_type_params {
 	}
 };
 
+namespace {
+
+	template <template<typename /*ibwT/obwT*/, typename /*imgT*/, typename /*dwtT*/> typename Implementation>
+	struct session_parameters_parser : protected session_parameters_parser_base<session_parameters_parser<Implementation>> {
+	private:
+		struct restore_context_parameters {
+			std::tuple<
+				session_context,
+				std::vector<std::reference_wrapper<const data_descriptor>>,
+				size_t> values;
+
+			const session_context& get_session() const {
+				return std::get<session_context>(this->values);
+			}
+
+			session_context& get_session() {
+				return std::get<session_context>(this->values);
+			}
+		};
+
+	public:
+
+		static void restore(session_context&& cx, size_t channel_count, std::vector<std::reference_wrapper<const data_descriptor>>&& handles) {
+			session_parameters_parser::parse_codeword_size(
+				restore_context_parameters{ { std::move(cx), std::move(handles), channel_count } });
+		}
+
+	private:
+		template <typename dwtT>
+		static std::shared_ptr<session_context> make_shared_session(session_context&& cx, size_t channel_num) {
+			auto result = std::make_shared<session_context>(std::move(cx));
+			result->id = generate_session_id();
+			result->init_channel_contexts<dwtT>(channel_num);
+
+			return result;
+		}
+
+	public:
+		template <typename xbwT, typename imgT, typename dwtT>
+		static void invoke_by_argument_type(restore_context_parameters&& params) {
+			Implementation<xbwT, imgT, dwtT>::decompress(
+				make_shared_session<dwtT>(std::move(params.get_session()), std::get<size_t>(params.values)),
+				std::move(std::get<std::vector<std::reference_wrapper<const data_descriptor>>>(params.values)));
+		}
+	};
+
+}
+
 std::vector<bitmap<int32_t>> restore_image(size_t session_id, size_t channel_id) {
 	std::vector<std::filesystem::path> segment_paths;
 	std::u8string segment_filename_pattern = make_path_pattern(session_id, channel_id);
@@ -330,7 +378,8 @@ std::vector<bitmap<int32_t>> restore_image(size_t session_id, size_t channel_id)
 
 	session_context cx(io_registry);
 	size_t channel_num = collect_decompression_session_params(cx, handles);
-	decompression_parameter_parser<decompression_type_params>::apply(std::move(cx), channel_num, std::move(handles));
+	// decompression_parameter_parser<decompression_type_params>::apply(std::move(cx), channel_num, std::move(handles));
+	session_parameters_parser<decompression_type_params>::restore(std::move(cx), channel_num, std::move(handles));
 
 	std::vector<bitmap<int32_t>> result;
 	auto output_handles = std::move(io_registry).export_data();

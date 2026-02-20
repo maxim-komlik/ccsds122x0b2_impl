@@ -157,7 +157,7 @@ namespace constants {
 
 	class bstream {
 	public:
-		static constexpr size_t out_byte_limit = (1 << 27) - 1;
+		static constexpr size_t out_byte_limit = (1 << 27);
 	protected:
 		static constexpr size_t fill_value = 0;
 	};

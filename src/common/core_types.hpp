@@ -50,14 +50,3 @@ struct segment {
 
 	std::vector<typename block<T>> data;
 };
-
-// // TODO: check utility below if needed/should be moved to another location
-// constexpr size_t block_index_to_buf_index(size_t l) {
-// 	size_t bound_i = std::bit_width(l);
-// 	bound_i += bound_i & 0x01;
-// 	ptrdiff_t level = bound_i >> 1;
-// 	ptrdiff_t mask = (0b11 << bound_i) >> 2;
-// 	ptrdiff_t disp = (l & mask) >> (relu(level - 1) << 1);
-// 
-// 	return (3 * relu(level - 1) + disp);
-// }

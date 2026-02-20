@@ -25,10 +25,37 @@
     <Filter Include="Header Files\parameters\compress">
       <UniqueIdentifier>{e7909fcd-2dad-4a3c-8fca-27b93cc80595}</UniqueIdentifier>
     </Filter>
+    <Filter Include="Header Files\parameters\restore">
+      <UniqueIdentifier>{4ab185c9-4e94-41a8-85c9-6fb4fca66084}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="Source Files\parameters">
+      <UniqueIdentifier>{c573953b-dedf-4ea6-a457-03978be5aec1}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="Source Files\parameters\compress">
+      <UniqueIdentifier>{8868908f-04fb-454d-98c2-18cdcfeb61c0}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="Source Files\commands">
+      <UniqueIdentifier>{81664504-b8ac-4ef2-872f-7386455dbb27}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="Header Files\commands">
+      <UniqueIdentifier>{5be36b10-5545-4afa-8ab1-98da4e54099f}</UniqueIdentifier>
+    </Filter>
   </ItemGroup>
   <ItemGroup>
     <ClCompile Include="..\..\..\src\cli\cli.cpp">
       <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="..\..\..\src\cli\parameters\compress\validation.cpp">
+      <Filter>Source Files\parameters\compress</Filter>
+    </ClCompile>
+    <ClCompile Include="..\..\..\src\cli\commands\compress.cpp">
+      <Filter>Source Files\commands</Filter>
+    </ClCompile>
+    <ClCompile Include="..\..\..\src\cli\parameters\parameters.cpp">
+      <Filter>Source Files\parameters</Filter>
+    </ClCompile>
+    <ClCompile Include="..\..\..\src\cli\parameters\root.cpp">
+      <Filter>Source Files\parameters</Filter>
     </ClCompile>
   </ItemGroup>
   <ItemGroup>
@@ -68,10 +95,45 @@
     <ClInclude Include="..\..\..\src\cli\parameters\compress\parameters.hpp">
       <Filter>Header Files\parameters\compress</Filter>
     </ClInclude>
+    <ClInclude Include="..\..\..\src\cli\parameters\restore.hpp">
+      <Filter>Header Files\parameters</Filter>
+    </ClInclude>
+    <ClInclude Include="..\..\..\src\cli\parameters\restore\parameters.hpp">
+      <Filter>Header Files\parameters\restore</Filter>
+    </ClInclude>
+    <ClInclude Include="..\..\..\src\cli\parsers\path_parser.hpp">
+      <Filter>Header Files\parsers</Filter>
+    </ClInclude>
+    <ClInclude Include="..\..\..\src\cli\parsers\dummy_parser.hpp">
+      <Filter>Header Files\parsers</Filter>
+    </ClInclude>
+    <ClInclude Include="..\..\..\src\cli\cli.hpp">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="..\..\..\src\cli\parameters\compress\validation.hpp">
+      <Filter>Header Files\parameters\compress</Filter>
+    </ClInclude>
+    <ClInclude Include="..\..\..\src\cli\parameters\validation.hpp">
+      <Filter>Header Files\parameters</Filter>
+    </ClInclude>
+    <ClInclude Include="..\..\..\src\cli\commands\compress.hpp">
+      <Filter>Header Files\commands</Filter>
+    </ClInclude>
+    <ClInclude Include="..\..\..\src\cli\parameters\parameters.hpp">
+      <Filter>Header Files\parameters</Filter>
+    </ClInclude>
   </ItemGroup>
   <ItemGroup>
     <None Include="..\..\..\src\cli\contextual_parser.tpp">
       <Filter>Source Files</Filter>
     </None>
+    <None Include="..\..\..\src\cli\commands\load_image.tpp">
+      <Filter>Source Files\commands</Filter>
+    </None>
+  </ItemGroup>
+  <ItemGroup>
+    <Manifest Include="..\utf8.manifest">
+      <Filter>Resource Files</Filter>
+    </Manifest>
   </ItemGroup>
 </Project>

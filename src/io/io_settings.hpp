@@ -53,7 +53,7 @@ struct compression_settings {
 	size_t seg_byte_limit;
 	bool use_fill;
 
-	bool early_termination;
+	bool early_termination;		// TODO: make function member?
 	bool DC_stop;
 	size_t bplane_stop;
 	size_t stage_stop;

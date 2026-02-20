@@ -4,7 +4,9 @@
 #include <tuple>
 #include <optional>
 
+#include "cli.hpp"
 #include "parsers/flag_parser.hpp"
+#include "parsers/dummy_parser.hpp"
 
 template <typename Parser>
 struct parameter_description {
@@ -34,13 +36,22 @@ template <typename OptionT>
 struct parameter_context;
 
 
+struct dynamic_parameter {
+	using value_t = cli::parsers::dummy_parser::parameter;
+
+	std::string_view help_description;
+
+	constexpr parameter_description<cli::parsers::dummy_parser> expand() const {
+		return parameter_description<cli::parsers::dummy_parser>{{}, cli::parsers::dummy_parser::make_default(), help_description};
+	}
+};
+
+
 namespace cli::parameters {
 
-using namespace std::literals;
-
 struct global_context {
-	static constexpr parameter_description<flag_parser> help{ "--help"sv, {}, "Displays description for usage of commands and parameters"sv };
-	static constexpr parameter_description<flag_parser> context_exit{ "--"sv, {}, "Indicates the end of parameters for the most nested parsing context"sv };
+	static constexpr parameter_description<parsers::flag_parser> help{ "--help"sv, {}, "Displays description for usage of commands and parameters"sv };
+	static constexpr parameter_description<parsers::flag_parser> context_exit{ "--"sv, {}, "Indicates the end of parameters for the most nested parsing context"sv };
 };
 
 }

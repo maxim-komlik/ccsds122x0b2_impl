@@ -4,6 +4,7 @@
 #include <vector>
 #include <optional>
 
+#include "cli.hpp"
 #include "expected.hpp"
 #include "utility.hpp"
 
@@ -16,16 +17,20 @@ struct command<void> {
 	const bool selected = false;
 };
 
-template <typename CommandParamsParser>
+template <typename T>
 struct command {
-	std::optional<typename CommandParamsParser::value_t> context;
+	using value_t = T;
+
+	std::optional<value_t> context;
 
 	constexpr operator command<void>() { return {}; }
 };
 
+namespace cli::parsers {
+
 template <typename CommandParamsParser>
 struct command_parser {
-	using value_t = command<CommandParamsParser>;
+	using value_t = command<typename CommandParamsParser::value_t>;
 
 	cli::expected<value_t> parse(std::vector<std::string_view>& tokens) {
 		return value_t{
@@ -45,6 +50,8 @@ public:
 
 	using default_representation_t = command<void>;
 };
+
+}
 
 namespace meta {
 

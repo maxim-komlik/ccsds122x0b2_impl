@@ -262,6 +262,12 @@ private:
 		//	
 		// context help and param help are not exclusive! both needed when --help token is parsed 
 		// at position 0 parameter
+		// 
+		// for parameters with weak requirements, e.g. strings or paths, it may be problematic to 
+		// trigger desirable detailed help message for specific parameters, because token --help 
+		// itself may be interpreted as value in any parameter-aware context.
+		// threrefore --help should take optional parameter that specifies target parameter name 
+		// for detailed help message.
 		//
 
 		using namespace cli::parameters;
@@ -272,6 +278,22 @@ private:
 			if (index < storage_size) {
 				constexpr size_t storage_index = (index == unknown_param_index) ? 0 : index;
 				help_cx->param_help = make_parameter_help<storage_index>();
+			} else if (index == unknown_param_index) {
+				// check optional parameter name as --help argument
+				
+				// always within bounds, because at least --help and root unparsible token are present
+				std::string_view help_parameter = tokens[tokens.size() - 2];
+				std::invoke(
+					[&]<size_t... indices>(std::index_sequence<indices...>) -> void {
+						auto item_handler = [&]<size_t index>() -> void {
+							constexpr size_t storage_index = immediates_size + index;
+							if (help_parameter == named_description<index>().name) {
+								help_cx->param_help = make_parameter_help<storage_index>();
+							}
+						};
+						((item_handler.template operator()<indices>()), ...);
+					}, 
+					std::make_index_sequence<named_size>());
 			}
 
 			if ((index == 0) | (index == unknown_param_index)) {
@@ -320,11 +342,30 @@ private:
 
 
 	template <size_t index, typename T, bool if_enum>
+	struct default_value_if_dummy;
+
+	template <size_t index, typename T>
+	struct default_value_if_dummy<index, T, false> {
+		using type = default_value_if_structural_t<index, T>;
+	};
+
+	template <size_t index, typename T>
+	struct default_value_if_dummy<index, T, true> {
+		using type = default_value_if_dummy;
+
+		static constexpr std::string_view value = {};
+	};
+
+	template <size_t index, typename T>
+	using default_value_if_dummy_t = default_value_if_dummy<index, T, std::is_same_v<T, dynamic_parameter::value_t>>::type;
+
+
+	template <size_t index, typename T, bool if_enum>
 	struct default_value_if_enum;
 
 	template <size_t index, typename T>
 	struct default_value_if_enum<index, T, false> {
-		using type = default_value_if_structural_t<index, T>;
+		using type = default_value_if_dummy_t<index, T>;
 	};
 
 	template <size_t index, typename T>

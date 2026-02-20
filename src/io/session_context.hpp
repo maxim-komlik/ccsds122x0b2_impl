@@ -357,13 +357,6 @@ struct channel_context {
 	}
 };
 
-struct decompression_context_params {
-	session_settings session_params;
-	std::vector<std::pair<size_t, compression_settings>> compression_params;
-	std::vector<std::pair<size_t, segment_settings>> segment_params;
-	size_t channel_count = 1;
-};
-
 // Input image may have arbitrary pixel depth, i.e. single pixel can be representable by 
 // types less than 64-bit per channel.
 // For the purpose of DWT, we'd like to make sure that image data is casted to signed type

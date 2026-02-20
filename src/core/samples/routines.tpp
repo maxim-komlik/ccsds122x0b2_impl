@@ -1270,22 +1270,15 @@ size_t collect_decompression_session_params(session_context& cx, std::vector<std
 	return channel_count;
 }
 
-template <template<typename /*ibwT*/, typename /*imgT*/, typename /*dwtT*/> typename DecompressorRoutineSet>
-struct decompression_parameter_parser {
-private:
-	using context_parameters = std::tuple<
-		session_context,
-		std::vector<std::reference_wrapper<const data_descriptor>>,
-		size_t>;
-public:
-	static void apply(session_context&& cx, size_t channel_count, std::vector<std::reference_wrapper<const data_descriptor>>&& handles) {
-		parse_codeword_size({ std::move(cx), std::move(handles), channel_count });
-	}
+template <typename Derived>
+struct session_parameters_parser_base {
+	// parameters type (first template argument) must have get_session() that returns session_context&
+	// Derived must have invoke_by_argument_type overload for used parameter type
 
-private:
-	template <typename ibwT, dwt_type_t dwt_type, bool pixel_signed>
-	static void parse_pixel_bdepth(context_parameters&& params) {
-		session_context& cx = std::get<session_context>(params);
+protected:
+	template <typename xbwT, dwt_type_t dwt_type, bool pixel_signed, typename ArgsT>
+	static void parse_pixel_bdepth(ArgsT&& params) {
+		const session_context& cx = params.get_session();
 
 		auto& values = bdepth_implementation_catalog<dwt_type, pixel_signed>::values;
 
@@ -1303,15 +1296,9 @@ private:
 				using types = img_type_params<dwt_type, static_bdepth, pixel_signed>;
 				using img_t = types::bitmap_type;
 				using dwt_t = types::dwt_param_type;
-				using ibw_t = ibwT;
+				using xbw_t = xbwT;
 
-				auto cx_session = std::make_shared<session_context>(std::move(cx));
-				cx_session->id = generate_session_id();
-				cx_session->init_channel_contexts<dwt_t>(std::get<size_t>(params));
-
-				DecompressorRoutineSet<ibw_t, img_t, dwt_t>::decompress(
-					std::move(cx_session),
-					std::move(std::get<std::vector<std::reference_wrapper<const data_descriptor>>>(params)));
+				Derived::template invoke_by_argument_type<xbw_t, img_t, dwt_t>(std::move(params));
 			}
 		};
 
@@ -1321,31 +1308,31 @@ private:
 			bdepth_implementation_catalog<dwt_type, pixel_signed>::values);
 	}
 
-	template <typename ibwT, dwt_type_t dwt_type>
-	static void parse_pixel_signed(context_parameters&& params) {
-		const session_context& cx = std::get<session_context>(params);
+	template <typename xbwT, dwt_type_t dwt_type, typename ArgsT>
+	static void parse_pixel_signed(ArgsT&& params) {
+		const session_context& cx = params.get_session();
 		switch (cx.settings_session.signed_pixel) {
 		case true: {
-			parse_pixel_bdepth<ibwT, dwt_type, true>(std::move(params));
+			parse_pixel_bdepth<xbwT, dwt_type, true>(std::move(params));
 			break;
 		}
 		default: {
-			parse_pixel_bdepth<ibwT, dwt_type, false>(std::move(params));
+			parse_pixel_bdepth<xbwT, dwt_type, false>(std::move(params));
 			break;
 		}
 		}
 	}
 
-	template <typename ibwT>
-	static void parse_dwt_type(context_parameters&& params) {
-		const session_context& cx = std::get<session_context>(params);
+	template <typename xbwT, typename ArgsT>
+	static void parse_dwt_type(ArgsT&& params) {
+		const session_context& cx = params.get_session();
 		switch (cx.settings_session.dwt_type) {
 		case dwt_type_t::idwt: {
-			parse_pixel_signed<ibwT, dwt_type_t::idwt>(std::move(params));
+			parse_pixel_signed<xbwT, dwt_type_t::idwt>(std::move(params));
 			break;
 		}
 		case dwt_type_t::fdwt: {
-			parse_pixel_signed<ibwT, dwt_type_t::fdwt>(std::move(params));
+			parse_pixel_signed<xbwT, dwt_type_t::fdwt>(std::move(params));
 			break;
 		}
 		default: {
@@ -1354,10 +1341,11 @@ private:
 		}
 	}
 
-	static void parse_codeword_size(context_parameters&& params) {
-		const session_context& cx = std::get<session_context>(params);
+	template <typename ArgsT>
+	static void parse_codeword_size(ArgsT&& params) {
+		const session_context& cx = params.get_session();
 		switch (cx.settings_session.codeword_size) {
-		case 64: {
+		case 64: {	// TODO: or map to unsigned?
 			parse_dwt_type<int64_t>(std::move(params));
 			break;
 		}

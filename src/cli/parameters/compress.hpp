@@ -5,7 +5,7 @@
 #include <functional>
 
 #include "parameters_context.hpp"
-#include "parsers/contextual_parser.tpp"
+#include "contextual_parser.tpp"
 #include "parsers/flag_parser.hpp"
 #include "parsers/integer_parser.hpp"
 #include "parsers/enum_parser.hpp"
@@ -14,6 +14,8 @@
 #include "compress/parameters.hpp"
 
 namespace cli::parameters::compress {
+
+using namespace cli::parsers;
 
 namespace generate {
 
@@ -119,8 +121,8 @@ struct source_parser {
 	}
 
 public:
-	static constexpr std::string_view requirements = std::invoke([]() constexpr { return ""sv; });
-	static constexpr std::string_view placeholder = std::invoke([]() constexpr { return "<src_params>"sv; });
+	static constexpr std::string_view requirements = ""sv;
+	static constexpr std::string_view placeholder = "<src_params>"sv;
 };
 
 
@@ -166,7 +168,7 @@ struct destination_parser {
 			return value_t{
 				type_value,
 				protocol_value,
-				file_sink_params{}
+				memory_sink_params{}
 			};
 		}
 		default: {
@@ -176,8 +178,8 @@ struct destination_parser {
 	}
 
 public:
-	static constexpr std::string_view requirements = std::invoke([]() constexpr { return ""sv; });
-	static constexpr std::string_view placeholder = std::invoke([]() constexpr { return "<dst_params>"sv; });
+	static constexpr std::string_view requirements = ""sv;
+	static constexpr std::string_view placeholder = "<dst_params>"sv;
 };
 
 
@@ -365,7 +367,7 @@ struct parameter_context<stream::parameters_set> : public parameter_context_defa
 		parameter_description<unsigned_integer_parser<>>{"--id"sv, {}, "First segment ID to apply setting to"sv},
 		parameter_description<unsigned_integer_parser<>>{"--id-for"sv, {0}, "Number of consequtive segments to apply setting to"sv},
 		parameter_description<unsigned_integer_parser<>>{"--id-until"sv, {0}, "Last segment ID to apply setting to"sv},
-		parameter_description<unsigned_integer_parser<8, (1 << 27)>>{"--limit"sv, {1 << 27}, "Maximum size of segment in bytes"sv},
+		parameter_description<unsigned_integer_parser<(1 << 27), 8>>{"--limit"sv, {1 << 27}, "Maximum size of segment in bytes"sv},
 		parameter_description<unsigned_integer_parser<31>>{"--stop-bitplane"sv, {0}, "Bit plane index to stop encoding at"sv},
 		parameter_description<unsigned_integer_parser<4>>{"--stop-stage"sv, {4}, "Bit plane encoding stage number to stop encoding at"sv},
 		parameter_description<flag_parser>{"--stop-dc"sv, {false}, "Indicates to stop segment encoding after quantized DC coefficients are encoded"sv},

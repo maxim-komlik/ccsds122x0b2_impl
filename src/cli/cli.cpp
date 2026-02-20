@@ -4,16 +4,31 @@
 #include <iterator>
 #include <algorithm>
 
-#include "parameters_context.hpp"
-#include "parsers/flag_parser.hpp"
 #include "parameters/root.hpp"
+#include "parameters/validation.hpp"
 #include "exception/exception.hpp"
 #include "help_context.hpp"
 
-cli::parameters::cmd_parameters parse_command_line_parameters(std::vector<std::string_view>& tokens);
+cli::parameters::command_line_parameters parse_command_line_parameters(std::vector<std::string_view>& tokens);
 void print_help_message(const help_context& help_cx);
+void print_validation_messages(const cli::validate::validation_context& cx);
 
 int main(int argc, char** argv) {
+	// current locale charset is assumed to be utf-8
+	// 
+	// The application enforces that by linker/object assembler settings. That makes it possible 
+	// to output utf-8 encoded text to global streams, because for such setup std::string and 
+	// std::u8string (and other text-related standard library counterparts) are synonimous for 
+	// the purpose of text processing.
+	// That approach was chosen to avoid third-party (like boost::nowide) lib dependencies or 
+	// using platform-dependent wide chars.
+	//
+
+	// TODO: 
+	//	parameters encoding handling?
+	//	global context initialization? current working directory (because single threaded at the moment)?
+	//
+
 	std::vector<std::string_view> tokens;
 	tokens.reserve(argc);
 
@@ -27,12 +42,16 @@ int main(int argc, char** argv) {
 
 	const auto tokens_original = tokens;
 
-	cli::parameters::cmd_parameters parsing_result;
-
 	try {
-		auto result = parse_command_line_parameters(tokens);
-	}
-	catch (const cli::parsing_aborted& e) {
+		auto parsed = parse_command_line_parameters(tokens);
+		auto validation_cx = parsed.validate();
+		print_validation_messages(validation_cx);
+
+
+		if (!validation_cx.has_errors()) {
+			parsed.execute();
+		}
+	} catch (const cli::parsing_aborted& e) {
 		std::cout << "Command line parsing stopped here:" << std::endl;
 		auto last_token_it = std::make_reverse_iterator(std::next(tokens_original.cbegin(), tokens.size()));
 		std::for_each(tokens_original.crbegin(), last_token_it,
@@ -43,6 +62,9 @@ int main(int argc, char** argv) {
 		std::cout << "{" << tokens.back() << "} <--" << std::endl;
 
 		return 1;
+	} catch (const cli::envrironment_not_supported& e) {
+		std::cout << e.what() << std::endl;
+		return 5;
 	} catch (const cli::exception& e) {
 		std::cout << "Unhandled cli exception: " << std::endl;
 		std::cout << '\t' << e.what() << std::endl;
@@ -63,7 +85,7 @@ int main(int argc, char** argv) {
 }
 
 
-cli::parameters::cmd_parameters parse_command_line_parameters(std::vector<std::string_view>& tokens) {
+cli::parameters::command_line_parameters parse_command_line_parameters(std::vector<std::string_view>& tokens) {
 	constexpr size_t exhausted_tokens_collection_size = 1; // due to unparsible token at tokens[0]
 
 	constexpr char tab = '\t';
@@ -71,11 +93,17 @@ cli::parameters::cmd_parameters parse_command_line_parameters(std::vector<std::s
 	try {
 		// for second level error detail description, dispatched by exception type
 		try {
-			auto result = cli::parameters::cmd_parser::parse(tokens);
+			auto result = cli::parameters::root_parser::parse(tokens);
 
 			if (tokens.size() != exhausted_tokens_collection_size) {
 				std::string unknown_param = static_cast<std::string>(tokens.back());
 				throw cli::parameter_unknown(std::move(unknown_param));
+			}
+
+			if (result.if_empty()) {
+				help_context cx;
+				cx.global_cx_help = help_context::make_global_help();
+				print_help_message(cx);
 			}
 
 			return result;
@@ -125,7 +153,7 @@ void print_help_message(const help_context& help_cx) {
 		std::cout << tab << param_desc.description << std::endl;
 		std::cout << tab << param_desc.requirements << std::endl;
 
-		if (!param_desc.if_mandatory) {
+		if (!param_desc.if_mandatory & !param_desc.default_value.empty()) {
 			std::cout << tab << tab << "default value: " << param_desc.default_value;
 		}
 		std::cout << std::endl;
@@ -141,7 +169,7 @@ void print_help_message(const help_context& help_cx) {
 		}
 		std::cout << item.description << std::endl;
 
-		if (!item.if_mandatory) {
+		if (!item.if_mandatory & !item.default_value.empty()) {
 			std::cout << tab;
 			for (ptrdiff_t i = 0; i < tab_offset; ++i) {
 				std::cout << tab;
@@ -278,6 +306,66 @@ void print_help_message(const help_context& help_cx) {
 		for (const auto& item : cx_global_desc.parameters_description) {
 			print_parameter_help(item, tab_offset);
 		}
+	}
+}
+
+void print_validation_error_messages(const cli::validate::validation_context& cx, const std::u8string& scope_prefix) {
+	using namespace std::literals;
+
+	std::u8string qualified_category = scope_prefix + cx.get_category();
+	if (cx.has_nested_errors()) {
+		for (ptrdiff_t i = 0; i < cx.nested_size(); ++i) {
+			if (cx.nested(i).has_errors()) {
+				print_validation_error_messages(cx.nested(i), qualified_category + u8"::"s);
+			}
+		}
+	}
+
+	if (cx.has_scoped_errors()) {
+		const auto& errors = cx.get_errors();
+		for (const auto& error : errors) {
+			std::cout << u8"Error ("sv << qualified_category << u8"): "sv << error << std::endl;
+		}
+	}
+}
+
+void print_validation_warning_messages(const cli::validate::validation_context& cx, const std::u8string& scope_prefix) {
+	using namespace std::literals;
+
+	std::u8string qualified_category = scope_prefix + cx.get_category();
+	if (cx.has_nested_warnings()) {
+		for (ptrdiff_t i = 0; i < cx.nested_size(); ++i) {
+			if (cx.nested(i).has_warnings()) {
+				print_validation_warning_messages(cx.nested(i), qualified_category + u8"::"s);
+			}
+		}
+	}
+
+	if (cx.has_scoped_warnings()) {
+		const auto& warnings = cx.get_warnings();
+		for (const auto& warning : warnings) {
+			std::cout << u8"Warning ("sv << qualified_category << u8"): "sv << warning << std::endl;
+		}
+	}
+}
+
+void print_validation_messages(const cli::validate::validation_context& cx) {
+	using namespace std::literals; 
+
+	bool print_errors = cx.has_errors();
+	bool print_warnings = cx.has_warnings();
+	if (print_errors) {
+		std::cout << std::endl << u8"Validation finished with errors: "s << std::endl;
+		print_validation_error_messages(cx, u8""s);
+	}
+
+	if (print_warnings) {
+		std::cout << std::endl << u8"Validation produced warnings: "s << std::endl;
+		print_validation_warning_messages(cx, u8""s);
+	}
+
+	if (print_errors | print_warnings) {
+		std::cout << std::endl;
 	}
 }
 
