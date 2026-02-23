@@ -1,7 +1,9 @@
 #include "parameters.hpp"
 
 #include "compress/validation.hpp"
+#include "restore/validation.hpp"
 #include "commands/compress.hpp"
+#include "commands/restore.hpp"
 
 namespace cli::parameters {
 
@@ -25,11 +27,13 @@ namespace {
 
 
 	constexpr std::tuple validation_mappings = {
-		validator_mapping{ &command_line_parameters::compress_cx, validate::compress::validate_parameters }
+		validator_mapping{ &command_line_parameters::compress_cx, validate::compress::validate_parameters }, 
+		validator_mapping{ &command_line_parameters::restore_cx, validate::restore::validate_parameters }
 	};
 
 	constexpr std::tuple execution_mappings = {
-		execution_mapping{ &command_line_parameters::compress_cx, command::compress::compress_command_handler }
+		execution_mapping{ &command_line_parameters::compress_cx, command::compress::compress_command_handler }, 
+		execution_mapping{ &command_line_parameters::restore_cx, command::restore::restore_command_handler }
 	};
 
 }

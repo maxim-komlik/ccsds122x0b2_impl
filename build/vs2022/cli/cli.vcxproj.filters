@@ -40,13 +40,13 @@
     <Filter Include="Header Files\commands">
       <UniqueIdentifier>{5be36b10-5545-4afa-8ab1-98da4e54099f}</UniqueIdentifier>
     </Filter>
+    <Filter Include="Source Files\parameters\restore">
+      <UniqueIdentifier>{adffe626-115f-4bd5-b538-91b2584d9687}</UniqueIdentifier>
+    </Filter>
   </ItemGroup>
   <ItemGroup>
     <ClCompile Include="..\..\..\src\cli\cli.cpp">
       <Filter>Source Files</Filter>
-    </ClCompile>
-    <ClCompile Include="..\..\..\src\cli\parameters\compress\validation.cpp">
-      <Filter>Source Files\parameters\compress</Filter>
     </ClCompile>
     <ClCompile Include="..\..\..\src\cli\commands\compress.cpp">
       <Filter>Source Files\commands</Filter>
@@ -56,6 +56,18 @@
     </ClCompile>
     <ClCompile Include="..\..\..\src\cli\parameters\root.cpp">
       <Filter>Source Files\parameters</Filter>
+    </ClCompile>
+    <ClCompile Include="..\..\..\src\cli\file_utility.cpp">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="..\..\..\src\cli\commands\core_environment.cpp">
+      <Filter>Source Files\commands</Filter>
+    </ClCompile>
+    <ClCompile Include="..\..\..\src\cli\parameters\compress\validation.cpp">
+      <Filter>Source Files\parameters\compress</Filter>
+    </ClCompile>
+    <ClCompile Include="..\..\..\src\cli\parameters\restore\validation.cpp">
+      <Filter>Source Files\parameters\restore</Filter>
     </ClCompile>
   </ItemGroup>
   <ItemGroup>
@@ -122,12 +134,27 @@
     <ClInclude Include="..\..\..\src\cli\parameters\parameters.hpp">
       <Filter>Header Files\parameters</Filter>
     </ClInclude>
+    <ClInclude Include="..\..\..\src\cli\file_utility.hpp">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="..\..\..\src\cli\parameters\restore\validation.hpp">
+      <Filter>Header Files\parameters\restore</Filter>
+    </ClInclude>
+    <ClInclude Include="..\..\..\src\cli\commands\restore.hpp">
+      <Filter>Header Files\commands</Filter>
+    </ClInclude>
+    <ClInclude Include="..\..\..\src\cli\commands\core_environment.hpp">
+      <Filter>Header Files\commands</Filter>
+    </ClInclude>
   </ItemGroup>
   <ItemGroup>
     <None Include="..\..\..\src\cli\contextual_parser.tpp">
       <Filter>Source Files</Filter>
     </None>
     <None Include="..\..\..\src\cli\commands\load_image.tpp">
+      <Filter>Source Files\commands</Filter>
+    </None>
+    <None Include="..\..\..\src\cli\commands\core_environment.tpp">
       <Filter>Source Files\commands</Filter>
     </None>
   </ItemGroup>

@@ -606,18 +606,23 @@ std::array<subbands_t<typename compression_routines<T>::subband_type>, 2> compre
 				dst_frame.y = image_frame.y >> gen;
 				dst_frame.y_step = item_frame.height;
 
+				bool right_edge_reached = false;
+
 				do {
 					item_frame.width = std::min(merged_subband_width - dst_frame.x, item_subband_width - item_frame.x);
 					item_frame.x_step = item_frame.width;
+					// below works fine because dwt frame is no wider than the image
+					item_frame.height = fragments[i + right_edge_reached][subband_index].get_meta().height;
 					dst_frame.width = item_frame.width;
 					dst_frame.x_step = item_frame.x_step;
+					dst_frame.height = item_frame.height;
 
 					merged[subband_index].slice(dst_frame).assign(item[subband_index].slice(item_frame));
 
 					item_frame.x += item_frame.x_step;
 					dst_frame.x += dst_frame.x_step;
 
-					bool right_edge_reached = (dst_frame.x >= merged_subband_width);
+					right_edge_reached = (dst_frame.x >= merged_subband_width);
 					dst_frame.x = zeropred(dst_frame.x, !right_edge_reached);
 					dst_frame.y += zeropred(dst_frame.y_step, right_edge_reached);
 				} while (item_frame.x < item_subband_width);
@@ -1147,6 +1152,7 @@ void compression_routines<T>::postprocess_image(segmentation_context<subband_typ
 #include <optional> // really need optional?
 // decompression_parameters 
 size_t collect_decompression_session_params(session_context& cx, std::vector<std::reference_wrapper<const data_descriptor>>& handles) {
+	// handles are expected to be sorted by channel_id <| segment id
 	using word_t = size_t;
 	bool valid = true;
 
@@ -1157,6 +1163,8 @@ size_t collect_decompression_session_params(session_context& cx, std::vector<std
 
 	size_t channel_start_count = 0;
 	size_t channel_end_count = 0;
+	size_t next_segment_id = segment_descriptor_base::id_unknown >> 1;	// TODO: proper constant? some kind of obviously non-zero value
+	constexpr size_t segment_count_mask = 0x0100 - 1;	// TODO: magic, make interface constant
 	for (auto item : handles) {
 		auto segment_descriptor_parser = 
 			[](const io_data_registry& registry, const data_descriptor& handle) -> segment_descriptor_base& {
@@ -1181,16 +1189,6 @@ size_t collect_decompression_session_params(session_context& cx, std::vector<std
 		// But legitimate use case is to check headers prior to context creation
 
 		auto proto = ccsds_header_parser<ccsds_file_protocol>::parse_header(source->get_bitwrapper());
-		if (proto.if_contains_compression_params()) {
-			// TODO: valid compressor *could* apply different settings set for different channels.
-			// Major refactor would be needed to support this scenario.
-			// Note applies to the corresponding logic below throughout the function, apply 
-			// changes there as well when this issue being fixed.
-			compression_params.push_back({ descriptor.segment_id, proto.get_compression_params() });
-		}
-		if (proto.if_contains_segment_params()) {
-			segment_params.push_back({ descriptor.segment_id, proto.get_segment_params() });
-		}
 		if (proto.if_first()) {
 			if (proto.if_contains_session_params()) {
 				valid &= (descriptor.segment_id == 0);
@@ -1201,6 +1199,7 @@ size_t collect_decompression_session_params(session_context& cx, std::vector<std
 				session_params = proto.get_session_params();
 			} // otherwise this is just another image channel of the same image session
 			++channel_start_count;
+			next_segment_id = 0;
 		}
 		if (proto.if_last()) {
 			if (!img_pad_row_count.has_value()) {
@@ -1208,6 +1207,23 @@ size_t collect_decompression_session_params(session_context& cx, std::vector<std
 			}
 			++channel_end_count;
 		}
+
+		valid &= (proto.get_segment_count() == (next_segment_id & segment_count_mask));
+		descriptor.segment_id = next_segment_id;
+		descriptor.channel_id = channel_start_count - (channel_start_count > 0);	// TODO: really should bother about UB here?
+
+		if (proto.if_contains_compression_params()) {
+			// TODO: valid compressor *could* apply different settings set for different channels.
+			// Major refactor would be needed to support this scenario.
+			// Note applies to the corresponding logic below throughout the function, apply 
+			// changes there as well when this issue being fixed.
+			compression_params.push_back({ descriptor.segment_id, proto.get_compression_params() });
+		}
+		if (proto.if_contains_segment_params()) {
+			segment_params.push_back({ descriptor.segment_id, proto.get_segment_params() });
+		}
+
+		++next_segment_id;
 	}
 
 	valid &= session_params.has_value();

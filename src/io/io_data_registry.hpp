@@ -15,8 +15,21 @@
 
 struct segment_descriptor_base {
 	static constexpr size_t id_unknown = (size_t)(ptrdiff_t)(-1);
-	const size_t channel_id;
-	const size_t segment_id;
+	
+	// TODO: there's no reliable way to find out how many channels are encoded into segment 
+	// sequence (for generalized segment data input) without looking into the segment data 
+	// header itself. Segment data header lookup is done on descriptor, therefore channel_id 
+	// and segment_id must be modifiable so that actual values are set after segment header is 
+	// decoded. 
+	// But after that these values should be treated as unmodifiable. 
+	// Maybe it's a good idea to add finalization flag and wrap access to data member into 
+	// public getters/setters, + add finalize() interface member function to kind-of make the 
+	// descriptor content const.
+	// 
+	// The fields below were const before cli was implemented.
+	//
+	size_t channel_id;
+	size_t segment_id;
 
 protected:
 	~segment_descriptor_base() = default;

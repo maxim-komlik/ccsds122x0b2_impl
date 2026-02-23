@@ -575,7 +575,8 @@ bitmap_row<T, alignment>& bitmap_row<T, alignment>::assign(const bitmap_row& oth
 	// need precise border handling because bitmap_row is used in bitmap_slice
 	// TODO: but several redundant moves if length is multiple of alignment
 	std::array<T, alignment> tail_buffer;
-	ptrdiff_t tail_start = (this->row_width + (alignment - 1)) & (~(alignment - 1));
+	// ptrdiff_t tail_start = (this->row_width + (alignment - 1)) & (~(alignment - 1));
+	ptrdiff_t tail_start = this->row_width & (~(alignment - 1));
 	for (ptrdiff_t i = 0; i < alignment; ++i) {
 		tail_buffer[i] = this->row_start[tail_start + i];
 	}

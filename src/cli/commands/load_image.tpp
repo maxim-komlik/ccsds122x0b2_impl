@@ -84,8 +84,8 @@ inline bitmap<T> generate_image(size_t width, size_t height, size_t offset, size
 			// value is roughly *somehow* distributed across [-8, +8]
 			// the purpose of cos/sin is to add correlation into the data, potentially exploited by dwt
 			double value = realdis(generator) + 
-				(std::cos(argument * 3) * 2.82f) + 
-				(std::sin(argument * 2) * 2.82f);
+				(std::cos(argument * 3) * 2) + 
+				(std::sin(argument * 2) * 2);
 
 			if (std::is_unsigned_v<T>) {
 				value = std::abs(value);

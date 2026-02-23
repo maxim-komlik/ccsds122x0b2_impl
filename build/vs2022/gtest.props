@@ -3,7 +3,7 @@
   <ImportGroup Label="PropertySheets" />
   <PropertyGroup Label="UserMacros">
     <RepositoryOutputDir>$(SolutionDir)..\out\</RepositoryOutputDir>
-    <TestOutputDir>$(SolutionDir)out\$(ProjectName)\</TestOutputDir>
+    <TestOutputDir>$(RepositoryOutputDir)tests\$(ProjectName)\</TestOutputDir>
     <TestIntDir>$(RepositoryOutputDir)obj\</TestIntDir>
     <TargetOutputDir>$(RepositoryOutputDir).\$(Platform)\$(Configuration)\</TargetOutputDir>
     <DebugRuntimeWorkingDir>$(RepositoryOutputDir)runtime\workdir\</DebugRuntimeWorkingDir>
@@ -11,7 +11,7 @@
   <PropertyGroup>
     <OutDir>$(TestOutputDir)$(Platform)\$(Configuration)\</OutDir>
     <IncludePath>$(ProjectDir);$(IncludePath)</IncludePath>
-    <IntDir>$(TestIntDir)$(Platform)\$(Configuration)\</IntDir>
+    <IntDir>$(TestIntDir)$(ProjectName)\$(Platform)\$(Configuration)\</IntDir>
   </PropertyGroup>
   <ItemDefinitionGroup>
     <ClCompile>

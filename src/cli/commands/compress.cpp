@@ -6,6 +6,7 @@
 #include <memory>
 #include <algorithm>
 #include <functional>
+#include <filesystem>
 #include <type_traits>
 #include <cstddef>
 
@@ -18,15 +19,16 @@
 #include "dwt/utility.hpp"
 
 #include "io/io_settings.hpp"
-#include "io/io_contexts.hpp"
 #include "io/session_context.hpp"
-#include "io/tasking.hpp"
-#include "core/samples/routines.tpp"
 
 #include "compress.hpp"
-#include "load_image.tpp"
+#include "restore.hpp"
+#include "core_environment.tpp"
+#include "file_utility.hpp"
 
-namespace cli::command::compress {
+namespace cli::command {
+
+namespace compress {
 
 namespace {
 
@@ -71,330 +73,46 @@ namespace {
 	}
 }
 
+}
+
+namespace restore {
+
+namespace {
+
+	params::src_type;
+	// {
+	// 	file
+	// };
+
+	params::segment_protocol_type;
+	// {
+	// 	detect,
+	// 	standard,
+	// 	file,
+	// 	memory
+	// };
+
+	params::dst_type;
+	// {
+	// 	memory
+	// };
+
+	params::image_protocol_type;	// raw
+
+	storage_type parse_storage_type(params::src_type);
+
+	std::pair<size_t, compression_settings> parse_compression_settings(const params::stream::parameters_set& value);
+
+	std::vector<std::reference_wrapper<const data_descriptor>> load_segments(const params::source& src_params, 
+		io_data_registry& registry);
+}
+
+}
+
 
 // implementation section:
 
-
-struct execution_environment {
-	task_pool pool;
-};
-
-static execution_environment env;
-
-template <template<typename /*ibwT/obwT*/, typename /*imgT*/, typename /*dwtT*/> typename Implementation>
-struct session_parameters_parser: protected session_parameters_parser_base<session_parameters_parser<Implementation>> {
-private:
-	// make CRTP-caused public part of the interface unusable externally by wrapping the tuples
-
-	struct load_image_context_parameters {
-		std::tuple<
-			session_context,
-			std::reference_wrapper<const params::source>,
-			size_t> values;
-
-		const session_context& get_session() const {
-			return std::get<session_context>(this->values);
-		}
-
-		session_context& get_session() {
-			return std::get<session_context>(this->values);
-		}
-
-		const params::source& get_source_description() const {
-			return std::get<std::reference_wrapper<const params::source>>(this->values);
-		}
-
-		size_t get_channel_num() const {
-			return std::get<size_t>(this->values);
-		}
-	};
-
-	struct restore_context_parameters {
-		std::tuple<
-			session_context,
-			std::vector<std::reference_wrapper<const data_descriptor>>,
-			size_t> values;
-
-		const session_context& get_session() const {
-			return std::get<session_context>(this->values);
-		}
-
-		session_context& get_session() {
-			return std::get<session_context>(this->values);
-		}
-
-		const std::vector<std::reference_wrapper<const data_descriptor>>& get_data_handles() const {
-			return std::get<std::vector<std::reference_wrapper<const data_descriptor>>>(this->values);
-		}
-
-		std::vector<std::reference_wrapper<const data_descriptor>>& get_data_handles() {
-			return std::get<std::vector<std::reference_wrapper<const data_descriptor>>>(this->values);
-		}
-
-		size_t get_channel_num() const {
-			return std::get<size_t>(this->values);
-		}
-	};
-
-public:
-	static void load_image(session_context&& cx, size_t channel_count, 
-			const params::source& src_spec) {
-		using xbw_t = sufficient_integral<intptr_t>;
-		constexpr size_t xbw_size = sizeof(xbw_t) << 3;
-		if (cx.settings_session.codeword_size != xbw_size) {
-			// TODO: log?
-			cx.settings_session.codeword_size = xbw_size;
-		}
-
-		if (xbw_size > 64) { // TODO: magic?
-			// TODO: that is not standard-conformant. log? 128-bit machines? 80-bit paltforms? throw?
-		}
-
-		// skip unnecessary output stream related instantiations for encoding chain, always assume 
-		// machine word-size type
-		session_parameters_parser::template parse_dwt_type<xbw_t>(
-			load_image_context_parameters{ { std::move(cx), src_spec, channel_count } });
-	}
-
-	static void restore(session_context&& cx, size_t channel_count, 
-			std::vector<std::reference_wrapper<const data_descriptor>>&& handles) {
-		session_parameters_parser::parse_codeword_size(
-			restore_context_parameters{ { std::move(cx), std::move(handles), channel_count } });
-	}
-
-private:
-	template <typename dwtT>
-	static std::shared_ptr<session_context> make_shared_session(session_context&& cx, size_t channel_num) {
-		auto result = std::make_shared<session_context>(std::move(cx));
-		result->id = generate_session_id();
-		result->init_channel_contexts<dwtT>(channel_num);
-
-		return result;
-	}
-
-public:
-	// had to make members below public to allow CRTP
-
-	template <typename xbwT, typename imgT, typename dwtT>
-	static void invoke_by_argument_type(restore_context_parameters&& params) {
-		Implementation<xbwT, imgT, dwtT>::decompress(
-			make_shared_session<dwtT>(std::move(params.get_session()), params.get_channel_num()),
-			std::move(params.get_data_handles()));
-	}
-
-	template <typename xbwT, typename imgT, typename dwtT>
-	static void invoke_by_argument_type(load_image_context_parameters&& params) {
-		Implementation<xbwT, imgT, dwtT>::load_image(
-			make_shared_session<dwtT>(std::move(params.get_session()), params.get_channel_num()),
-			params.get_source_description());
-	}
-};
-
-
-template <typename xbwT, typename imgT, typename dwtT>
-struct flow_impl {
-	using xbw_t = xbwT;		// codeword type, make the last argument and assign default ptrdiff_t/size_t/intptr_t?
-	using img_t = imgT;
-	using dwt_t = dwtT;
-
-	using routine_set = compression_routines<dwt_t>;
-
-	struct forward {
-		// seems there's no choise but use template hint explicitly for every nested typedef 
-		// all below here. 
-		// cannot make this names non-dependnet. cannot make them current instantiation. cannot 
-		// establish them as template names before containing type is instantiated.
-		// 
-		// =(
-		//
-
-		using transform_tree = task_pool::flow_graph::root::then<decltype([](dwt_context cx) {
-			return routine_set::template preprocess_image<img_t>(std::move(cx));
-		})>::template split<decltype([](dwt_context cx) {
-			routine_set::template transform_fragment<img_t>(std::move(cx));
-		})>;
-
-		using compress_tree = task_pool::flow_graph::root::then<decltype([](dwt_context cx) -> 
-				segmentation_context<routine_set::subband_type, routine_set::segment_type> {
-			return routine_set::preprocess_fragments(std::move(cx));
-		})>::template then<decltype([](segmentation_context<routine_set::subband_type, routine_set::segment_type> cx) ->
-				std::vector<compression_context<routine_set::segment_type>> {
-			return routine_set::assemble_segments(std::move(cx));
-		})>::template split<decltype([](compression_context<routine_set::segment_type> cx) -> void {
-			routine_set::compress_segment(std::move(cx));
-		})>;
-
-		using transform_task_t = task_pool::flow_graph::parse<transform_tree>;
-		using compress_task_t = task_pool::flow_graph::parse<compress_tree>;
-	};
-
-	struct backward {
-		using decompress_tree = task_pool::flow_graph::root::then<decltype([](
-				compression_context<typename routine_set::segment_type> cx) -> void {
-			routine_set::template decode_segment<xbw_t>(std::move(cx));
-		})>;
-		
-		using transform_tree = task_pool::flow_graph::root::then<decltype([](
-				segmentation_context<typename routine_set::subband_type, typename routine_set::segment_type> cx) {
-			return routine_set::disassemble_segments(std::move(cx));
-		})>::template split<decltype([](segmentation_context<routine_set::subband_type, routine_set::segment_type> cx) -> void {
-			routine_set::template restore_image<img_t>(std::move(cx));
-		})>;
-
-		using postprocess_tree = task_pool::flow_graph::root::then<decltype([](
-				segmentation_context<routine_set::subband_type, routine_set::segment_type> cx) -> void {
-			routine_set::template postprocess_image<img_t>(std::move(cx));
-		})>;
-
-		using decompress_task_t = task_pool::flow_graph::parse<decompress_tree>;
-		using transform_task_t = task_pool::flow_graph::parse<transform_tree>;
-		using postprocess_task_t = task_pool::flow_graph::parse<postprocess_tree>;
-	};
-
-	static void compress(std::shared_ptr<session_context> cx, 
-			std::vector<std::reference_wrapper<const data_descriptor>>&& handles) {
-		// TODO: deadlock on handles size == 0?
-		std::vector<dwt_context> compress_input_contexts;
-
-		for (const auto& handle : handles) {
-			size_t z = handle.get().get_exported_data().channel_id.value();
-
-			img_pos input_frame{};	// actual values will be deduced by routines from image data, 
-				// but for further fragment-aware processing some x and y values will be needed.
-			input_frame.z = z;
-
-			dwt_context transform_context{
-				generate_dwt_id(),
-				cx->channel_contexts[z],
-				input_frame,
-				handle
-			};
-
-			dwt_context compress_context{
-				generate_dwt_id(),
-				cx->channel_contexts[z],
-				input_frame,
-				handle
-			};
-
-			compress_input_contexts.push_back(compress_context);
-
-			cx->channel_contexts[z].descriptors.register_operation(transform_context);
-			env.pool.add_tasks(forward::transform_task_t(std::move(transform_context)));
-		}
-		env.pool.execute_flow();
-
-		// such consequtive calls to execute_flow is emulation for execution sync. Once sync task type is 
-		// added, there will be no need to feed the execution_pool queue explicitly several times.
-
-		for (auto&& context : compress_input_contexts) {
-			ptrdiff_t z = context.frame.z;
-			cx->channel_contexts[z].descriptors.register_operation(context);
-			// TODO: what about wrapper like {context.channel_cx.descriptors.register_operation} for context param?
-
-			env.pool.add_tasks(forward::compress_task_t(std::move(context)));
-		}
-		env.pool.execute_flow();
-	}
-
-	static void decompress(std::shared_ptr<session_context> cx, 
-			std::vector<std::reference_wrapper<const data_descriptor>>&& handles) {
-		for (ptrdiff_t id = 0; id < handles.size(); ++id) {
-			size_t z = handles[id].get().get_exported_data().channel_id.value();
-			compression_context<typename routine_set::segment_type> context{
-				generate_compression_id(),
-				cx->channel_contexts[z],
-				std::make_unique<segment<routine_set::segment_type>>(),
-				handles[id]
-			};
-			context.segment_data->id = id;
-			cx->channel_contexts[z].descriptors.register_operation(context);
-			env.pool.add_tasks(backward::decompress_task_t(std::move(context))); // TODO: this way to populate pool queue 
-				// is expensive...
-		}
-		env.pool.execute_flow();
-
-		// such consequtive calls to execute_flow is emulation for execution sync. Once sync task type is 
-		// added, there will be no need to feed the execution_pool queue explicitly several times.
-
-		for (ptrdiff_t i = 0; i < cx->channel_contexts.size(); ++i) {
-			segmentation_context<routine_set::subband_type, routine_set::segment_type> context{
-				generate_segmentation_id(), 
-				cx->channel_contexts[i], 
-				{}, 
-				nullptr,
-				{0}
-			};
-			cx->channel_contexts[i].descriptors.register_operation(context);
-			env.pool.add_tasks(backward::transform_task_t(std::move(context)));
-		}
-		env.pool.execute_flow();
-
-		// such consequtive calls to execute_flow is emulation for execution sync. Once sync task type is 
-		// added, there will be no need to feed the execution_pool queue explicitly several times.
-
-		for (ptrdiff_t i = 0; i < cx->channel_contexts.size(); ++i) {
-			segmentation_context<routine_set::subband_type, routine_set::segment_type> context{
-				generate_segmentation_id(),
-				cx->channel_contexts[i],
-				{},
-				nullptr,
-				{0}
-			};
-
-			cx->channel_contexts[i].descriptors.register_operation(context);
-			env.pool.add_tasks(backward::postprocess_task_t(std::move(context)));
-		}
-		env.pool.execute_flow();
-	}
-
-	static void load_image(std::shared_ptr<session_context> cx, const params::source& src_spec) {
-		std::vector<img_meta> channel_stats;
-		std::vector<std::reference_wrapper<const data_descriptor>> descriptors;
-
-		channel_stats.reserve(cx->channel_contexts.size());
-		descriptors.reserve(cx->channel_contexts.size());
-
-		bool valid = true;
-		for (auto& channel_cx : cx->channel_contexts) {
-			auto channel_data = load_image_channel<img_t>(src_spec, channel_cx.channel_index);
-			channel_stats.push_back(channel_data.get_meta()); 
-			valid &= (channel_stats.back().depth == 1);
-			// TODO: calculate dynamic bdepth?
-			// TODO: it appears bdepth should be property of channel, not session
-
-			if (cx->settings_session.transpose) {
-				channel_data = channel_data.transpose();
-			}
-
-			const data_descriptor& descriptor = cx->data_registry.put_input(
-				image_memory_descriptor<img_t>(std::move(channel_data), channel_cx.channel_index));
-			descriptors.push_back(descriptor);
-		}
-
-		auto it = std::adjacent_find(channel_stats.cbegin(), channel_stats.cend(),
-			[](const img_meta& lhs, const img_meta& rhs) -> bool {
-				return (lhs.width != rhs.width) | (lhs.height != rhs.height);
-			});
-
-		valid &= !channel_stats.empty();
-		valid &= (it == channel_stats.cend());
-		if (!valid) {
-			// TODO: throw, invalid image
-		}
-
-		auto padded_dims = padded_image_dimensions(channel_stats.back().width, channel_stats.back().height);
-
-		valid &= (cx->settings_session.img_width == channel_stats.back().width);
-		valid &= (cx->settings_session.rows_pad_count == (padded_dims.second - channel_stats.back().height));
-		if (!valid) {
-			// so what? we can just override properly and let it go
-			// log?
-		}
-
-		compress(std::move(cx), std::move(descriptors));
-	}
-};
+namespace compress {
 
 void compress_command_handler(const params::compress_command& parameters) {
 	// image data is anyway somehow compressed when stored, there's no reason to try to load one bitmap 
@@ -449,7 +167,6 @@ void compress_command_handler(const params::compress_command& parameters) {
 
 	// TODO: handle output data somehow?
 }
-
 
 namespace {
 
@@ -526,6 +243,156 @@ namespace {
 			}
 		};
 	}
+}
+
+}
+
+namespace restore {
+
+void restore_command_handler(const params::restore_command& parameters) {
+	std::vector<std::pair<size_t, compression_settings>> override_compr_params;
+	override_compr_params.push_back(parse_compression_settings(parameters.stream_params.first));
+	for (const auto& item : parameters.stream_params.subsequent) {
+		override_compr_params.push_back(parse_compression_settings(item));
+	}
+	// TODO: overriding encoded compression settings is not supported yet for image restore command
+
+	io_data_registry registry(parse_storage_type(parameters.src_params.type));
+	
+	session_context cx(registry);
+
+	auto handles = load_segments(parameters.src_params, registry);
+	size_t channel_num = collect_decompression_session_params(cx, handles);
+	session_parameters_parser<flow_impl>::restore(std::move(cx), channel_num, std::move(handles));
+}
+
+namespace {
+
+	storage_type parse_storage_type(params::src_type value) {
+		constexpr std::pair<params::src_type, storage_type> map_content[]{
+			{ params::src_type::file, storage_type::file }
+		};
+		constexpr std::array storage_mapping = std::to_array(map_content);
+
+		auto storage_it = std::find_if(storage_mapping.cbegin(), storage_mapping.cend(),
+			[&](const auto& pair) -> bool {
+				return pair.first == value;
+			});
+
+		if (storage_it == storage_mapping.cend()) {
+			// TODO: throw: not supported
+		}
+
+		return storage_it->second;
+	}
+
+	std::pair<size_t, compression_settings> parse_compression_settings(const params::stream::parameters_set& value) {
+		bool bpe_truncated = false;
+		// TODO: refactor early stream termination flag. It happens to be used for byte limit by 
+		// protocol, but shouldn't. Likely member function aggregator needed
+
+		return {
+			value.id,
+			{
+				.seg_byte_limit = value.byte_limit,
+				.use_fill = false,
+				.early_termination = bpe_truncated,
+				.DC_stop = value.DC_stop,
+				.bplane_stop = value.bplane_stop,
+				.stage_stop = value.stage_stop
+			}
+		};
+	}
+
+	std::vector<std::reference_wrapper<const data_descriptor>> load_segments(const params::source& parameters,
+			io_data_registry& registry) {
+		std::vector<std::reference_wrapper<const data_descriptor>> result;
+
+		switch (parameters.type) {
+		case params::src_type::file: {
+			// TODO: catch std::bad_variant_access?
+			const params::file_sink_params& file_params = std::get<params::file_sink_params>(parameters.parameters);
+
+			std::vector<std::filesystem::path> segment_paths;
+			if (if_path_is_pattern(file_params.path)) {
+				segment_paths = expand_pattern(file_params.path);
+			} else {
+				if (std::filesystem::exists(file_params.path)) {
+					segment_paths.push_back(file_params.path);
+				}
+			}
+
+			if (segment_paths.empty()) {
+				// TODO: throw, invalid input
+			}
+
+			std::sort(segment_paths.begin(), segment_paths.end(),
+				[](const auto& lhs, const auto& rhs) -> bool {
+					// lifetime extended for return objects
+					const std::u8string& lhs_stem = lhs.stem().u8string();
+					const std::u8string& rhs_stem = rhs.stem().u8string();
+					// TODO: lexicographical-like comparison is reasonbly poor approach for utf strings, is it?
+
+					// return std::lexicographical_compare(lhs_stem.cbegin(), lhs_stem.cend(), 
+					// 	rhs_stem.cbegin(), rhs_stem.cend());
+
+					auto mismatch = std::mismatch(lhs_stem.cbegin(), lhs_stem.cend(),
+						rhs_stem.cbegin(), rhs_stem.cend());
+					
+					auto if_ascii_digit = [](char8_t item) -> bool {
+						// put in a vector of 16, pad with \0? unroll with unordered equal comparison? aggregate or?
+						constexpr std::array digits = {
+							u8'0', u8'1', u8'2', u8'3', u8'4', u8'5', u8'6', u8'7', u8'8', u8'9'
+						};
+						return std::find(digits.cbegin(), digits.cend(), item) != digits.cend();
+					};
+
+					std::pair digits_end = {
+						std::find_if_not(mismatch.first, lhs_stem.cend(), if_ascii_digit), 
+						std::find_if_not(mismatch.second, rhs_stem.cend(), if_ascii_digit)
+					};
+
+					std::pair digits_count = {
+						std::distance(mismatch.first, digits_end.first),
+						std::distance(mismatch.second, digits_end.second)
+					};
+
+					bool lhs_is_less = false;
+					// lhs_is_less &= (mismatch.second != rhs_stem.cend());
+					// lhs_is_less |= (digits_count.second != 0);
+
+					lhs_is_less |= (digits_count.first < digits_count.second);
+
+					if (!lhs_is_less) {
+						lhs_is_less |= 
+							(
+								(digits_count.first == digits_count.second) & 
+								(digits_count.second > 0)
+							) && (*mismatch.first < *mismatch.second);
+					}
+
+					return lhs_is_less;
+				});
+
+
+			for (ptrdiff_t i = 0; i < segment_paths.size(); ++i) {
+				result.push_back(registry.put_input(
+					segment_file_descriptor(std::move(segment_paths[i]), 0, i)));
+			}
+
+			break;
+		}
+		default: {
+
+		}
+		}
+
+		// TODO: C++23 std::unreachable?
+		return result;
+	}
+
+}
+
 }
 
 }
