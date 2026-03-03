@@ -12,6 +12,9 @@ EndProject
 Project("{2150E333-8FDC-42A3-9474-1A3956D46DE8}") = "interfaces", "interfaces", "{9F0994DE-B33E-458C-9BB2-A3E92B8772F3}"
 EndProject
 Project("{8BC9CEB8-8B4A-11D0-8D11-00A0C91BC942}") = "core", "core\core.vcxproj", "{5201E225-2FAC-4422-A2E6-A54800111E9C}"
+	ProjectSection(ProjectDependencies) = postProject
+		{6172699A-26E7-4918-882D-C98DDAEB8098} = {6172699A-26E7-4918-882D-C98DDAEB8098}
+	EndProjectSection
 EndProject
 Project("{2150E333-8FDC-42A3-9474-1A3956D46DE8}") = "Solution Items", "Solution Items", "{77907721-B6C6-47BD-9B7F-ED3F8BCA7F60}"
 	ProjectSection(SolutionItems) = preProject
@@ -24,6 +27,8 @@ Project("{8BC9CEB8-8B4A-11D0-8D11-00A0C91BC942}") = "test_core", "test_core\test
 	ProjectSection(ProjectDependencies) = postProject
 		{5201E225-2FAC-4422-A2E6-A54800111E9C} = {5201E225-2FAC-4422-A2E6-A54800111E9C}
 	EndProjectSection
+EndProject
+Project("{8BC9CEB8-8B4A-11D0-8D11-00A0C91BC942}") = "common", "common\common.vcxproj", "{6172699A-26E7-4918-882D-C98DDAEB8098}"
 EndProject
 Global
 	GlobalSection(SolutionConfigurationPlatforms) = preSolution
@@ -49,6 +54,12 @@ Global
 		{26991F73-E3FD-4A89-9074-AB65C3E55C83}.Non-Optimized|x64.Build.0 = Non-Optimized|x64
 		{26991F73-E3FD-4A89-9074-AB65C3E55C83}.Release|x64.ActiveCfg = Release|x64
 		{26991F73-E3FD-4A89-9074-AB65C3E55C83}.Release|x64.Build.0 = Release|x64
+		{6172699A-26E7-4918-882D-C98DDAEB8098}.Debug|x64.ActiveCfg = Debug|x64
+		{6172699A-26E7-4918-882D-C98DDAEB8098}.Debug|x64.Build.0 = Debug|x64
+		{6172699A-26E7-4918-882D-C98DDAEB8098}.Non-Optimized|x64.ActiveCfg = Non-Optimized|x64
+		{6172699A-26E7-4918-882D-C98DDAEB8098}.Non-Optimized|x64.Build.0 = Non-Optimized|x64
+		{6172699A-26E7-4918-882D-C98DDAEB8098}.Release|x64.ActiveCfg = Release|x64
+		{6172699A-26E7-4918-882D-C98DDAEB8098}.Release|x64.Build.0 = Release|x64
 	EndGlobalSection
 	GlobalSection(SolutionProperties) = preSolution
 		HideSolutionNode = FALSE

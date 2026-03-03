@@ -6,7 +6,7 @@
 
 #include "cli.hpp"
 #include "expected.hpp"
-#include "utility.hpp"
+#include "meta.hpp"
 
 template <typename CommandParamsParser>
 struct command;

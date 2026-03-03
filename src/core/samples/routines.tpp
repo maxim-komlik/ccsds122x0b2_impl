@@ -1362,11 +1362,11 @@ protected:
 		const session_context& cx = params.get_session();
 		switch (cx.settings_session.codeword_size) {
 		case 64: {	// TODO: or map to unsigned?
-			parse_dwt_type<int64_t>(std::move(params));
+			parse_dwt_type<uint64_t>(std::move(params));
 			break;
 		}
 		case 32: {
-			parse_dwt_type<int32_t>(std::move(params));
+			parse_dwt_type<uint32_t>(std::move(params));
 			break;
 		}
 		default: {
@@ -1379,7 +1379,7 @@ protected:
 				// TODO: parsing error
 			}
 
-			parse_dwt_type<int8_t>(std::move(params));
+			parse_dwt_type<uint8_t>(std::move(params));
 			break;
 		}
 		}

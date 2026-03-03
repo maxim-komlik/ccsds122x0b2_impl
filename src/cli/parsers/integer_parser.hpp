@@ -6,9 +6,10 @@
 #include <limits>
 #include <cstddef>
 
+#include "common/meta.hpp"
+
 #include "cli.hpp"
 #include "expected.hpp"
-#include "utility.hpp"
 
 namespace cli::parsers {
 

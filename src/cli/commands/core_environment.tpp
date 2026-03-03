@@ -9,7 +9,7 @@
 
 #include "dwt/bitmap.tpp"
 #include "dwt/utility.hpp"
-#include "utils.hpp"
+#include "common/utility.hpp"
 
 #include "io/io_contexts.hpp"
 #include "io/session_context.hpp"

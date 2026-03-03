@@ -8,7 +8,7 @@
 
 #include "cli.hpp"
 #include "expected.hpp"
-#include "utility.hpp"
+#include "meta.hpp"
 
 namespace cli::parsers {
 
@@ -24,19 +24,6 @@ public:
 		const std::string_view token = tokens.back();
 		bool enumerator_found = false;
 		value_t result;
-
-		// std::apply(
-		// 	[&](auto... args) -> void {
-		// 		unroll<>::apply(
-		// 			[&]<size_t index>(auto) -> void {
-		// 				if (token == enum_parser::get_mapping<index>().second) {
-		// 					result = enum_parser::get_mapping<index>().first;
-		// 					enumerator_found = true;
-		// 				}
-		// 			}, 
-		// 			args...);
-		// 	}, 
-		// 	mapping_t::description);
 
 		std::invoke(
 			[&]<size_t... indices>(std::index_sequence<indices...>) -> void {

@@ -81,6 +81,9 @@
       </SubSystem>
       <GenerateDebugInformation>true</GenerateDebugInformation>
     </Link>
+    <Lib>
+      <AdditionalDependencies>$(RepositoryOutputDir)common\$(Platform)\$(Configuration)\common.lib;%(AdditionalDependencies)</AdditionalDependencies>
+    </Lib>
   </ItemDefinitionGroup>
   <ItemDefinitionGroup Condition="'$(Configuration)|$(Platform)'=='Non-Optimized|x64'">
     <ClCompile>
@@ -95,6 +98,9 @@
       </SubSystem>
       <GenerateDebugInformation>true</GenerateDebugInformation>
     </Link>
+    <Lib>
+      <AdditionalDependencies>$(RepositoryOutputDir)common\$(Platform)\$(Configuration)\common.lib;%(AdditionalDependencies)</AdditionalDependencies>
+    </Lib>
   </ItemDefinitionGroup>
   <ItemDefinitionGroup Condition="'$(Configuration)|$(Platform)'=='Release|x64'">
     <ClCompile>
@@ -112,14 +118,15 @@
       <OptimizeReferences>true</OptimizeReferences>
       <GenerateDebugInformation>true</GenerateDebugInformation>
     </Link>
+    <Lib>
+      <AdditionalDependencies>$(RepositoryOutputDir)common\$(Platform)\$(Configuration)\common.lib;%(AdditionalDependencies)</AdditionalDependencies>
+    </Lib>
   </ItemDefinitionGroup>
   <ItemGroup>
+    <ClInclude Include="..\..\..\src\bpe\constant.hpp" />
     <ClInclude Include="..\..\..\src\common\compressor_types.hpp" />
     <ClInclude Include="..\..\..\src\common\constant.hpp" />
     <ClInclude Include="..\..\..\src\common\core_types.hpp" />
-    <ClInclude Include="..\..\..\src\common\exception.hpp" />
-    <ClInclude Include="..\..\..\src\common\utils.hpp" />
-    <ClInclude Include="..\..\..\src\bpe\constant.hpp" />
     <ClInclude Include="..\..\..\src\bpe\entropy_types.hpp" />
     <ClInclude Include="..\..\..\src\bpe\symbolbuffer.hpp" />
     <ClInclude Include="..\..\..\src\bpe\symbolstream.hpp" />
@@ -127,7 +134,7 @@
     <ClInclude Include="..\..\..\src\core\io.hpp" />
     <ClInclude Include="..\..\..\src\dwt\constant.hpp" />
     <ClInclude Include="..\..\..\src\dwt\dwt.hpp" />
-    <ClInclude Include="..\..\..\src\dwt\img_meta.h" />
+    <ClInclude Include="..\..\..\src\dwt\img_meta.hpp" />
     <ClInclude Include="..\..\..\src\dwt\segment_assembly.hpp" />
     <ClInclude Include="..\..\..\src\dwt\utility.hpp" />
     <ClInclude Include="..\..\..\src\io\bitfield.hpp" />
@@ -147,7 +154,7 @@
     <ClInclude Include="..\..\..\src\io\tasking.hpp" />
   </ItemGroup>
   <ItemGroup>
-    <ClCompile Include="..\..\..\src\common\exception.cpp" />
+    <ClCompile Include="..\..\..\src\bpe\bpe.cpp" />
     <ClCompile Include="..\..\..\src\bpe\symbolbuffer.cpp" />
     <ClCompile Include="..\..\..\src\core\compression.cpp" />
     <ClCompile Include="..\..\..\src\core\core.cpp" />
@@ -157,7 +164,6 @@
     <ClCompile Include="..\..\..\src\io\ccsds_protocol.cpp" />
     <ClCompile Include="..\..\..\src\io\io_data_registry.cpp" />
     <ClCompile Include="..\..\..\src\io\tasking.cpp" />
-    <ClCompile Include="core.cpp" />
   </ItemGroup>
   <ItemGroup>
     <None Include="..\..\..\src\common\aligned_vector.tpp" />
@@ -166,9 +172,7 @@
     <None Include="..\..\..\src\bpe\entropy_code.tpp" />
     <ClInclude Include="..\..\..\src\bpe\entropy_translate.hpp" />
     <None Include="..\..\..\src\bpe\ibitwrapper.tpp" />
-    <None Include="..\..\..\src\bpe\obitwrapper.tpp">
-      <FileType>Document</FileType>
-    </None>
+    <None Include="..\..\..\src\bpe\obitwrapper.tpp" />
     <ClCompile Include="..\..\..\src\bpe\symbolstream.cpp" />
     <None Include="..\..\..\src\bpe\symbol_code.tpp" />
     <ClInclude Include="..\..\..\src\bpe\symbol_translate.hpp" />

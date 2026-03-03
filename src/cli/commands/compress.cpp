@@ -11,7 +11,7 @@
 #include <cstddef>
 
 #include "dwt/bitmap.tpp"
-#include "utils.hpp"
+#include "common/utility.hpp"
 
 #include "common/constant.hpp"
 #include "dwt/constant.hpp"

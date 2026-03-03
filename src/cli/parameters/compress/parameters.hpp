@@ -8,7 +8,7 @@
 #include <cstddef>
 
 #include "parameters_context.hpp"
-#include "utility.hpp"
+#include "meta.hpp"
 
 namespace cli::parameters::compress {
 

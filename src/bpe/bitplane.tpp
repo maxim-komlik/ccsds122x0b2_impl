@@ -6,7 +6,7 @@
 #include <algorithm>
 #include <functional>
 
-#include "utils.hpp"
+#include "utility.hpp"
 #include "entropy_types.hpp"
 #include "obitwrapper.tpp"
 #include "ibitwrapper.tpp"

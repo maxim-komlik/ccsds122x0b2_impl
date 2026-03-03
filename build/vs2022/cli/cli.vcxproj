@@ -41,6 +41,7 @@
     <ClInclude Include="..\..\..\src\cli\expected.hpp" />
     <ClInclude Include="..\..\..\src\cli\file_utility.hpp" />
     <ClInclude Include="..\..\..\src\cli\help_context.hpp" />
+    <ClInclude Include="..\..\..\src\cli\meta.hpp" />
     <ClInclude Include="..\..\..\src\cli\parameters\compress.hpp" />
     <ClInclude Include="..\..\..\src\cli\parameters\compress\parameters.hpp" />
     <ClInclude Include="..\..\..\src\cli\parameters\compress\validation.hpp" />
@@ -133,7 +134,7 @@
     <Link>
       <SubSystem>Console</SubSystem>
       <GenerateDebugInformation>true</GenerateDebugInformation>
-      <AdditionalDependencies>$(RepositoryOutputDir)core\$(Platform)\$(Configuration)\core.lib</AdditionalDependencies>
+      <AdditionalDependencies>$(RepositoryOutputDir)core\$(Platform)\$(Configuration)\core.lib;$(RepositoryOutputDir)common\$(Platform)\$(Configuration)\common.lib</AdditionalDependencies>
     </Link>
     <CustomBuildStep>
       <RootFolder>$(SolutionDir)\..\..\</RootFolder>
@@ -155,7 +156,7 @@
     <Link>
       <SubSystem>Console</SubSystem>
       <GenerateDebugInformation>true</GenerateDebugInformation>
-      <AdditionalDependencies>$(RepositoryOutputDir)core\$(Platform)\$(Configuration)\core.lib</AdditionalDependencies>
+      <AdditionalDependencies>$(RepositoryOutputDir)core\$(Platform)\$(Configuration)\core.lib;$(RepositoryOutputDir)common\$(Platform)\$(Configuration)\common.lib</AdditionalDependencies>
     </Link>
     <CustomBuildStep>
       <RootFolder>$(SolutionDir)\..\..\</RootFolder>
@@ -178,7 +179,7 @@
       <EnableCOMDATFolding>true</EnableCOMDATFolding>
       <OptimizeReferences>true</OptimizeReferences>
       <GenerateDebugInformation>true</GenerateDebugInformation>
-      <AdditionalDependencies>$(RepositoryOutputDir)core\$(Platform)\$(Configuration)\core.lib</AdditionalDependencies>
+      <AdditionalDependencies>$(RepositoryOutputDir)core\$(Platform)\$(Configuration)\core.lib;$(RepositoryOutputDir)common\$(Platform)\$(Configuration)\common.lib</AdditionalDependencies>
     </Link>
   </ItemDefinitionGroup>
   <Import Project="$(VCTargetsPath)\Microsoft.Cpp.targets" />

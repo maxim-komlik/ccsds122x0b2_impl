@@ -2,6 +2,8 @@
 
 #include <algorithm>
 
+#include "utility.hpp"
+
 namespace {
 	constexpr size_t get_target_executors_count() noexcept {
 		// TODO: implement strategy

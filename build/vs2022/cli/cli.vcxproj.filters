@@ -146,6 +146,9 @@
     <ClInclude Include="..\..\..\src\cli\commands\core_environment.hpp">
       <Filter>Header Files\commands</Filter>
     </ClInclude>
+    <ClInclude Include="..\..\..\src\cli\meta.hpp">
+      <Filter>Header Files</Filter>
+    </ClInclude>
   </ItemGroup>
   <ItemGroup>
     <None Include="..\..\..\src\cli\contextual_parser.tpp">

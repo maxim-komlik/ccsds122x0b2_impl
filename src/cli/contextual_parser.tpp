@@ -7,12 +7,12 @@
 #include <functional>
 #include <cstddef>
 
-#include "common/utils.hpp"
+#include "common/meta.hpp"
+#include "meta.hpp"
 
 #include "parameters_context.hpp"
 #include "help_context.hpp"
 #include "expected.hpp"
-#include "utility.hpp"
 #include "exception/exception.hpp"
 
 template <typename Param>
@@ -44,12 +44,12 @@ private:
 	struct parse_named<std::tuple<Ts...>> {
 	private:
 		using subject_t = std::tuple<Ts...>;
-		using next_t = tuple_remove_first_element_t<subject_t>;
+		using next_t = meta::tuple_remove_first_element_t<subject_t>;
 
 	public:
-		using type = tuple_prepend_element_t<
+		using type = meta::tuple_prepend_element_t<
 			typename parse_named<next_t>::type,
-			typename tuple_element_first_t<subject_t>::value_t>;
+			typename meta::tuple_element_first_t<subject_t>::value_t>;
 	};
 
 	template <typename T>
@@ -59,7 +59,7 @@ private:
 	using parse_immediates_t = parse_named<std::remove_const_t<T>>::type;
 
 
-	using storage_type = tuple_merge_t<
+	using storage_type = meta::tuple_merge_t<
 		parse_immediates_t<immediates_t>,
 		parse_named_t<named_t>>;
 

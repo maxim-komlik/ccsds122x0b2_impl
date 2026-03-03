@@ -7,9 +7,10 @@
 #include <iterator>
 #include <cstddef>
 
+#include "common/meta.hpp"
+
 #include "cli.hpp"
 #include "expected.hpp"
-#include "utility.hpp"
 
 namespace cli::parsers {
 
@@ -90,6 +91,7 @@ private:
 
 	static cli::expected<std::filesystem::path> find_matching_path(const std::filesystem::path& pattern) {
 		// TODO: should be noexcept and return all thrown exception descriptions as unexpected?
+		// TODO: wrap expand_pattern from file_utility.hpp and map it's exceptions to return values
 
 		// cases:
 		//	single * as part of path token:

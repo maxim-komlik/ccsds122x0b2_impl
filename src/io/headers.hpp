@@ -6,7 +6,7 @@
 #include <utility>
 
 #include "core_types.hpp"
-#include "utils.hpp"
+#include "utility.hpp"
 
 #include "bitfield.hpp"
 #include "constant.hpp"

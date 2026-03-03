@@ -5,7 +5,7 @@
 #include <type_traits>
 #include <cstddef>
 
-#include "img_meta.h"
+#include "img_meta.hpp"
 
 template <typename T, size_t alignment = 16>
 class bitmap;

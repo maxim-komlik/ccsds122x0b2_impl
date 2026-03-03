@@ -7,7 +7,7 @@
 
 #include "entropy_types.hpp"
 #include "exception.hpp"
-#include "utils.hpp"
+#include "utility.hpp"
 
 template <typename buffer_t> 
 class obitwrapper {

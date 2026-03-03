@@ -63,12 +63,6 @@
     <ClInclude Include="..\..\..\src\common\core_types.hpp">
       <Filter>common\Header Files</Filter>
     </ClInclude>
-    <ClInclude Include="..\..\..\src\common\utils.hpp">
-      <Filter>common\Header Files</Filter>
-    </ClInclude>
-    <ClInclude Include="..\..\..\src\common\exception.hpp">
-      <Filter>common\Header Files</Filter>
-    </ClInclude>
     <ClInclude Include="..\..\..\src\bpe\entropy_types.hpp">
       <Filter>bpe\Header Files</Filter>
     </ClInclude>
@@ -77,15 +71,6 @@
     </ClInclude>
     <ClInclude Include="..\..\..\src\bpe\symbolbuffer.hpp">
       <Filter>bpe\Header Files</Filter>
-    </ClInclude>
-    <ClInclude Include="..\..\..\src\common\constant.hpp">
-      <Filter>common\Header Files</Filter>
-    </ClInclude>
-    <ClInclude Include="..\..\..\src\bpe\constant.hpp">
-      <Filter>bpe\Header Files</Filter>
-    </ClInclude>
-    <ClInclude Include="..\..\..\src\dwt\constant.hpp">
-      <Filter>dwt\Header Files</Filter>
     </ClInclude>
     <ClInclude Include="..\..\..\src\io\file_protocol.hpp">
       <Filter>io\Header Files</Filter>
@@ -105,7 +90,7 @@
     <ClInclude Include="..\..\..\src\io\bitfield.hpp">
       <Filter>io\Header Files</Filter>
     </ClInclude>
-    <ClInclude Include="..\..\..\src\dwt\img_meta.h">
+    <ClInclude Include="..\..\..\src\dwt\img_meta.hpp">
       <Filter>dwt\Header Files</Filter>
     </ClInclude>
     <ClInclude Include="..\..\..\src\io\io_contexts.hpp">
@@ -128,9 +113,6 @@
     </ClInclude>
     <ClInclude Include="..\..\..\src\bpe\symbol_translate.hpp">
       <Filter>bpe\Header Files</Filter>
-    </ClInclude>
-    <ClInclude Include="..\..\..\src\io\constant.hpp">
-      <Filter>io\Header Files</Filter>
     </ClInclude>
     <ClInclude Include="..\..\..\src\core\compression.hpp">
       <Filter>common\librarian\Header Files</Filter>
@@ -159,14 +141,20 @@
     <ClInclude Include="..\..\..\src\dwt\utility.hpp">
       <Filter>dwt\Header Files</Filter>
     </ClInclude>
+    <ClInclude Include="..\..\..\src\bpe\constant.hpp">
+      <Filter>bpe\Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="..\..\..\src\common\constant.hpp">
+      <Filter>common\Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="..\..\..\src\dwt\constant.hpp">
+      <Filter>dwt\Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="..\..\..\src\io\constant.hpp">
+      <Filter>io\Header Files</Filter>
+    </ClInclude>
   </ItemGroup>
   <ItemGroup>
-    <ClCompile Include="core.cpp">
-      <Filter>common\librarian\Source Files</Filter>
-    </ClCompile>
-    <ClCompile Include="..\..\..\src\common\exception.cpp">
-      <Filter>common\Source Files</Filter>
-    </ClCompile>
     <ClCompile Include="..\..\..\src\bpe\symbolstream.cpp">
       <Filter>bpe\Source Files</Filter>
     </ClCompile>
@@ -196,6 +184,9 @@
     </ClCompile>
     <ClCompile Include="..\..\..\src\io\io_data_registry.cpp">
       <Filter>io\Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="..\..\..\src\bpe\bpe.cpp">
+      <Filter>bpe\Source Files</Filter>
     </ClCompile>
   </ItemGroup>
   <ItemGroup>

@@ -7,7 +7,7 @@
 #include <functional>
 
 #include "exception.hpp"
-#include "utils.hpp"
+#include "utility.hpp"
 
 #include "bpe/obitwrapper.tpp"
 #include "io_data_registry.hpp"

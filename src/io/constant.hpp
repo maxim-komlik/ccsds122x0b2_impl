@@ -3,7 +3,7 @@
 #include <cstdint>
 
 #include "common/constant.hpp"
-#include "utils.hpp"
+#include "utility.hpp"
 
 // TODO: move dbg parameters to dedicated files
 namespace dbg {

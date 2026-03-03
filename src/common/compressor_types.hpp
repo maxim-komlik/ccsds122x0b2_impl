@@ -3,7 +3,7 @@
 #include <type_traits>
 #include <array>
 
-#include "utils.hpp"
+#include "utility.hpp"
 #include "constant.hpp"
 
 template <typename dwtT>

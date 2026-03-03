@@ -7,7 +7,7 @@
 #include <stdexcept>
 #include <cstdint>
 
-#include "utils.hpp"
+#include "utility.hpp"
 
 // bit-fields are underspecified in C++; the standard allows both msb-to-lsb
 // and lsb-to-msb allocations of adjacent consequtive bit-fields within an

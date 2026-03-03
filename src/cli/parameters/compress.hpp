@@ -9,7 +9,6 @@
 #include "parsers/flag_parser.hpp"
 #include "parsers/integer_parser.hpp"
 #include "parsers/enum_parser.hpp"
-#include "utility.hpp"
 
 #include "compress/parameters.hpp"
 

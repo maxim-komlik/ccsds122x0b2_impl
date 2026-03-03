@@ -1,6 +1,6 @@
 #include "ccsds_protocol.hpp"
 
-#include "utils.hpp"
+#include "utility.hpp"
 
 ccsds_protocol::ccsds_protocol(std::span<std::byte> raw_data) {
 	bool valid = true;

@@ -6,7 +6,7 @@
 #include "bitmap.tpp"
 #include "dwtcore.tpp"
 #include "dwtscale.tpp"
-#include "img_meta.h"
+#include "img_meta.hpp"
 #include "constant.hpp"
 
 template <typename T, size_t alignment = 16>

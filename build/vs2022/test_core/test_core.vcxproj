@@ -77,7 +77,7 @@
     <Link>
       <GenerateDebugInformation>true</GenerateDebugInformation>
       <SubSystem>Console</SubSystem>
-      <AdditionalDependencies>$(RepositoryOutputDir)core\$(Platform)\$(Configuration)\core.lib;%(AdditionalDependencies)</AdditionalDependencies>
+      <AdditionalDependencies>$(RepositoryOutputDir)core\$(Platform)\$(Configuration)\core.lib;$(RepositoryOutputDir)common\$(Platform)\$(Configuration)\common.lib;%(AdditionalDependencies)</AdditionalDependencies>
     </Link>
   </ItemDefinitionGroup>
   <ItemDefinitionGroup Condition="'$(Configuration)|$(Platform)'=='Non-Optimized|x64'">
@@ -97,7 +97,7 @@
     <Link>
       <GenerateDebugInformation>true</GenerateDebugInformation>
       <SubSystem>Console</SubSystem>
-      <AdditionalDependencies>$(RepositoryOutputDir)core\$(Platform)\$(Configuration)\core.lib;%(AdditionalDependencies)</AdditionalDependencies>
+      <AdditionalDependencies>$(RepositoryOutputDir)core\$(Platform)\$(Configuration)\core.lib;$(RepositoryOutputDir)common\$(Platform)\$(Configuration)\common.lib;%(AdditionalDependencies)</AdditionalDependencies>
     </Link>
   </ItemDefinitionGroup>
   <ItemDefinitionGroup Condition="'$(Configuration)|$(Platform)'=='Release|x64'">
@@ -116,7 +116,7 @@
       <SubSystem>Console</SubSystem>
       <OptimizeReferences>true</OptimizeReferences>
       <EnableCOMDATFolding>true</EnableCOMDATFolding>
-      <AdditionalDependencies>$(RepositoryOutputDir)core\$(Platform)\$(Configuration)\core.lib;%(AdditionalDependencies)</AdditionalDependencies>
+      <AdditionalDependencies>$(RepositoryOutputDir)core\$(Platform)\$(Configuration)\core.lib;$(RepositoryOutputDir)common\$(Platform)\$(Configuration)\common.lib;%(AdditionalDependencies)</AdditionalDependencies>
     </Link>
   </ItemDefinitionGroup>
   <Target Name="EnsureNuGetPackageBuildImports" BeforeTargets="PrepareForBuild">

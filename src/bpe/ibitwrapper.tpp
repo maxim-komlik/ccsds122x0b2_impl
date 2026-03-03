@@ -4,7 +4,7 @@
 #include <bit>
 #include <type_traits>
 
-#include "utils.hpp"
+#include "utility.hpp"
 #include "entropy_types.hpp"
 #include "exception.hpp"
 

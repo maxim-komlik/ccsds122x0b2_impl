@@ -6,7 +6,7 @@
 #include "bitmap.tpp"
 #include "core_types.hpp"
 #include "compressor_types.hpp"
-#include "utils.hpp"
+#include "utility.hpp"
 #include "dwt/constant.hpp"
 
 

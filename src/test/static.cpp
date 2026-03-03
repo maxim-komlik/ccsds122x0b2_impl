@@ -5,7 +5,7 @@
 #include <vector>
 #include <functional>
 
-#include "utils.hpp"
+#include "utility.hpp"
 #include "bpe/bpe.tpp"
 
 TEST(experimental, DISABLED_quantizationValueCheck) {

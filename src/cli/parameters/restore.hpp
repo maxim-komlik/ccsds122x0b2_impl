@@ -10,7 +10,6 @@
 #include "parsers/integer_parser.hpp"
 #include "parsers/enum_parser.hpp"
 #include "parsers/path_parser.hpp"
-#include "utility.hpp"
 
 #include "restore/parameters.hpp"
 

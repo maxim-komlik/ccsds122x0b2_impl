@@ -297,7 +297,7 @@
 #include <cstddef>
 
 
-#include "utils.hpp"
+#include "meta.hpp"
 
 class task_pool {
 	class task_executor;
@@ -337,7 +337,7 @@ class task_pool {
 	template <typename payload_t>
 	class task_base {
 	protected:
-		call_arguments_types<payload_t> payload_params;
+		meta::call_arguments_types<payload_t> payload_params;
 
 		~task_base() = default;
 
@@ -470,16 +470,16 @@ public:
 		struct append_branch_tip<std::tuple<Ts...>, T> {
 		private:
 			using branch_t = std::tuple<Ts...>;
-			using level_tip_t = tuple_element_last_t<branch_t>;
+			using level_tip_t = meta::tuple_element_last_t<branch_t>;
 	
 			template <bool is_special, typename NodeT>
 			struct node_handler {
-				using type = tuple_append_element_t<NodeT, T>;
+				using type = meta::tuple_append_element_t<NodeT, T>;
 			};
 	
 			template <typename NodeT>
 			struct node_handler<true, NodeT> {
-				using type = tuple_replace_last_element_t<NodeT, typename append_branch_tip<level_tip_t, T>::type>;
+				using type = meta::tuple_replace_last_element_t<NodeT, typename append_branch_tip<level_tip_t, T>::type>;
 			};
 	
 		public:
@@ -491,15 +491,15 @@ public:
 		template <typename Trunk, typename... Branches>
 		struct is_same_root {
 			static constexpr bool value = (std::is_same_v<
-				tuple_remove_last_element_t<Trunk>, 
-				tuple_remove_last_element_t<Branches>> && ...);
+				meta::tuple_remove_last_element_t<Trunk>, 
+				meta::tuple_remove_last_element_t<Branches>> && ...);
 		};
 	
 		template <typename Trunk, typename... Branches>
 		struct is_same_root<split_token<Trunk>, Branches...> {
 			static constexpr bool value = (std::is_same_v<
-				tuple_remove_last_element_t<Trunk>, 
-				tuple_remove_last_element_t<typename Branches::branch_t>> && ...);
+				meta::tuple_remove_last_element_t<Trunk>, 
+				meta::tuple_remove_last_element_t<typename Branches::branch_t>> && ...);
 		};
 	
 	
@@ -508,22 +508,22 @@ public:
 		private:
 			template <typename Root, typename... Branches>
 			struct follow_common_root {
-				using type = tuple_replace_last_element_t<
+				using type = meta::tuple_replace_last_element_t<
 					Root, 
 					typename fuse_branches_onto_common_trunc<
-						tuple_element_last_t<Root>,
-						tuple_element_last_t<Branches>...
+						meta::tuple_element_last_t<Root>,
+						meta::tuple_element_last_t<Branches>...
 					>::type>;
 			};
 	
 			template <typename Root, typename... Branches>
 			struct follow_common_root<split_token<Root>, Branches...> {
 				using type = split_token<
-					tuple_replace_last_element_t<
+					meta::tuple_replace_last_element_t<
 						Root, 
 						typename fuse_branches_onto_common_trunc<
-							tuple_element_last_t<Root>,
-							tuple_element_last_t<typename Branches::branch_t>...
+							meta::tuple_element_last_t<Root>,
+							meta::tuple_element_last_t<typename Branches::branch_t>...
 						>::type>>;
 			};
 	
@@ -533,7 +533,7 @@ public:
 	
 			template <typename... Branches>
 			struct merge_branches<task_fork_node_t<>, Branches...> {
-				using type = std::tuple<tuple_remove_first_element_t<Branches>...>;
+				using type = std::tuple<meta::tuple_remove_first_element_t<Branches>...>;
 			};
 	
 	
@@ -598,8 +598,8 @@ public:
 				using subject_t = std::tuple<Ts...>;
 			public:
 				using type = consequtive_task<
-					tuple_element_first_t<subject_t>, 
-					typename node_parser<tuple_remove_first_element_t<subject_t>>::type>;
+					meta::tuple_element_first_t<subject_t>, 
+					typename node_parser<meta::tuple_remove_first_element_t<subject_t>>::type>;
 			};
 	
 			template <typename T, typename... Ts>
@@ -638,12 +638,12 @@ public:
 			private:
 				using subject_t = std::tuple<Ts...>;
 			public:
-				using type = tuple_remove_first_element_t<subject_t>;
+				using type = meta::tuple_remove_first_element_t<subject_t>;
 			};
 	
 			template <typename T>
 			using remove_root_fuse_token_t = remove_root_fuse_token_impl<
-				std::is_same_v<tuple_element_first_t<T>, fuse_token>, T>::type;
+				std::is_same_v<meta::tuple_element_first_t<T>, fuse_token>, T>::type;
 	
 	
 		private:
