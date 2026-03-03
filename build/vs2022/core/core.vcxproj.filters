@@ -153,6 +153,9 @@
     <ClInclude Include="..\..\..\src\io\constant.hpp">
       <Filter>io\Header Files</Filter>
     </ClInclude>
+    <ClInclude Include="..\..\..\src\bpe\bpe.hpp">
+      <Filter>bpe\Header Files</Filter>
+    </ClInclude>
   </ItemGroup>
   <ItemGroup>
     <ClCompile Include="..\..\..\src\bpe\symbolstream.cpp">
@@ -193,9 +196,6 @@
     <None Include="..\..\..\src\dwt\bitmap.tpp">
       <Filter>dwt\Source Files</Filter>
     </None>
-    <None Include="..\..\..\src\dwt\dwt.tpp">
-      <Filter>dwt\Source Files</Filter>
-    </None>
     <None Include="..\..\..\src\dwt\dwtcore.tpp">
       <Filter>dwt\Source Files</Filter>
     </None>
@@ -214,13 +214,7 @@
     <None Include="..\..\..\src\dwt\dwtscale.tpp">
       <Filter>dwt\Source Files</Filter>
     </None>
-    <None Include="..\..\..\src\dwt\segment_assembly.tpp">
-      <Filter>dwt\Source Files</Filter>
-    </None>
     <None Include="..\..\..\src\bpe\bitplane.tpp">
-      <Filter>bpe\Source Files</Filter>
-    </None>
-    <None Include="..\..\..\src\bpe\bpe.tpp">
       <Filter>bpe\Source Files</Filter>
     </None>
     <None Include="..\..\..\src\io\endian.tpp">
@@ -231,6 +225,15 @@
     </None>
     <None Include="..\..\..\src\bpe\obitwrapper.tpp">
       <Filter>bpe\Source Files</Filter>
+    </None>
+    <None Include="..\..\..\src\bpe\bpe.tpp">
+      <Filter>bpe\Header Files</Filter>
+    </None>
+    <None Include="..\..\..\src\dwt\dwt.tpp">
+      <Filter>dwt\Header Files</Filter>
+    </None>
+    <None Include="..\..\..\src\dwt\segment_assembly.tpp">
+      <Filter>dwt\Header Files</Filter>
     </None>
   </ItemGroup>
 </Project>

@@ -6,7 +6,7 @@
 #include <functional>
 
 #include "utility.hpp"
-#include "bpe/bpe.tpp"
+#include "bpe/bpe.hpp"
 
 TEST(experimental, DISABLED_quantizationValueCheck) {
 	typedef ptrdiff_t item_t;

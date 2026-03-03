@@ -1,7 +1,7 @@
 #pragma once
 
 #include "bpe/obitwrapper.tpp"
-#include "bpe/bpe.tpp"
+#include "bpe/bpe.hpp"
 
 #include "ccsds_protocol.hpp"
 #include "io_settings.hpp"

@@ -8,7 +8,7 @@
 
 #include "dwt/dwt.hpp"
 #include "dwt/segment_assembly.hpp"
-#include "bpe/bpe.tpp"
+#include "bpe/bpe.hpp"
 
 namespace per_thread {
 

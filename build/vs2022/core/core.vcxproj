@@ -123,6 +123,7 @@
     </Lib>
   </ItemDefinitionGroup>
   <ItemGroup>
+    <ClInclude Include="..\..\..\src\bpe\bpe.hpp" />
     <ClInclude Include="..\..\..\src\bpe\constant.hpp" />
     <ClInclude Include="..\..\..\src\common\compressor_types.hpp" />
     <ClInclude Include="..\..\..\src\common\constant.hpp" />

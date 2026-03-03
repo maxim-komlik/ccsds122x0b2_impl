@@ -1,8 +1,14 @@
 #pragma once
 
 #include <vector>
+#include <deque>
+#include <list>
+#include <unordered_map>
 #include <variant>
+#include <atomic>
+#include <shared_mutex>
 #include <type_traits>
+#include <cstddef>
 
 #include "core_types.hpp"
 #include "compressor_types.hpp"
@@ -58,9 +64,6 @@ enum class operation_state {
 	processing, 
 	done
 };
-
-#include <unordered_map>
-#include <shared_mutex>
 
 template <typename Derived>
 class lockable_operation_descriptor {
@@ -483,53 +486,3 @@ inline size_t generate_session_id() {
 // keep one segment unprocessed always until the end of input data is signaled, then process the 
 // last remaining segment with proper handling of image ending.
 //
-
-
-
-
-// template <typename dwtT>
-// session_context(std::vector<result_handle>&& handles, size_t channel_count = 1) :
-// 	data_handles(std::move(handles)) {
-// 	for (size_t i = 0; i < channel_count; ++i) {
-// 		this->channel_contexts.emplace_back(*this, i, dwtT{});
-// 	}
-// }
-
-// session_context(std::vector<std::unique_ptr<result_handle>>&& handles) :
-// 	data_handles(std::move(handles)) {
-// }
-// 
-// template <typename dwtT>
-// void setup_channels(size_t channel_count = 1) {
-// 	for (size_t i = 0; i < channel_count; ++i) {
-// 		this->channel_contexts.emplace_back(*this, i, dwtT{});
-// 	}
-// }
-
-
-
-// template <typename T, typename dwtT = std::make_signed_t<T>>
-// session_context(std::vector<bitmap<T>>&& img, storage_type target_dst_type = storage_type::memory) :
-// 		image_channels(std::move(img)), dst_type(target_dst_type) {
-// 	auto& img_channels = std::get<std::vector<bitmap<T>>>(this->image_channels);
-// 	for (size_t i = 0; i < img_channels.size(); ++i) {
-// 		this->channel_contexts.emplace_back(*this, i, std::type_identity<dwtT>{});
-// 	}
-// }
-// 
-// template <typename dwtT>
-// session_context(decompression_context_params&& params, std::type_identity<dwtT>) : 
-// 		data_handles(std::move(params.data_handles)), settings_session(std::move(params.session_params)), 
-// 		compr_settings(std::move(params.compression_params)), seg_settings(std::move(params.segment_params)) {
-// 	for (size_t i = 0; i < params.channel_count; ++i) {
-// 		this->channel_contexts.emplace_back(*this, i, std::type_identity<dwtT>{});
-// 	}
-// 
-// 	// TODO: if the data decoded sequentially, compression and segment settings will be
-// 	// populated on the fly, that would cause reallocations if std::vector is used.
-// 	// The scenario should be examined on the subject of data races: no concurrent read
-// 	// is allowed when settings data is populated; for seqential decoding it should be 
-// 	// well-behaved due to lack of concurrent execution; for concurrent approaches, the 
-// 	// data should be populated before the processing begins.
-// 	//
-// }
