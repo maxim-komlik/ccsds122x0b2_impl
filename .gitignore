@@ -14,10 +14,7 @@
 *.userprefs
 
 /build/out/
-/build/vs2022/out/
-/build/vs2022/packages/
-
-!/build/vs2022/out/meta.txt
+/build/msbuild/packages/
 
 
 # Visual Studio 2015/2017 cache/options directory

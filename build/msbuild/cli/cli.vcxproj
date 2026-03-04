@@ -66,7 +66,7 @@
     <None Include="..\..\..\src\cli\contextual_parser.tpp" />
   </ItemGroup>
   <ItemGroup>
-    <Manifest Include="..\utf8.manifest" />
+    <Manifest Include="..\..\utf8.manifest" />
   </ItemGroup>
   <PropertyGroup Label="Globals">
     <VCProjectVersion>16.0</VCProjectVersion>
@@ -140,7 +140,7 @@
       <RootFolder>$(SolutionDir)\..\..\</RootFolder>
     </CustomBuildStep>
     <Manifest>
-      <AdditionalManifestFiles>$(SolutionDir)utf8.manifest %(AdditionalManifestFiles)</AdditionalManifestFiles>
+      <AdditionalManifestFiles>$(SolutionDir)..\utf8.manifest %(AdditionalManifestFiles)</AdditionalManifestFiles>
     </Manifest>
   </ItemDefinitionGroup>
   <ItemDefinitionGroup Condition="'$(Configuration)|$(Platform)'=='Non-Optimized|x64'">
@@ -162,7 +162,7 @@
       <RootFolder>$(SolutionDir)\..\..\</RootFolder>
     </CustomBuildStep>
     <Manifest>
-      <AdditionalManifestFiles>$(SolutionDir)utf8.manifest %(AdditionalManifestFiles)</AdditionalManifestFiles>
+      <AdditionalManifestFiles>$(SolutionDir)..\utf8.manifest %(AdditionalManifestFiles)</AdditionalManifestFiles>
     </Manifest>
   </ItemDefinitionGroup>
   <ItemDefinitionGroup Condition="'$(Configuration)|$(Platform)'=='Release|x64'">
@@ -181,6 +181,9 @@
       <GenerateDebugInformation>true</GenerateDebugInformation>
       <AdditionalDependencies>$(RepositoryOutputDir)core\$(Platform)\$(Configuration)\core.lib;$(RepositoryOutputDir)common\$(Platform)\$(Configuration)\common.lib</AdditionalDependencies>
     </Link>
+    <Manifest>
+      <AdditionalManifestFiles>$(SolutionDir)..\utf8.manifest %(AdditionalManifestFiles)</AdditionalManifestFiles>
+    </Manifest>
   </ItemDefinitionGroup>
   <Import Project="$(VCTargetsPath)\Microsoft.Cpp.targets" />
   <ImportGroup Label="ExtensionTargets">

@@ -162,6 +162,7 @@
     <ClCompile Include="..\..\..\src\core\io.cpp" />
     <ClCompile Include="..\..\..\src\dwt\dwt.cpp" />
     <ClCompile Include="..\..\..\src\dwt\segment_assembly.cpp" />
+    <ClCompile Include="..\..\..\src\bpe\symbolstream.cpp" />
     <ClCompile Include="..\..\..\src\io\ccsds_protocol.cpp" />
     <ClCompile Include="..\..\..\src\io\io_data_registry.cpp" />
     <ClCompile Include="..\..\..\src\io\tasking.cpp" />
@@ -174,7 +175,6 @@
     <ClInclude Include="..\..\..\src\bpe\entropy_translate.hpp" />
     <None Include="..\..\..\src\bpe\ibitwrapper.tpp" />
     <None Include="..\..\..\src\bpe\obitwrapper.tpp" />
-    <ClCompile Include="..\..\..\src\bpe\symbolstream.cpp" />
     <None Include="..\..\..\src\bpe\symbol_code.tpp" />
     <ClInclude Include="..\..\..\src\bpe\symbol_translate.hpp" />
     <None Include="..\..\..\src\core\samples\routines.tpp" />

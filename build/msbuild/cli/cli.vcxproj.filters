@@ -162,7 +162,7 @@
     </None>
   </ItemGroup>
   <ItemGroup>
-    <Manifest Include="..\utf8.manifest">
+    <Manifest Include="..\..\utf8.manifest">
       <Filter>Resource Files</Filter>
     </Manifest>
   </ItemGroup>
