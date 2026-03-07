@@ -15,6 +15,8 @@
 #include "expected.hpp"
 #include "exception/exception.hpp"
 
+namespace cli::parameters {
+
 template <typename Param>
 class contextual_parser {
 private:
@@ -604,3 +606,5 @@ private:
 		}
 	}
 };
+
+}

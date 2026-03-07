@@ -46,12 +46,12 @@
     <ClInclude Include="..\..\..\src\cli\parameters\compress\parameters.hpp" />
     <ClInclude Include="..\..\..\src\cli\parameters\compress\validation.hpp" />
     <ClInclude Include="..\..\..\src\cli\parameters\parameters.hpp" />
+    <ClInclude Include="..\..\..\src\cli\parameters\parameters_context.hpp" />
     <ClInclude Include="..\..\..\src\cli\parameters\restore.hpp" />
     <ClInclude Include="..\..\..\src\cli\parameters\restore\parameters.hpp" />
     <ClInclude Include="..\..\..\src\cli\parameters\restore\validation.hpp" />
     <ClInclude Include="..\..\..\src\cli\parameters\root.hpp" />
     <ClInclude Include="..\..\..\src\cli\parameters\validation.hpp" />
-    <ClInclude Include="..\..\..\src\cli\parameters_context.hpp" />
     <ClInclude Include="..\..\..\src\cli\parsers\command_parser.hpp" />
     <ClInclude Include="..\..\..\src\cli\parsers\dummy_parser.hpp" />
     <ClInclude Include="..\..\..\src\cli\parsers\enum_parser.hpp" />
@@ -63,7 +63,7 @@
   <ItemGroup>
     <None Include="..\..\..\src\cli\commands\core_environment.tpp" />
     <None Include="..\..\..\src\cli\commands\load_image.tpp" />
-    <None Include="..\..\..\src\cli\contextual_parser.tpp" />
+    <None Include="..\..\..\src\cli\parameters\contextual_parser.tpp" />
   </ItemGroup>
   <ItemGroup>
     <Manifest Include="..\..\utf8.manifest" />

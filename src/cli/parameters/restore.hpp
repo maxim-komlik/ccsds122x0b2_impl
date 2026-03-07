@@ -13,32 +13,41 @@
 
 #include "restore/parameters.hpp"
 
-namespace cli::parameters::restore {
+namespace cli::parameters {
+
+namespace restore {
+
+	struct source_parser;
+	struct destination_parser;
+	struct stream_parser;
+	struct restore_parser;
+
+}
+
 
 using namespace cli::parsers;
-
 	
 template <>
-struct parameter_context<file_sink_params> : public parameter_context_default {
+struct parameter_context<restore::file_sink_params> : public parameter_context_default {
 	static constexpr named_parameters_description_t named{
 		parameter_description<path_parser<false, true>>{"--path"sv, {}, "Compressed segments filsystem location"sv}
 	};
 };
 
 template <>
-struct parameter_context<source> : public parameter_context_default {
+struct parameter_context<restore::source> : public parameter_context_default {
 	static constexpr immediate_parameters_description_t immediates{
-		parameter_description<enum_parser<src_type>>{{}, {src_type::file}, "Compressed segments source storage type"sv}
+		parameter_description<enum_parser<restore::src_type>>{{}, {restore::src_type::file}, "Compressed segments source storage type"sv}
 	};
 
 	static constexpr named_parameters_description_t named{
-		parameter_description<enum_parser<segment_protocol_type>>{"--protocol"sv, {segment_protocol_type::detect}, "Protocol headers type to use to decode segments"sv}, 
+		parameter_description<enum_parser<restore::segment_protocol_type>>{"--protocol"sv, {restore::segment_protocol_type::detect}, "Protocol headers type to use to decode segments"sv}, 
 		// TODD: as is below breaks parsing for special tokens. move hint parameters to dedicated member?
 		dynamic_parameter{"Source storage type dependent parameters"sv}.expand()
 	};
 };
 
-struct source_parser {
+struct restore::source_parser {
 	using value_t = source;
 
 	cli::expected<value_t> parse(std::vector<std::string_view>& tokens) {
@@ -64,17 +73,17 @@ public:
 
 
 template <>
-struct parameter_context<destination> : public parameter_context_default {
+struct parameter_context<restore::destination> : public parameter_context_default {
 	static constexpr immediate_parameters_description_t immediates{
-		parameter_description<enum_parser<dst_type>>{{}, {dst_type::memory}, "Restored image storage type"sv}
+		parameter_description<enum_parser<restore::dst_type>>{{}, {restore::dst_type::memory}, "Restored image storage type"sv}
 	};
 
 	static constexpr named_parameters_description_t named{
-		parameter_description<enum_parser<image_protocol_type>>{"--protocol"sv, {image_protocol_type::raw}, "Format to use to store the image"sv}
+		parameter_description<enum_parser<restore::image_protocol_type>>{"--protocol"sv, {restore::image_protocol_type::raw}, "Format to use to store the image"sv}
 	};
 };
 
-struct destination_parser {
+struct restore::destination_parser {
 	using value_t = destination;
 
 	cli::expected<value_t> parse(std::vector<std::string_view>& tokens) {
@@ -106,7 +115,7 @@ public:
 
 
 template <>
-struct parameter_context<stream::parameters_set> : public parameter_context_default {
+struct parameter_context<restore::stream::parameters_set> : public parameter_context_default {
 	static constexpr named_parameters_description_t named{
 		parameter_description<unsigned_integer_parser<>>{"--id"sv, {}, "First segment ID to apply setting to"sv},
 		parameter_description<unsigned_integer_parser<>>{"--id-for"sv, {0}, "Number of consequtive segments to apply setting to"sv},
@@ -118,7 +127,7 @@ struct parameter_context<stream::parameters_set> : public parameter_context_defa
 	};
 };
 
-struct stream_parser {
+struct restore::stream_parser {
 	using value_t = stream;
 
 	cli::expected<value_t> parse(std::vector<std::string_view>& tokens) {
@@ -162,19 +171,19 @@ public:
 
 
 template <>
-struct parameter_context<restore_command> : public parameter_context_default {
-	static constexpr stream default_stream = stream_parser::make_default();
-	static constexpr destination default_dst = destination_parser::make_default();
+struct parameter_context<restore::restore_command> : public parameter_context_default {
+	static constexpr restore::stream default_stream = restore::stream_parser::make_default();
+	static constexpr restore::destination default_dst = restore::destination_parser::make_default();
 
 	static constexpr named_parameters_description_t named{
-		parameter_description<source_parser>{"--src"sv, {}, "Specifies input settings"sv},
-		parameter_description<destination_parser>{"--dst"sv, {default_dst}, "Specifies output settings"sv},
-		parameter_description<stream_parser>{"--stream"sv, {default_stream}, "Specifies stream bitrate settings, reducing restored image quality"sv},
+		parameter_description<restore::source_parser>{"--src"sv, {}, "Specifies input settings"sv},
+		parameter_description<restore::destination_parser>{"--dst"sv, {default_dst}, "Specifies output settings"sv},
+		parameter_description<restore::stream_parser>{"--stream"sv, {default_stream}, "Specifies stream bitrate settings, reducing restored image quality"sv},
 		parameter_description<flag_parser>{"--force-transpose"sv, {false}, "Transpose output image after processing"sv}
 	};
 };
 
-struct restore_parser {
+struct restore::restore_parser {
 	using value_t = restore_command;
 
 	cli::expected<value_t> parse(std::vector<std::string_view>& tokens) {
