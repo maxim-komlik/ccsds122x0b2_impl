@@ -1,6 +1,7 @@
 #pragma once
 
 #include <bit>
+#include <cstddef>
 
 enum class dwt_type_t {
 	idwt,

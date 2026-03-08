@@ -220,7 +220,7 @@ T& aligned_vector<T, alignment>::operator[](size_t index) const {
 template <typename T, size_t alignment>
 inline
 T* aligned_vector<T, alignment>::data() const {
-	return std::assume_aligned<this->palignment>(this->m_begin);
+	return std::assume_aligned<aligned_vector::palignment>(this->m_begin);
 }
 
 template <typename T, size_t alignment>

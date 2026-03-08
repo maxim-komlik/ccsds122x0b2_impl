@@ -27,7 +27,7 @@ set(CORE_SOURCE_FILES
 	)
 	
 	
-	set(CORE_HEADER_FILES 
+set(CORE_HEADER_FILES 
 	"${REPO_SOURCE_DIR}dwt/dwt.tpp"
 	"${REPO_SOURCE_DIR}dwt/dwt.hpp"
 	"${REPO_SOURCE_DIR}dwt/img_meta.hpp"
@@ -78,4 +78,10 @@ target_link_libraries(core
 	PRIVATE 
 		common
 		constant
+	)
+
+target_include_directories(core 
+	PRIVATE
+		"${REPO_SOURCE_DIR}common"
+		"${REPO_SOURCE_DIR}"
 	)

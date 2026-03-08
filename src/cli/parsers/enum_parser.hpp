@@ -61,7 +61,9 @@ private:
 
 		// for some reason, separator is not captured when defined as constexpr std::span 
 		// under msvc
-		constexpr auto separator = meta::make_static_string(meta::trim_terminator(std::span{ ", " }));
+		// TODO: PATCHME: static is not needed here per the standard.
+		// but it doesn't compile otherwise on clang (due to lambda capture handling)
+		static constexpr auto separator = meta::make_static_string(meta::trim_terminator(std::span{ ", " }));
 
 		constexpr auto enumerators_generator = 
 			[]<size_t first, size_t... args>(std::index_sequence<first, args...>) consteval {

@@ -46,9 +46,13 @@ namespace meta {
 			constexpr size_t value_end_pos = matching_char_position(tail);
 			constexpr size_t value_start_pos = std::distance(tail.cbegin(), value_begin) + 1;
 
-			constexpr std::string_view values = tail.substr(value_start_pos, value_end_pos - value_start_pos);
+			// TODO: PATCHME: static is not needed here per the standard.
+			// but it doesn't compile otherwise on clang (due to lambda capture handling)
+			static constexpr std::string_view values = tail.substr(value_start_pos, value_end_pos - value_start_pos);
 
-			constexpr auto token_collection = tokenize<std::tuple_size_v<decltype(TraitT::names)>>(values);
+			// TODO: PATCHME: static is not needed here per the standard.
+			// but it doesn't compile otherwise on clang (due to lambda capture handling)
+			static constexpr auto token_collection = tokenize<std::tuple_size_v<decltype(TraitT::names)>>(values);
 
 
 			constexpr auto merger = []<size_t first, size_t... args>(std::index_sequence<first, args...>) consteval {

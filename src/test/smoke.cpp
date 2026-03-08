@@ -6,7 +6,7 @@
 #include "test_utils.tpp"
 
 TEST(dwtcorei, DwtCoreI) {
-	typedef long long item_t;
+	typedef int64_t item_t;
 	item_t* pinput = new item_t[512]{ 0 };
 	item_t* phout = new item_t[256]{ 0 };
 	item_t* plout = new item_t[256]{ 0 };
@@ -61,7 +61,7 @@ TEST(dwtcorei, DwtCoreI) {
 }
 
 TEST(dwti, multilevelRound) {
-	typedef long long item_t;
+	typedef int64_t item_t;
 	img_pos props;
 	props.width = 1 << 10;
 	props.height = 1 << 10;
@@ -92,7 +92,7 @@ TEST(dwti, multilevelRound) {
 }
 
 TEST(tbitmap, bitmapMemorySmoke) {
-	typedef long long item_t;
+	typedef int64_t item_t;
 	constexpr size_t alignment = 16;
 	constexpr size_t testIterations = 1 << 7;
 
@@ -162,7 +162,7 @@ TEST(tbitmap, bitmapMemorySmoke) {
 #include "dwt/segment_assembly.hpp"
 
 TEST(segments, EncoderSmoke) {
-	typedef long long item_t;
+	typedef int64_t item_t;
 	constexpr size_t alignment = 16;
 	img_pos props;
 	props.width = 1 << 10;
@@ -186,7 +186,7 @@ TEST(segments, EncoderSmoke) {
 }
 
 TEST(segments, EncoderRound) {
-	typedef long long item_t;
+	typedef int64_t item_t;
 	constexpr size_t alignment = 16;
 	img_pos props;
 	props.width = 1 << 10;
@@ -369,7 +369,7 @@ TEST(segments, EncoderRound) {
 #include "bpe/bpe.tpp"
 
 TEST(bpe, EncoderSmoke) {
-	typedef long long item_t;
+	typedef int64_t item_t;
 	constexpr size_t alignment = 16;
 	img_pos props;
 	props.width = 1 << 10;
@@ -386,16 +386,16 @@ TEST(bpe, EncoderSmoke) {
 	precoder.set_shifts(subband_shifts);
 	auto output = precoder.apply(std::move(i_coeffs));
 
-	std::vector<uint64_t> bpe_debug_output_buffer;
+	std::vector<uintptr_t> bpe_debug_output_buffer;
 	BitPlaneEncoder<decltype(output)::value_type::element_type::type> bpeencoder;
 	bpeencoder.set_use_heuristic_DC(false);
 	bpeencoder.set_use_heuristic_bdepthAc(false);
 
 	{
-		auto bpe_debug_output_buffer_callback = [&bpe_debug_output_buffer](uint64_t item) -> void {
+		auto bpe_debug_output_buffer_callback = [&bpe_debug_output_buffer](uintptr_t item) -> void {
 			bpe_debug_output_buffer.push_back(item);
 		};
-		obitwrapper<uint64_t> boutput(bpe_debug_output_buffer_callback);
+		obitwrapper<uintptr_t> boutput(bpe_debug_output_buffer_callback);
 
 		bpeencoder.encode(*(output[0]), boutput);
 		boutput.flush();
@@ -412,7 +412,7 @@ TEST(bpe, EncoderSmoke) {
 }
 
 TEST(bpe, EncoderRound) {
-	typedef long long item_t;
+	typedef int64_t item_t;
 	constexpr size_t alignment = 16;
 	img_pos props;
 	props.width = 1 << 10;
@@ -436,16 +436,16 @@ TEST(bpe, EncoderRound) {
 	bpeencoder.set_use_heuristic_DC(false);
 	bpeencoder.set_use_heuristic_bdepthAc(false);
 
-	std::vector<uint64_t> compressed;
+	std::vector<uintptr_t> compressed;
 	// constexpr size_t stage_limit = 0x0937; // stage 2 debug
 	// constexpr size_t stage_limit = 0x0a4a; // stage 3 debug
 	constexpr size_t stage_limit = (0x01 << 24) - 1;
 
 	{
-		auto bpe_debug_output_buffer_callback = [&compressed](uint64_t item) -> void {
+		auto bpe_debug_output_buffer_callback = [&compressed](uintptr_t item) -> void {
 			compressed.push_back(item);
 		};
-		obitwrapper<uint64_t> boutput(bpe_debug_output_buffer_callback, stage_limit << 3);
+		obitwrapper<uintptr_t> boutput(bpe_debug_output_buffer_callback, stage_limit << 3);
 
 		try {
 			bpeencoder.encode(bpe_input_segment, boutput);
@@ -483,11 +483,11 @@ TEST(bpe, EncoderRound) {
 
 		{
 			size_t compressed_index = 0;
-			auto bpe_debug_input_buffer_callback = [&compressed, &compressed_index]() -> uint64_t {
+			auto bpe_debug_input_buffer_callback = [&compressed, &compressed_index]() -> uintptr_t {
 				// static auto iter = compressed.begin();
 				return compressed[compressed_index++];
 			};
-			ibitwrapper<uint64_t> binput(bpe_debug_input_buffer_callback, stage_limit << 3);
+			ibitwrapper<uintptr_t> binput(bpe_debug_input_buffer_callback, stage_limit << 3);
 
 			try {
 				bpedecoder.decode(backward_input, binput);

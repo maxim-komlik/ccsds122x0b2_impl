@@ -7,7 +7,6 @@ add_executable(cli)
 target_sources(cli
 	PRIVATE
 		"${CLI_SOURCE_DIR}cli.cpp"
-		"${CLI_SOURCE_DIR}contextual_parser.tpp"
 		"${CLI_SOURCE_DIR}expected.hpp"
 		"${CLI_SOURCE_DIR}file_utility.cpp"
 		"${CLI_SOURCE_DIR}help_context.hpp"
@@ -16,6 +15,7 @@ target_sources(cli
 		"${CLI_SOURCE_DIR}commands/core_environment.hpp"
 		"${CLI_SOURCE_DIR}commands/core_environment.tpp"
 		"${CLI_SOURCE_DIR}commands/load_image.tpp"
+		"${CLI_SOURCE_DIR}parameters/contextual_parser.tpp"
 		"${CLI_SOURCE_DIR}parameters/parameters.cpp"
 		"${CLI_SOURCE_DIR}parameters/root.cpp"
 		"${CLI_SOURCE_DIR}parameters/validation.hpp"
@@ -25,7 +25,6 @@ target_sources(cli
 	PRIVATE
 		"${CLI_SOURCE_DIR}cli.hpp"
 		"${CLI_SOURCE_DIR}file_utility.hpp"
-		"${CLI_SOURCE_DIR}parameters_context.hpp"
 		"${CLI_SOURCE_DIR}utility.hpp"
 		"${CLI_SOURCE_DIR}meta.hpp"
 		"${CLI_SOURCE_DIR}commands/compress.hpp"
@@ -33,6 +32,7 @@ target_sources(cli
 		"${CLI_SOURCE_DIR}exception/exception.hpp"
 		"${CLI_SOURCE_DIR}parameters/compress.hpp"
 		"${CLI_SOURCE_DIR}parameters/parameters.hpp"
+		"${CLI_SOURCE_DIR}parameters/parameters_context.hpp"
 		"${CLI_SOURCE_DIR}parameters/restore.hpp"
 		"${CLI_SOURCE_DIR}parameters/root.hpp"
 		"${CLI_SOURCE_DIR}parameters/compress/parameters.hpp"
@@ -51,11 +51,8 @@ target_sources(cli
 set_source_files_properties(
 	"${CLI_SOURCE_DIR}commands/compress.cpp"
 	PROPERTIES
-		COMPILE_OPTIONS "/bigobj"
-		# synonims for:
-		# 	gcc: -mbig-obj
-		# 	clang: -bigobj (same should work)
-)
+		COMPILE_OPTIONS "${COMPILER_BIGOBJ_FLAG}"
+	)
 
 target_include_directories(cli
 	PRIVATE

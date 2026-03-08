@@ -175,7 +175,7 @@ constexpr size_t ccsds_protocol::max_header_size() noexcept {
 
 template <typename DerivedProtocolT>
 template <typename T>
-static DerivedProtocolT ccsds_header_parser<DerivedProtocolT>::parse_header(ibitwrapper<T>& src) {
+DerivedProtocolT ccsds_header_parser<DerivedProtocolT>::parse_header(ibitwrapper<T>& src) {
 	constexpr size_t max_byte_limit = 1 << 27;
 
 	bool valid = true;

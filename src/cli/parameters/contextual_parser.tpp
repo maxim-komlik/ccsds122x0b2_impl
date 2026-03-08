@@ -165,7 +165,7 @@ private:
 		auto immediates_parser = [&]<size_t... indices>(std::index_sequence<indices...>) {
 			auto param_parser = [&]<size_t index>() {
 				using description_t = std::tuple_element_t<index, immediates_t>;
-				cli::expected<typename description_t::value_t> parse_result = description_t::parser_t().parse(tokens);
+				cli::expected<typename description_t::value_t> parse_result = typename description_t::parser_t().parse(tokens);
 				if (!parse_result) {
 					handle_parsing_error.template operator()<index>(parse_result.error());
 					return;
@@ -195,7 +195,7 @@ private:
 								tokens.pop_back();
 
 								using description_t = std::tuple_element_t<index, named_t>;
-								cli::expected<typename description_t::value_t> parse_result = description_t::parser_t().parse(tokens);
+								cli::expected<typename description_t::value_t> parse_result = typename description_t::parser_t().parse(tokens);
 								if (!parse_result) {
 									// e.g. integer is parsed, but does not satisfy constraints/min-max limits
 									handle_parsing_error.template operator()<storage_index>(parse_result.error());
@@ -287,9 +287,9 @@ private:
 				std::string_view help_parameter = tokens[tokens.size() - 2];
 				std::invoke(
 					[&]<size_t... indices>(std::index_sequence<indices...>) -> void {
-						auto item_handler = [&]<size_t index>() -> void {
-							constexpr size_t storage_index = immediates_size + index;
-							if (help_parameter == named_description<index>().name) {
+						auto item_handler = [&]<size_t item_index>() -> void {
+							constexpr size_t storage_index = immediates_size + item_index;
+							if (help_parameter == named_description<item_index>().name) {
 								help_cx->param_help = make_parameter_help<storage_index>();
 							}
 						};
@@ -427,8 +427,7 @@ private:
 				constexpr bool default_value = contextual_parser::get_description<index>().default_value.value();
 				if (default_value) {
 					return "true"sv;
-				}
-				else {
+				} else {
 					return "false"sv;
 				}
 			});
@@ -525,7 +524,9 @@ private:
 			});
 
 		using namespace std::literals;
-		constexpr std::string_view space = " "sv;
+		// TODO: PATCHME: static is not needed here per the standard.
+		// but it doesn't compile otherwise on clang (due to lambda capture handling)
+		static constexpr std::string_view space = " "sv;
 		constexpr std::string_view optional_open = "["sv;
 		constexpr std::string_view optional_close = "]"sv;
 

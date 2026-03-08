@@ -68,13 +68,13 @@ struct _dwtscale;
 
 template <typename T>
 struct _dwtscale<T, true> {
-	using type = typename _dwtscale_i<T>;
+	using type = _dwtscale_i<T>;
 };
 
 template <typename T>
 struct _dwtscale<T, false> {
-	using type = typename _dwtscale_f<T>;
+	using type = _dwtscale_f<T>;
 };
 
 template <typename T>
-using dwtscale = _dwtscale<T, std::is_integral_v<T>>::type;
+using dwtscale = typename _dwtscale<T, std::is_integral_v<T>>::type;

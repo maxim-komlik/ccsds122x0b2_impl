@@ -3,9 +3,10 @@
 #include <variant>
 #include <string>
 #include <array>
-#include <type_traits>
+#include <algorithm>
 #include <utility>
 #include <system_error> // ?
+#include <type_traits>
 
 #include "cli.hpp"
 

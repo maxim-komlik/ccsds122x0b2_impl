@@ -7,7 +7,7 @@
 #include "test_utils.tpp"
 
 TEST(sparse, dwtiRound) {
-	typedef long long item_t;
+	typedef int64_t item_t;
 	constexpr size_t alignment = 16;
 	img_pos props;
 	props.width = 1 << 10;
@@ -41,7 +41,7 @@ TEST(sparse, dwtiRound) {
 }
 
 TEST(sparse, segmentsRound) {
-	typedef long long item_t;
+	typedef int64_t item_t;
 	constexpr size_t alignment = 16;
 	img_pos props;
 	props.width = 1 << 10;
@@ -106,7 +106,7 @@ TEST(sparse, segmentsRound) {
 }
 
 TEST(sparse, bpeRound) {
-	typedef long long item_t;
+	typedef int64_t item_t;
 	constexpr size_t alignment = 16;
 	img_pos props;
 	props.width = 1 << 10;
@@ -132,16 +132,16 @@ TEST(sparse, bpeRound) {
 	bpeencoder.set_use_heuristic_bdepthAc(false);
 	BitPlaneDecoder<decltype(bpe_input_segment)::type> bpedecoder;
 
-	std::vector<uint64_t> compressed;
+	std::vector<uintptr_t> compressed;
 	// constexpr size_t stage_limit = 0x0937; // stage 2 debug
 	// constexpr size_t stage_limit = 0x0a4a; // stage 3 debug
 	constexpr size_t stage_limit = (0x01 << 24) - 1;
 
 	{
-		auto bpe_debug_output_buffer_callback = [&compressed](uint64_t item) -> void {
+		auto bpe_debug_output_buffer_callback = [&compressed](uintptr_t item) -> void {
 			compressed.push_back(item);
 		};
-		obitwrapper<uint64_t> boutput(bpe_debug_output_buffer_callback, stage_limit << 3);
+		obitwrapper<uintptr_t> boutput(bpe_debug_output_buffer_callback, stage_limit << 3);
 
 		try {
 			bpeencoder.encode(bpe_input_segment, boutput);
@@ -179,11 +179,11 @@ TEST(sparse, bpeRound) {
 
 		{
 			size_t compressed_index = 0;
-			auto bpe_debug_input_buffer_callback = [&compressed, &compressed_index]() -> uint64_t {
+			auto bpe_debug_input_buffer_callback = [&compressed, &compressed_index]() -> uintptr_t {
 				// static auto iter = compressed.begin();
 				return compressed[compressed_index++];
 				};
-			ibitwrapper<uint64_t> binput(bpe_debug_input_buffer_callback, stage_limit << 3);
+			ibitwrapper<uintptr_t> binput(bpe_debug_input_buffer_callback, stage_limit << 3);
 
 			try {
 				bpedecoder.decode(backward_input, binput);
@@ -243,7 +243,7 @@ TEST(sparse, bpeRound) {
 }
 
 TEST(sparse, bpeRound_002) {
-	typedef long long item_t;
+	typedef int64_t item_t;
 	constexpr size_t alignment = 16;
 	img_pos props;
 	props.width = 1 << 10;
@@ -269,16 +269,16 @@ TEST(sparse, bpeRound_002) {
 	bpeencoder.set_use_heuristic_bdepthAc(false);
 	BitPlaneDecoder<decltype(bpe_input_segment)::type> bpedecoder;
 
-	std::vector<uint64_t> compressed;
+	std::vector<uintptr_t> compressed;
 	// constexpr size_t stage_limit = 0x0937; // stage 2 debug
 	// constexpr size_t stage_limit = 0x0a4a; // stage 3 debug
 	constexpr size_t stage_limit = (0x01 << 24) - 1;
 
 	{
-		auto bpe_debug_output_buffer_callback = [&compressed](uint64_t item) -> void {
+		auto bpe_debug_output_buffer_callback = [&compressed](uintptr_t item) -> void {
 			compressed.push_back(item);
 		};
-		obitwrapper<uint64_t> boutput(bpe_debug_output_buffer_callback, stage_limit << 3);
+		obitwrapper<uintptr_t> boutput(bpe_debug_output_buffer_callback, stage_limit << 3);
 
 		try {
 			bpeencoder.encode(bpe_input_segment, boutput);
@@ -316,11 +316,11 @@ TEST(sparse, bpeRound_002) {
 
 		{
 			size_t compressed_index = 0;
-			auto bpe_debug_input_buffer_callback = [&compressed, &compressed_index]() -> uint64_t {
+			auto bpe_debug_input_buffer_callback = [&compressed, &compressed_index]() -> uintptr_t {
 				// static auto iter = compressed.begin();
 				return compressed[compressed_index++];
 				};
-			ibitwrapper<uint64_t> binput(bpe_debug_input_buffer_callback, stage_limit << 3);
+			ibitwrapper<uintptr_t> binput(bpe_debug_input_buffer_callback, stage_limit << 3);
 
 			try {
 				bpedecoder.decode(backward_input, binput);
@@ -380,7 +380,7 @@ TEST(sparse, bpeRound_002) {
 }
 
 TEST(sparse, bpeRound_003) {
-	typedef long long item_t;
+	typedef int64_t item_t;
 	constexpr size_t alignment = 16;
 	img_pos props;
 	props.width = 1 << 10;
@@ -406,16 +406,16 @@ TEST(sparse, bpeRound_003) {
 	bpeencoder.set_use_heuristic_bdepthAc(false);
 	BitPlaneDecoder<decltype(bpe_input_segment)::type> bpedecoder;
 
-	std::vector<uint64_t> compressed;
+	std::vector<uintptr_t> compressed;
 	// constexpr size_t stage_limit = 0x0937; // stage 2 debug
 	// constexpr size_t stage_limit = 0x0a4a; // stage 3 debug
 	constexpr size_t stage_limit = (0x01 << 24) - 1;
 
 	{
-		auto bpe_debug_output_buffer_callback = [&compressed](uint64_t item) -> void {
+		auto bpe_debug_output_buffer_callback = [&compressed](uintptr_t item) -> void {
 			compressed.push_back(item);
 		};
-		obitwrapper<uint64_t> boutput(bpe_debug_output_buffer_callback, stage_limit << 3);
+		obitwrapper<uintptr_t> boutput(bpe_debug_output_buffer_callback, stage_limit << 3);
 
 		try {
 			bpeencoder.encode(bpe_input_segment, boutput);
@@ -453,11 +453,11 @@ TEST(sparse, bpeRound_003) {
 
 		{
 			size_t compressed_index = 0;
-			auto bpe_debug_input_buffer_callback = [&compressed, &compressed_index]() -> uint64_t {
+			auto bpe_debug_input_buffer_callback = [&compressed, &compressed_index]() -> uintptr_t {
 				// static auto iter = compressed.begin();
 				return compressed[compressed_index++];
 				};
-			ibitwrapper<uint64_t> binput(bpe_debug_input_buffer_callback, stage_limit << 3);
+			ibitwrapper<uintptr_t> binput(bpe_debug_input_buffer_callback, stage_limit << 3);
 
 			try {
 				bpedecoder.decode(backward_input, binput);

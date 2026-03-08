@@ -133,7 +133,7 @@ TEST(experimental, DISABLED_quantizationValueCheck) {
 #include "io/ccsds_protocol.hpp"
 
 TEST(compile, io) {
-	typedef long long item_t;
+	typedef int64_t item_t;
 	constexpr size_t alignment = 16;
 	img_pos props;
 	props.width = 1 << 10;

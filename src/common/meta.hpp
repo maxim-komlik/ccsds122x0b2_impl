@@ -300,7 +300,7 @@ public:
 template <typename T2, typename... Ts>
 struct tuple_merge<std::tuple<Ts...>, T2> {
 private:
-	static_assert(is_tuple_v<T2> == true);
+	static_assert(is_tuple<T2>::value == true);
 
 	using head = std::tuple<Ts...>;
 	using tail = T2;
@@ -386,7 +386,7 @@ using namespace std::literals;
 
 template <size_t N>
 consteval std::span<const char, N - 1> trim_terminator(std::span<const char, N> value) {
-	return value.first<N - 1>();
+	return value.template first<N - 1>();
 }
 
 template <auto value>
@@ -431,17 +431,17 @@ struct static_string {
 
 	template <size_t M>
 	consteval static_string<N - M> substr() const {
-		return make_static_string(std::span(this->value).subspan<M>().first<N - M>());
+		return make_static_string(std::span(this->value).template subspan<M>().template first<N - M>());
 	}
 
 	template <size_t M>
 	consteval static_string<M> first() const {
-		return make_static_string(std::span(this->value).first<M>());
+		return make_static_string(std::span(this->value).template first<M>());
 	}
 
 	template <size_t M>
 	consteval static_string<M> last() const {
-		return make_static_string(std::span(this->value).last<M + 1>().first<M>());
+		return make_static_string(std::span(this->value).template last<M + 1>().template first<M>());
 	}
 };
 
@@ -518,8 +518,8 @@ consteval auto to_static_string() {
 	static_assert(std::is_same_v<T, std::integral_constant<typename T::value_type, T::value>>);
 
 	constexpr auto untrimmed = to_static_string(T::value, base);
-	constexpr size_t trim_count = untrimmed.count_leading_spaces<'\0'>();
-	return untrimmed.substr<trim_count>();
+	constexpr size_t trim_count = untrimmed.template count_leading_spaces<'\0'>();
+	return untrimmed.template substr<trim_count>();
 }
 
 }

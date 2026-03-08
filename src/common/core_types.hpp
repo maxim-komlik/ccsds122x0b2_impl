@@ -3,7 +3,7 @@
 #include <array>
 #include <vector>
 
-#include "dwt\bitmap.tpp"
+#include "dwt/bitmap.tpp"
 #include "aligned_vector.tpp"
 
 #include "constant.hpp"
@@ -48,5 +48,5 @@ struct segment {
 	size_t referenceBdepthAc;
 	aligned_vector<size_t> quantizedBdepthAc;
 
-	std::vector<typename block<T>> data;
+	std::vector<block<T>> data;
 };

@@ -316,7 +316,7 @@ subbands_t<T> ForwardWaveletTransformer<T, alignment>::apply(const bitmap<iT>& s
 			this->transform(static_cast<const_bitmap_slice<T>>(hout), hhout, hlout, hxout_drop_offset, hxout_drop_offset);
 
 			// src = static_cast<const_bitmap_slice<T>>(llout);
-			src.emplace<buffer_slice_index>(static_cast<const_bitmap_slice<T>>(llout));
+			src.template emplace<buffer_slice_index>(static_cast<const_bitmap_slice<T>>(llout));
 			src_is_image_data = false;
 		}
 
@@ -765,7 +765,7 @@ bitmap<oT> BackwardWaveletTransformer<T, alignment>::apply(subbands_t<T>& subban
 	// restore original image transpose is needed. Therefore inverted
 	// logic here.
 	if (!this->transpose_output) {
-		return dst.transpose<oT>();
+		return dst.template transpose<oT>();
 	}
 	return static_cast<bitmap<oT>>(dst);
 }

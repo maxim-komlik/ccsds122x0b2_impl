@@ -34,7 +34,7 @@ struct command_parser {
 
 	cli::expected<value_t> parse(std::vector<std::string_view>& tokens) {
 		return value_t{
-			std::make_optional<CommandParamsParser::value_t>(CommandParamsParser().parse(tokens).value())
+			std::make_optional<typename CommandParamsParser::value_t>(CommandParamsParser().parse(tokens).value())
 		};
 	}
 

@@ -2,6 +2,8 @@
 
 #include <array>
 #include <functional>
+#include <cstddef>
+#include <cstdint>
 
 #include "common/constant.hpp"
 

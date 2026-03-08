@@ -451,6 +451,9 @@ struct HeaderPart_4 : bitfield<HeaderPart_4> {
 			// default values for shifts provided, disable custom shifts
 			this->set_CustomWtFlag(false);
 		}
+		// TODO: PATCHME: msvc doesn't handle constexpr variables correctly in regard of lambda capturing, 
+		// therefore static is specified explicitly as a workaround
+		// 
 		// LL3, HL3, LH3, HH3, HL2, LH2, HH2, HL1, LH1, HH1
 		static constexpr std::array shift_fields_names{
 			"CustomWtLL__3"sv, 
@@ -506,7 +509,7 @@ struct HeaderPart_4 : bitfield<HeaderPart_4> {
 
 	shifts_t get_CustomWt() const {
 		shifts_t result;
-		// TODO: static is not needed here as per the standard. 
+		// TODO: PATCHME: static is not needed here as per the standard. 
 		// However, it doesn't compile on msvc otherwise, seems to be msvc bug.
 		static constexpr std::array shift_fields_names{
 			"CustomWtLL__3"sv, 

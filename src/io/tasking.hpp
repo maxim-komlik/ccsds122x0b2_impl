@@ -506,34 +506,34 @@ public:
 		template <typename Trunk, typename... Branches>
 		struct fuse_branches_onto_common_trunc {
 		private:
-			template <typename Root, typename... Branches>
+			template <typename BaseTrunk, typename... DerivedBranches>
 			struct follow_common_root {
 				using type = meta::tuple_replace_last_element_t<
-					Root, 
+					BaseTrunk, 
 					typename fuse_branches_onto_common_trunc<
-						meta::tuple_element_last_t<Root>,
-						meta::tuple_element_last_t<Branches>...
+						meta::tuple_element_last_t<BaseTrunk>,
+						meta::tuple_element_last_t<DerivedBranches>...
 					>::type>;
 			};
 	
-			template <typename Root, typename... Branches>
-			struct follow_common_root<split_token<Root>, Branches...> {
+			template <typename BaseTrunk, typename... DerivedBranches>
+			struct follow_common_root<split_token<BaseTrunk>, DerivedBranches...> {
 				using type = split_token<
 					meta::tuple_replace_last_element_t<
-						Root, 
+						BaseTrunk, 
 						typename fuse_branches_onto_common_trunc<
-							meta::tuple_element_last_t<Root>,
-							meta::tuple_element_last_t<typename Branches::branch_t>...
+							meta::tuple_element_last_t<BaseTrunk>,
+							meta::tuple_element_last_t<typename DerivedBranches::branch_t>...
 						>::type>>;
 			};
 	
 	
-			template <typename Root, typename... Branches>
+			template <typename BaseTrunk, typename... DerivedBranches>
 			struct merge_branches;
 	
-			template <typename... Branches>
-			struct merge_branches<task_fork_node_t<>, Branches...> {
-				using type = std::tuple<meta::tuple_remove_first_element_t<Branches>...>;
+			template <typename... DerivedBranches>
+			struct merge_branches<task_fork_node_t<>, DerivedBranches...> {
+				using type = std::tuple<meta::tuple_remove_first_element_t<DerivedBranches>...>;
 			};
 	
 	
@@ -578,11 +578,11 @@ public:
 		};
 	
 	
-		template <typename T>
+		template <typename Tip>
 		struct graph_parser;
 	
-		template <typename T>
-		struct graph_parser<branch<T>> {
+		template <typename Tip>
+		struct graph_parser<branch<Tip>> {
 		private:
 			template <typename T>
 			struct node_parser;
@@ -647,7 +647,7 @@ public:
 	
 	
 		private:
-			using root_node_t = remove_root_fuse_token_t<typename branch<T>::content>;
+			using root_node_t = remove_root_fuse_token_t<typename branch<Tip>::content>;
 		public:
 			using parsed = node_parser<root_node_t>::type;
 		};

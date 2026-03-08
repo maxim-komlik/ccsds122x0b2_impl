@@ -7,7 +7,7 @@
 #include "dwt/dwt.hpp"
 
 TEST(dwti, framedTransform) {
-	typedef long long item_t;
+	typedef int64_t item_t;
 	img_pos props;
 	props.width = (1 << 10) - 7;
 	props.height = (1 << 11) - 7;
@@ -126,7 +126,7 @@ TEST(dwti, framedTransform) {
 }
 
 TEST(dwti, narrowFrameTransform) {
-	typedef long long item_t;
+	typedef int64_t item_t;
 	img_pos props;
 	props.width = (1 << 10) - 7;
 	props.height = (1 << 9) - 7;
@@ -247,7 +247,7 @@ TEST(dwti, narrowFrameTransform) {
 #include <dwt/segment_assembly.hpp>
 
 TEST(segments, framedTransform) {
-	typedef long long item_t;
+	typedef int64_t item_t;
 	img_pos props;
 	props.width = (1 << 9) - 7;
 	props.height = (1 << 11) - 7;
@@ -496,7 +496,7 @@ TEST(bpe, framedTransform) {
 	auto coded = precoder.apply(std::move(merged_subbands));
 	decltype(coded) coded_copy(coded.size());
 	
-	std::vector<std::vector<uint64_t>> compressed_segments(coded.size());
+	std::vector<std::vector<uintptr_t>> compressed_segments(coded.size());
 	BitPlaneEncoder<item_t> encoder;
 	encoder.set_use_heuristic_DC(false);
 	encoder.set_use_heuristic_bdepthAc(false);
@@ -517,10 +517,10 @@ TEST(bpe, framedTransform) {
 		coded_copy[i] = std::make_unique<segment<item_t>>(*coded[i]);
 	
 		auto& segment_storage = compressed_segments[i];
-		auto bpe_debug_output_buffer_callback = [&segment_storage](uint64_t item) -> void {
+		auto bpe_debug_output_buffer_callback = [&segment_storage](uintptr_t item) -> void {
 			segment_storage.push_back(item);
 		};
-		obitwrapper<uint64_t> boutput(bpe_debug_output_buffer_callback);
+		obitwrapper<uintptr_t> boutput(bpe_debug_output_buffer_callback);
 		encoder.encode(*coded[i], boutput);
 		boutput.flush();
 	}
@@ -531,11 +531,11 @@ TEST(bpe, framedTransform) {
 		auto& target_segment = *decompressed_segments[i];
 	
 		size_t compressed_index = 0;
-		auto bpe_debug_input_buffer_callback = [&segment_storage, &compressed_index]() -> uint64_t {
+		auto bpe_debug_input_buffer_callback = [&segment_storage, &compressed_index]() -> uintptr_t {
 			return segment_storage[compressed_index++];
 		};
 	
-		ibitwrapper<uint64_t> binput(bpe_debug_input_buffer_callback);
+		ibitwrapper<uintptr_t> binput(bpe_debug_input_buffer_callback);
 	
 		decoder.decode(target_segment, binput);
 	
@@ -686,7 +686,7 @@ bitmap<T> image_round_transform(bitmap<T>& img, size_t frame_width, size_t segme
 	auto coded = precoder.apply(std::move(merged_subbands));
 	decltype(coded) coded_copy(coded.size());
 
-	std::vector<std::vector<uint64_t>> compressed_segments(coded.size());
+	std::vector<std::vector<uintptr_t>> compressed_segments(coded.size());
 	BitPlaneEncoder<item_t> encoder;
 	encoder.set_use_heuristic_DC(false);
 	encoder.set_use_heuristic_bdepthAc(false);
@@ -707,10 +707,10 @@ bitmap<T> image_round_transform(bitmap<T>& img, size_t frame_width, size_t segme
 		coded_copy[i] = std::make_unique<segment<item_t>>(*coded[i]);
 	
 		auto& segment_storage = compressed_segments[i];
-		auto bpe_debug_output_buffer_callback = [&segment_storage](uint64_t item) -> void {
+		auto bpe_debug_output_buffer_callback = [&segment_storage](uintptr_t item) -> void {
 			segment_storage.push_back(item);
 		};
-		obitwrapper<uint64_t> boutput(bpe_debug_output_buffer_callback);
+		obitwrapper<uintptr_t> boutput(bpe_debug_output_buffer_callback);
 		encoder.encode(*coded[i], boutput);
 		boutput.flush();
 	}
@@ -721,11 +721,11 @@ bitmap<T> image_round_transform(bitmap<T>& img, size_t frame_width, size_t segme
 		auto& target_segment = *decompressed_segments[i];
 	
 		size_t compressed_index = 0;
-		auto bpe_debug_input_buffer_callback = [&segment_storage, &compressed_index]() -> uint64_t {
+		auto bpe_debug_input_buffer_callback = [&segment_storage, &compressed_index]() -> uintptr_t {
 			return segment_storage[compressed_index++];
 		};
 	
-		ibitwrapper<uint64_t> binput(bpe_debug_input_buffer_callback);
+		ibitwrapper<uintptr_t> binput(bpe_debug_input_buffer_callback);
 	
 		decoder.decode(target_segment, binput);
 
@@ -755,7 +755,7 @@ bitmap<T> image_round_transform(bitmap<T>& img, size_t frame_width, size_t segme
 }
 
 TEST(bpe, framedTransformParameterized) {
-	typedef long long item_t;
+	typedef int64_t item_t;
 	img_pos props;
 	props.width = (1 << 9) - 7;
 	props.height = (1 << 11) - 7;
