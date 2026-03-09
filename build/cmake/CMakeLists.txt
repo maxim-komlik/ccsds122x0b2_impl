@@ -21,10 +21,12 @@ if(NOT DEFINED COMPILER_BIGOBJ_FLAG)
     set(COMPILER_BIGOBJ_FLAG "-bigobj") # some default
 
     include(CheckCompilerFlag)
-    check_compiler_flag(CXX "-mbig-obj" BIGOBJ_NAME_MATCHED) # gcc
-    if("${BIGOBJ_NAME_MATCHED}")
-        set(COMPILER_BIGOBJ_FLAG "-mbig-obj")
-    endif()
+    # -mbig-obj is invalid for GCC as is
+    # 
+    # check_compiler_flag(CXX "-mbig-obj" BIGOBJ_NAME_MATCHED) # gcc
+    # if("${BIGOBJ_NAME_MATCHED}")
+    #     set(COMPILER_BIGOBJ_FLAG "-mbig-obj")
+    # endif()
 
     check_compiler_flag(CXX "/bigobj" BIGOBJ_NAME_MATCHED) # msvc
     if("${BIGOBJ_NAME_MATCHED}")

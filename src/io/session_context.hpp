@@ -195,6 +195,7 @@ private:
 	template <typename Context>
 	struct register_operations_impl;
 
+	// TODO: PATCHME: gcc is not compliant with the standard in regards of cwg727 as for March 2026 (9 years later?)
 	template <>
 	struct register_operations_impl<dwt_context>;
 

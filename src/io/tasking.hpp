@@ -616,6 +616,8 @@ public:
 				using type = splitter_task<T, typename node_parser<typename subject_t::branch_t>::type>;
 			};
 	
+			// TODO: PATCHME: gcc is not compliant with the standard in regards of cwg727 as for March 2026 (9 years later?)
+			// 
 			// empty graph stub
 			template <>
 			struct node_parser<std::tuple<>> {

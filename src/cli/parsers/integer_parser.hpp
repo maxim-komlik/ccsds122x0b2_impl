@@ -45,6 +45,10 @@ private:
 	static consteval std::string_view generate_requirements() {
 		// TODO: PATCHME: static is not needed here per the standard.
 		// but it doesn't compile otherwise on clang (due to lambda capture handling)
+		//
+		// But then it doesn't compile under msvc, because per the standard static variable
+		// declarations are not allowed in constexpr functions (clang compiled it with no errors
+		// as C++23 extension)
 		static constexpr auto general_p1 = meta::make_static_string(meta::trim_terminator(
 			std::span{"Parameter value must be "}));
 		static constexpr auto unsigned_spec = meta::make_static_string(meta::trim_terminator(

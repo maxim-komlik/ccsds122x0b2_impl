@@ -9,6 +9,6 @@ set(CMAKE_C_COMPILER clang)
 set(COMPILER_BIGOBJ_FLAG "") # clang enables big object files silently?
 
 add_compile_options(-stdlib=libc++)
-add_compile_options(-Wno-error=c++11-narrowing -w) # disable warnings temporarily
+add_compile_options(-Wno-error=c++11-narrowing) # disable warnings temporarily
 
 add_link_options(-stdlib=libc++ -static-libstdc++)
