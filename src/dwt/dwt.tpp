@@ -15,7 +15,7 @@ class ForwardWaveletTransformer: private constants::dwt {
 	// H1, L1, LL1, H2, L2, LL2, H3, L3, LL3, HL3, LH3, HH3, HL2, LH2, HH2, HL1, LH1, HH1
 	// 
 	// the first 9 buffers are reusable for the given frame size; the rest contain output
-	std::array<typename bitmap<T>, 18> buffers; 
+	std::array<bitmap<T>, 18> buffers; 
 
 	dwtcore<T> core;
 	dwtscale<T> scale;
@@ -56,7 +56,7 @@ template <typename T, size_t alignment = 16>
 class BackwardWaveletTransformer: private constants::dwt {	
 	// buffers are allocated in the order below:
 	// H1, L1, LL1, H2, L2, LL2, H3, L3
-	std::array<typename bitmap<T>, 8> buffers;
+	std::array<bitmap<T>, 8> buffers;
 	dwtcore<T> core;
 	dwtscale<T> scale;
 

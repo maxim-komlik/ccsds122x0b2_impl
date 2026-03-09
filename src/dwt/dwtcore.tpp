@@ -221,12 +221,12 @@ struct _dwtcore;
 
 template <typename T>
 struct _dwtcore<T, true> {
-	using type = typename _dwtcore_i<T>;
+	using type = _dwtcore_i<T>;
 };
 
 template <typename T>
 struct _dwtcore<T, false> {
-	using type = typename _dwtcore_f<T>;
+	using type = _dwtcore_f<T>;
 };
 
 template <typename T>
@@ -301,7 +301,7 @@ namespace target {
 
 	template <typename T>
 	struct _dwtcore<T, true> {
-		using type = typename _dwtcore_i<T>;
+		using type = _dwtcore_i<T>;
 	};
 
 	template <typename T>

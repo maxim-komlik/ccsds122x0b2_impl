@@ -190,7 +190,7 @@ void file_sink<T>::finish_session(bool fill) {
 
 			while (remaining_count != 0) {
 				size_t block_size = std::min(remaining_count,
-					buffer.size() * sizeof(std::remove_reference_t<decltype(buffer)>::value_type));
+					buffer.size() * sizeof(typename std::remove_reference_t<decltype(buffer)>::value_type));
 				this->file_stream.sputn(reinterpret_cast<char*>(buffer.data()), block_size);
 				remaining_count -= block_size;
 			}
@@ -226,7 +226,7 @@ std::span<std::byte> file_sink<T>::get_overridable_header_area(size_t target_hea
 	auto& buffer = this->buffer_wrapper.buffer;
 
 	bool valid = true;
-	valid &= (target_header_size <= (buffer.size() * sizeof(std::remove_reference_t<decltype(buffer)>::value_type)));
+	valid &= (target_header_size <= (buffer.size() * sizeof(typename std::remove_reference_t<decltype(buffer)>::value_type)));
 	if (!valid) {
 		// TODO: error handling
 	}
@@ -315,10 +315,10 @@ template <typename T>
 void file_buffer_wrapper<T>::flush_buffer() {
 	if (std::endian::big != std::endian::native) {
 		std::transform(this->buffer.cbegin(), this->buffer.cbegin() + this->write_buffer_index,
-			this->buffer.begin(), byteswap<decltype(this->buffer)::value_type>);
+			this->buffer.begin(), byteswap<typename decltype(this->buffer)::value_type>);
 	}
 	auto wirtten_count = this->file_stream.sputn(reinterpret_cast<char*>(this->buffer.data()),
-		this->write_buffer_index * sizeof(decltype(this->buffer)::value_type));
+		this->write_buffer_index * sizeof(typename decltype(this->buffer)::value_type));
 	// TODO: error handling on partial write / written_count < target size?
 }
 
@@ -348,7 +348,7 @@ void file_buffer_wrapper<T>::fill_buffer() {
 	auto read_count = this->file_stream.sgetn(reinterpret_cast<char*>(this->buffer.data()),
 		buffer_capacity);
 	if (read_count < buffer_capacity) {
-		size_t value_type_mask = sizeof(decltype(this->buffer)::value_type) - 1;
+		size_t value_type_mask = sizeof(word_t) - 1;
 		std::fill_n(reinterpret_cast<char*>(this->buffer.data()) + read_count,
 			buffer_capacity - read_count, char{});
 		this->data_max_index = (read_count + value_type_mask) >> std::bit_width(value_type_mask);

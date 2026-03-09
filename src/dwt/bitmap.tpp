@@ -371,7 +371,7 @@ bitmap<D, a> bitmap<T, alignment>::transpose() const {
 	// }
 	// 
 	// return transposed;
-	return this->slice(this->single_frame_params()).transpose<D, a>();
+	return this->slice(this->single_frame_params()).template transpose<D, a>();
 }
 
 template <typename T, size_t alignment>

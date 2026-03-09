@@ -1,5 +1,3 @@
-#pragma once
-
 #include "bpe.tpp"
 
 #include <vector>
@@ -1040,7 +1038,7 @@ void BitPlaneDecoder<T>::decode(segment<T>& output, ibitwrapper<ibwT>& input) {
 			output.quantizedDc.data(),
 			output.size - 1,	// -1 because of a reference sample that is not part of the vector
 			output.bdepthDc - output.q,
-			(decltype(output.quantizedDc)::type)(0)
+			(typename decltype(output.quantizedDc)::type)(0)
 		};
 		kDecode(quantizedDcParams, input);
 		output.referenceSample = quantizedDcParams.reference;
@@ -1062,7 +1060,7 @@ void BitPlaneDecoder<T>::decode(segment<T>& output, ibitwrapper<ibwT>& input) {
 				output.quantizedBdepthAc.data(),
 				output.size - 1,	// -1 because of a reference sample that is not part of the vector
 				std::bit_width(output.bdepthAc),
-				(decltype(output.quantizedBdepthAc)::type)(0)
+				(typename decltype(output.quantizedBdepthAc)::type)(0)
 			};
 			kDecode(quantizedBdepthAcParams, input);
 			// TODO: maybe there's a bug, check usage and actual values during encoding and decoding.

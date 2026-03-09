@@ -56,7 +56,6 @@ extern template struct per_thread::compressors<int64_t>;
 
 extern template struct per_thread::compressors<float>;
 extern template struct per_thread::compressors<double>;
-extern template struct per_thread::compressors<long double>;
 
 extern template struct per_thread::decompressors<int8_t>;
 extern template struct per_thread::decompressors<int16_t>;
@@ -65,4 +64,3 @@ extern template struct per_thread::decompressors<int64_t>;
 
 extern template struct per_thread::decompressors<float>;
 extern template struct per_thread::decompressors<double>;
-extern template struct per_thread::decompressors<long double>;

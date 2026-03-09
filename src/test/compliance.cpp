@@ -5,7 +5,7 @@
 #include "dwt/dwt.hpp"
 
 TEST(dwti, minimalImageRound) {
-	typedef long long item_t;
+	typedef int64_t item_t;
 	img_pos props;
 	props.width = 17;
 	props.height = 17;
@@ -30,7 +30,7 @@ TEST(dwti, minimalImageRound) {
 }
 
 TEST(dwti, smallImage128Round) {
-	typedef long long item_t;
+	typedef int64_t item_t;
 	img_pos props;
 	props.width = 128;
 	props.height = 128;
@@ -55,7 +55,7 @@ TEST(dwti, smallImage128Round) {
 }
 
 TEST(dwti, smallImage256Round) {
-	typedef long long item_t;
+	typedef int64_t item_t;
 	img_pos props;
 	props.width = 256;
 	props.height = 256;

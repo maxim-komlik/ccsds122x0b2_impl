@@ -31,7 +31,7 @@ class BitPlaneEncoder:
 	bool use_heuristic_DC = false;
 	bool use_heuristic_bdepthAc = false;
 
-	struct {
+	struct entropy_buffers_impl {
 		// 21 variable length encoded words per block.
 		// 3 words have maximum length = 3
 		// 18 words have maximum length = 4

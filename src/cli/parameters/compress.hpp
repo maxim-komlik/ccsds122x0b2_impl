@@ -12,14 +12,32 @@
 
 #include "compress/parameters.hpp"
 
-namespace cli::parameters::compress {
+
+namespace cli::parameters {
+
+namespace compress {
+
+	namespace generate {
+		struct image_dimensions_parser;
+		struct generator_parser;
+	}
+	
+	struct source_parser;
+	struct destination_parser;
+	struct shifts_parser;
+	struct frame_dimensions_parser;
+	struct dwt_parser;
+	struct segment_parser;
+	struct stream_parser;
+	struct compress_parser;
+
+}
+
 
 using namespace cli::parsers;
 
-namespace generate {
-
 template <>
-struct parameter_context<image_dimensions> : public parameter_context_default {
+struct parameter_context<compress::generate::image_dimensions> : public parameter_context_default {
 	static constexpr immediate_parameters_description_t immediates {
 		parameter_description<unsigned_integer_parser<(1 << 20), 17>>{{}, {}, "Target image width"sv},
 		parameter_description<unsigned_integer_parser<std::numeric_limits<ptrdiff_t>::max(), 17>>{{}, {}, "Target image height"sv},
@@ -27,7 +45,7 @@ struct parameter_context<image_dimensions> : public parameter_context_default {
 	};
 };
 
-struct image_dimensions_parser {
+struct compress::generate::image_dimensions_parser {
 	using value_t = image_dimensions;
 
 	cli::expected<value_t> parse(std::vector<std::string_view>& tokens) {
@@ -48,9 +66,9 @@ public:
 
 
 template <>
-struct parameter_context<generator> : public parameter_context_default {
+struct parameter_context<compress::generate::generator> : public parameter_context_default {
 	static constexpr immediate_parameters_description_t immediates {
-		parameter_description<image_dimensions_parser>{{}, {}, "Target image dimensions"sv}
+		parameter_description<compress::generate::image_dimensions_parser>{{}, {}, "Target image dimensions"sv}
 	};
 
 	static constexpr named_parameters_description_t named {
@@ -60,7 +78,7 @@ struct parameter_context<generator> : public parameter_context_default {
 	};
 };
 
-struct generator_parser {
+struct compress::generate::generator_parser {
 	using value_t = generator;
 
 	cli::expected<value_t> parse(std::vector<std::string_view>& tokens) {
@@ -71,7 +89,7 @@ struct generator_parser {
 		return value_t{
 			cx_parser.get<0>(),
 			cx_parser.get<parser_t::name_to_index("--bdepth"sv)>(),
-			cx_parser.get<parser_t::name_to_index("--signed"sv)>(), 
+			cx_parser.get<parser_t::name_to_index("--signed"sv)>(),
 			cx_parser.get<parser_t::name_to_index("--seed"sv)>()
 		};
 	}
@@ -81,17 +99,15 @@ public:
 	static constexpr std::string_view placeholder = "<gen_params>"sv;
 };
 
-}
-
 
 template <>
-struct parameter_context<source> : public parameter_context_default {
+struct parameter_context<compress::source> : public parameter_context_default {
 	static constexpr immediate_parameters_description_t immediates{
-		parameter_description<enum_parser<src_type>>{{}, {}, "Image source type"sv}
+		parameter_description<enum_parser<compress::src_type>>{{}, {}, "Image source type"sv}
 	};
 };
 
-struct source_parser {
+struct compress::source_parser {
 	using value_t = source;
 
 	cli::expected<value_t> parse(std::vector<std::string_view>& tokens) {
@@ -126,17 +142,17 @@ public:
 
 
 template <>
-struct parameter_context<destination> : public parameter_context_default {
+struct parameter_context<compress::destination> : public parameter_context_default {
 	static constexpr immediate_parameters_description_t immediates{
-		parameter_description<enum_parser<dst_type>>{{}, {}, "Compressed segments destination type"sv}
+		parameter_description<enum_parser<compress::dst_type>>{{}, {}, "Compressed segments destination type"sv}
 	};
 
 	static constexpr named_parameters_description_t named{
-		parameter_description<enum_parser<protocol_type>>{"--protocol"sv, {protocol_type::standard}, "Protocol headers set to use in encoded segments"sv}
+		parameter_description<enum_parser<compress::protocol_type>>{"--protocol"sv, {compress::protocol_type::standard}, "Protocol headers set to use in encoded segments"sv}
 	};
 };
 
-struct destination_parser {
+struct compress::destination_parser {
 	using value_t = destination;
 
 	cli::expected<value_t> parse(std::vector<std::string_view>& tokens) {
@@ -183,7 +199,7 @@ public:
 
 
 template <>
-struct parameter_context<shifts>: public parameter_context_default {
+struct parameter_context<compress::shifts> : public parameter_context_default {
 	using shift_value_parser = unsigned_integer_parser<3>;
 
 	static constexpr immediate_parameters_description_t immediates {
@@ -201,7 +217,7 @@ struct parameter_context<shifts>: public parameter_context_default {
 	};
 };
 
-struct shifts_parser {
+struct compress::shifts_parser {
 	using value_t = shifts;
 
 	cli::expected<value_t> parse(std::vector<std::string_view>& tokens) {
@@ -230,15 +246,16 @@ public:
 	using default_representation_t = value_t;
 };
 
+
 template <>
-struct parameter_context<frame_dimensions> : public parameter_context_default {
+struct parameter_context<compress::frame_dimensions> : public parameter_context_default {
 	static constexpr immediate_parameters_description_t immediates{
 		parameter_description<unsigned_integer_parser<>>{{}, {}, "DWT moving frame width"sv},
 		parameter_description<unsigned_integer_parser<>>{{}, {}, "DWT moving frame height"sv}
 	};
 };
 
-struct frame_dimensions_parser {
+struct compress::frame_dimensions_parser {
 	using value_t = frame_dimensions;
 
 	cli::expected<value_t> parse(std::vector<std::string_view>& tokens) {
@@ -261,21 +278,21 @@ public:
 
 
 template <>
-struct parameter_context<dwt> : public parameter_context_default {
-	static constexpr shifts default_shifts = { { 3, 3, 3, 2, 2, 2, 1, 1, 1, 0 } };
-	static constexpr frame_dimensions default_dims = { 0, 0 };
+struct parameter_context<compress::dwt> : public parameter_context_default {
+	static constexpr compress::shifts default_shifts = { { 3, 3, 3, 2, 2, 2, 1, 1, 1, 0 } };
+	static constexpr compress::frame_dimensions default_dims = { 0, 0 };
 
 	static constexpr immediate_parameters_description_t immediates{
-		parameter_description<enum_parser<dwt_type>>{{}, dwt_type::integer, "Discrete Wavelet Transform type to apply to image"sv}
+		parameter_description<enum_parser<compress::dwt_type>>{{}, compress::dwt_type::integer, "Discrete Wavelet Transform type to apply to image"sv}
 	};
 
 	static constexpr named_parameters_description_t named{
-		parameter_description<frame_dimensions_parser>{"--frame"sv, {default_dims}, "Concurrent DWT processing frame dimensions"sv},
-		parameter_description<shifts_parser>{"--shifts"sv, {default_shifts}, "Custom weight coefficients for integer DWT"sv},
+		parameter_description<compress::frame_dimensions_parser>{"--frame"sv, {default_dims}, "Concurrent DWT processing frame dimensions"sv},
+		parameter_description<compress::shifts_parser>{"--shifts"sv, {default_shifts}, "Custom weight coefficients for integer DWT"sv},
 	};
 };
 
-struct dwt_parser {
+struct compress::dwt_parser {
 	using value_t = dwt;
 
 	cli::expected<value_t> parse(std::vector<std::string_view>& tokens) {
@@ -308,7 +325,7 @@ public:
 
 
 template <>
-struct parameter_context<segment::parameters_set> : public parameter_context_default {
+struct parameter_context<compress::segment::parameters_set> : public parameter_context_default {
 	static constexpr named_parameters_description_t named{
 		parameter_description<unsigned_integer_parser<>>{"--id"sv, {}, "First segment ID to apply setting to"sv}, 
 		parameter_description<unsigned_integer_parser<>>{"--id-for"sv, {0}, "Number of consequtive segments to apply setting to"sv}, 
@@ -319,7 +336,7 @@ struct parameter_context<segment::parameters_set> : public parameter_context_def
 	};
 };
 
-struct segment_parser {
+struct compress::segment_parser {
 	using value_t = segment;
 
 	cli::expected<value_t> parse(std::vector<std::string_view>& tokens) {
@@ -361,7 +378,7 @@ public:
 
 
 template <>
-struct parameter_context<stream::parameters_set> : public parameter_context_default {
+struct parameter_context<compress::stream::parameters_set> : public parameter_context_default {
 	static constexpr named_parameters_description_t named{
 		parameter_description<unsigned_integer_parser<>>{"--id"sv, {}, "First segment ID to apply setting to"sv},
 		parameter_description<unsigned_integer_parser<>>{"--id-for"sv, {0}, "Number of consequtive segments to apply setting to"sv},
@@ -374,7 +391,7 @@ struct parameter_context<stream::parameters_set> : public parameter_context_defa
 	};
 };
 
-struct stream_parser {
+struct compress::stream_parser {
 	using value_t = stream;
 
 	cli::expected<value_t> parse(std::vector<std::string_view>& tokens) {
@@ -420,23 +437,23 @@ public:
 
 
 template <>
-struct parameter_context<compress_command> : public parameter_context_default {
-	static constexpr segment default_segment = segment_parser::make_default();
-	static constexpr stream default_stream = stream_parser::make_default();
+struct parameter_context<compress::compress_command> : public parameter_context_default {
+	static constexpr compress::segment default_segment = compress::segment_parser::make_default();
+	static constexpr compress::stream default_stream = compress::stream_parser::make_default();
 
 	// TODO: default values for segmentation and compression parameters
 	static constexpr named_parameters_description_t named{
-		parameter_description<source_parser>{"--src"sv, {}, "Specifies input settings"sv},
-		parameter_description<destination_parser>{"--dst"sv, {}, "Specifies output settings"sv},
-		parameter_description<segment_parser>{"--segment"sv, {default_segment}, "Specifies segmentation settings"sv},
-		parameter_description<stream_parser>{"--stream"sv, {default_stream}, "Specifies output bit stream compression settings for segments"sv},
-		parameter_description<dwt_parser>{"--dwt"sv, {}, "Discrete Wavelet Transform type and parameters"sv},
+		parameter_description<compress::source_parser>{"--src"sv, {}, "Specifies input settings"sv},
+		parameter_description<compress::destination_parser>{"--dst"sv, {}, "Specifies output settings"sv},
+		parameter_description<compress::segment_parser>{"--segment"sv, {default_segment}, "Specifies segmentation settings"sv},
+		parameter_description<compress::stream_parser>{"--stream"sv, {default_stream}, "Specifies output bit stream compression settings for segments"sv},
+		parameter_description<compress::dwt_parser>{"--dwt"sv, {}, "Discrete Wavelet Transform type and parameters"sv},
 		parameter_description<flag_parser>{"--signed"sv, {false}, "Indicates that input image has signed pixel values"sv},
 		parameter_description<flag_parser>{"--transpose"sv, {false}, "Transpose input image before processing"sv}
 	};
 };
 
-struct compress_parser {
+struct compress::compress_parser {
 	using value_t = compress_command;
 
 	cli::expected<value_t> parse(std::vector<std::string_view>& tokens) {

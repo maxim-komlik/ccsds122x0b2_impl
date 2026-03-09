@@ -1,6 +1,8 @@
 #pragma once
 
 #include <bit>
+#include <cstddef>
+#include <cstdint>
 
 #include "common/constant.hpp"
 

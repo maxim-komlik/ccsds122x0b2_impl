@@ -82,7 +82,6 @@ public:
 	template <typename word_t>
 	void flush_word(word_t word);
 
-	template <>
 	void flush_word(buffer_t word) {
 		[[unlikely]]
 		if (this->dirty()) {
@@ -228,11 +227,13 @@ void obitwrapper<buffer_t>::flush_word(word_t word) {
 	if constexpr (sizeof(word_t) < sizeof(buffer_t)) {
 		(*this) << vlw_t{ sizeof(word) << 3, static_cast<vlw_t::type>(word) };
 	} else if constexpr (sizeof(word_t) == sizeof(buffer_t)) {
-		this->flush_word<buffer_t>(static_cast<buffer_t>(word));
+		// cast parameter type explicitly because overloaded by non-template
+		this->flush_word(static_cast<buffer_t>(word));
 	} else {
 		constexpr size_t ratio = sizeof(word_t) / sizeof(buffer_t);
 		for (ptrdiff_t i = (ptrdiff_t)(ratio - 1); i >= 0; --i) {
-			this->flush_word<buffer_t>(word >> (i * sizeof(buffer_t) * 8));
+			// cast parameter type explicitly because overloaded by non-template
+			this->flush_word(static_cast<buffer_t>(word >> (i * sizeof(buffer_t) * 8)));
 		}
 	}
 }

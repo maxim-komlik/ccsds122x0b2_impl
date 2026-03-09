@@ -941,7 +941,7 @@ compression_routines<T>::disassemble_segments(segmentation_context<subband_type,
 		std::lock_guard lock(data.tail_mx);
 		local_tail.swap(data.tail);
 	}
-	std::vector<decltype(local_tail)::value_type> segments;
+	std::vector<typename decltype(local_tail)::value_type> segments;
 	segments.reserve(local_tail.size());
 	std::move(local_tail.begin(), local_tail.end(), std::back_inserter(segments));
 
@@ -1087,7 +1087,7 @@ void compression_routines<T>::restore_image(segmentation_context<subband_type, s
 
 	auto& data = std::get<compression_data<T>>(cx.channel_cx.data);
 
-	auto fragment = transformer.apply<oT>(cx.subband_data, cx.top_overlap);
+	auto fragment = transformer.template apply<oT>(cx.subband_data, cx.top_overlap);
 	fragment.shrink(fragment.get_meta().height - (cx.bottom_overlap << 3));
 
 	image_memory_descriptor<oT> descriptor_data(std::move(fragment), cx.channel_cx.channel_index);

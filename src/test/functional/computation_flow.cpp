@@ -202,12 +202,12 @@ struct decompression_type_params {
 		using transform_tree = task_pool::flow_graph::root::then<decltype([](
 				segmentation_context<typename routine_set::subband_type, typename routine_set::segment_type> cx) {
 			return routine_set::disassemble_segments(std::move(cx));
-		})>::split<decltype([](segmentation_context<routine_set::subband_type, routine_set::segment_type> cx) -> void {
+		})>::template split<decltype([](segmentation_context<typename routine_set::subband_type, typename routine_set::segment_type> cx) -> void {
 			routine_set::template restore_image<img_t>(std::move(cx));
 		})>;
 
 		using postprocess_tree = task_pool::flow_graph::root::then<decltype([](
-				segmentation_context<routine_set::subband_type, routine_set::segment_type> cx) -> void {
+				segmentation_context<typename routine_set::subband_type, typename routine_set::segment_type> cx) -> void {
 			routine_set::template postprocess_image<img_t>(std::move(cx));
 		})>;
 
@@ -218,7 +218,7 @@ struct decompression_type_params {
 			compression_context<typename routine_set::segment_type> context{
 				generate_compression_id(),
 				cx->channel_contexts[z],
-				std::make_unique<segment<routine_set::segment_type>>(),
+				std::make_unique<segment<typename routine_set::segment_type>>(),
 				handles[id]
 			};
 			context.segment_data->id = id;
@@ -229,7 +229,7 @@ struct decompression_type_params {
 		pool.execute_flow();
 
 		for (ptrdiff_t i = 0; i < cx->channel_contexts.size(); ++i) {
-			segmentation_context<routine_set::subband_type, routine_set::segment_type> context{
+			segmentation_context<typename routine_set::subband_type, typename routine_set::segment_type> context{
 				generate_segmentation_id(), 
 				cx->channel_contexts[i], 
 				{}, 
@@ -242,7 +242,7 @@ struct decompression_type_params {
 		pool.execute_flow();
 
 		for (ptrdiff_t i = 0; i < cx->channel_contexts.size(); ++i) {
-			segmentation_context<routine_set::subband_type, routine_set::segment_type> context{
+			segmentation_context<typename routine_set::subband_type, typename routine_set::segment_type> context{
 				generate_segmentation_id(),
 				cx->channel_contexts[i],
 				{},

@@ -11,7 +11,7 @@ namespace {
 
 	template <typename T>
 	struct validator_mapping {
-		using validator_t = validate::validation_context(const T::value_t&);
+		using validator_t = validate::validation_context(const typename T::value_t&);
 
 		T command_line_parameters::* arg_ptr;
 		validator_t* validator_ptr;
@@ -19,7 +19,7 @@ namespace {
 
 	template <typename T>
 	struct execution_mapping {
-		using executor_t = void(const T::value_t&);
+		using executor_t = void(const typename T::value_t&);
 
 		T command_line_parameters::* arg_ptr;
 		executor_t* validator_ptr;

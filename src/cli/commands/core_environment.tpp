@@ -171,12 +171,12 @@ struct flow_impl {
 		})>;
 
 		using compress_tree = task_pool::flow_graph::root::then<decltype([](dwt_context cx) -> 
-				segmentation_context<routine_set::subband_type, routine_set::segment_type> {
+				segmentation_context<typename routine_set::subband_type, typename routine_set::segment_type> {
 			return routine_set::preprocess_fragments(std::move(cx));
-		})>::template then<decltype([](segmentation_context<routine_set::subband_type, routine_set::segment_type> cx) ->
-				std::vector<compression_context<routine_set::segment_type>> {
+		})>::template then<decltype([](segmentation_context<typename routine_set::subband_type, typename routine_set::segment_type> cx) ->
+				std::vector<compression_context<typename routine_set::segment_type>> {
 			return routine_set::assemble_segments(std::move(cx));
-		})>::template split<decltype([](compression_context<routine_set::segment_type> cx) -> void {
+		})>::template split<decltype([](compression_context<typename routine_set::segment_type> cx) -> void {
 			routine_set::compress_segment(std::move(cx));
 		})>;
 
@@ -193,12 +193,12 @@ struct flow_impl {
 		using transform_tree = task_pool::flow_graph::root::then<decltype([](
 				segmentation_context<typename routine_set::subband_type, typename routine_set::segment_type> cx) {
 			return routine_set::disassemble_segments(std::move(cx));
-		})>::template split<decltype([](segmentation_context<routine_set::subband_type, routine_set::segment_type> cx) -> void {
+		})>::template split<decltype([](segmentation_context<typename routine_set::subband_type, typename routine_set::segment_type> cx) -> void {
 			routine_set::template restore_image<img_t>(std::move(cx));
 		})>;
 
 		using postprocess_tree = task_pool::flow_graph::root::then<decltype([](
-				segmentation_context<routine_set::subband_type, routine_set::segment_type> cx) -> void {
+				segmentation_context<typename routine_set::subband_type, typename routine_set::segment_type> cx) -> void {
 			routine_set::template postprocess_image<img_t>(std::move(cx));
 		})>;
 
@@ -236,7 +236,7 @@ struct flow_impl {
 			compress_input_contexts.push_back(compress_context);
 
 			cx->channel_contexts[z].descriptors.register_operation(transform_context);
-			env.pool.add_tasks(forward::transform_task_t(std::move(transform_context)));
+			env.pool.add_tasks(typename forward::transform_task_t(std::move(transform_context)));
 		}
 		env.pool.execute_flow();
 
@@ -248,7 +248,7 @@ struct flow_impl {
 			cx->channel_contexts[z].descriptors.register_operation(context);
 			// TODO: what about wrapper like {context.channel_cx.descriptors.register_operation} for context param?
 
-			env.pool.add_tasks(forward::compress_task_t(std::move(context)));
+			env.pool.add_tasks(typename forward::compress_task_t(std::move(context)));
 		}
 		env.pool.execute_flow();
 	}
@@ -260,7 +260,7 @@ struct flow_impl {
 			compression_context<typename routine_set::segment_type> context{
 				generate_compression_id(),
 				cx->channel_contexts[z],
-				std::make_unique<segment<routine_set::segment_type>>(),
+				std::make_unique<segment<typename routine_set::segment_type>>(),
 				handles[id]
 			};
 			
@@ -278,7 +278,7 @@ struct flow_impl {
 			context.segment_data->id = id; 
 
 			cx->channel_contexts[z].descriptors.register_operation(context);
-			env.pool.add_tasks(backward::decompress_task_t(std::move(context))); // TODO: this way to populate pool queue 
+			env.pool.add_tasks(typename backward::decompress_task_t(std::move(context))); // TODO: this way to populate pool queue 
 				// is expensive...
 		}
 		env.pool.execute_flow();
@@ -287,7 +287,7 @@ struct flow_impl {
 		// added, there will be no need to feed the execution_pool queue explicitly several times.
 
 		for (ptrdiff_t i = 0; i < cx->channel_contexts.size(); ++i) {
-			segmentation_context<routine_set::subband_type, routine_set::segment_type> context{
+			segmentation_context<typename routine_set::subband_type, typename routine_set::segment_type> context{
 				generate_segmentation_id(), 
 				cx->channel_contexts[i], 
 				{}, 
@@ -295,7 +295,7 @@ struct flow_impl {
 				{0}
 			};
 			cx->channel_contexts[i].descriptors.register_operation(context);
-			env.pool.add_tasks(backward::transform_task_t(std::move(context)));
+			env.pool.add_tasks(typename backward::transform_task_t(std::move(context)));
 		}
 		env.pool.execute_flow();
 
@@ -303,7 +303,7 @@ struct flow_impl {
 		// added, there will be no need to feed the execution_pool queue explicitly several times.
 
 		for (ptrdiff_t i = 0; i < cx->channel_contexts.size(); ++i) {
-			segmentation_context<routine_set::subband_type, routine_set::segment_type> context{
+			segmentation_context<typename routine_set::subband_type, typename routine_set::segment_type> context{
 				generate_segmentation_id(),
 				cx->channel_contexts[i],
 				{},
@@ -312,7 +312,7 @@ struct flow_impl {
 			};
 
 			cx->channel_contexts[i].descriptors.register_operation(context);
-			env.pool.add_tasks(backward::postprocess_task_t(std::move(context)));
+			env.pool.add_tasks(typename backward::postprocess_task_t(std::move(context)));
 		}
 		env.pool.execute_flow();
 	}

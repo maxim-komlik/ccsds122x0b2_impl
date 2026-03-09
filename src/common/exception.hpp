@@ -1,5 +1,7 @@
 #pragma once
 
+#include <cstddef>
+
 namespace ccsds {
 	class exception {
 		inline static const char description[] = "General CCSDS error. ";

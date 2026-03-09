@@ -8,6 +8,8 @@
 #include "parsers/flag_parser.hpp"
 #include "parsers/dummy_parser.hpp"
 
+namespace cli::parameters {
+
 template <typename Parser>
 struct parameter_description {
 	using parser_t = Parser;
@@ -45,9 +47,6 @@ struct dynamic_parameter {
 		return parameter_description<cli::parsers::dummy_parser>{{}, cli::parsers::dummy_parser::make_default(), help_description};
 	}
 };
-
-
-namespace cli::parameters {
 
 struct global_context {
 	static constexpr parameter_description<parsers::flag_parser> help{ "--help"sv, {}, "Displays description for usage of commands and parameters"sv };

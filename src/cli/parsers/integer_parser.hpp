@@ -43,23 +43,38 @@ struct integer_parser_impl {
 
 private:
 	static consteval std::string_view generate_requirements() {
-		constexpr auto span_wrapper = []<size_t N>(std::span<const char, N> obj) consteval {
-			return meta::make_static_string(obj.first<N - 1>());
-		};
-
-		constexpr std::span general_p1 = "Parameter value must be ";
-		constexpr std::span unsigned_spec = "unsigned ";
-		constexpr std::span general_p2 = "integer, specified in base ";
-		constexpr std::span general_p3 = ", within range [";
-		constexpr std::span separator = ", ";
-		constexpr std::span general_p4 = "]. ";
+		// TODO: PATCHME: static is not needed here per the standard.
+		// but it doesn't compile otherwise on clang (due to lambda capture handling)
+		//
+		// But then it doesn't compile under msvc, because per the standard static variable
+		// declarations are not allowed in constexpr functions (clang compiled it with no errors
+		// as C++23 extension)
+		// 
+		// So capture default is added to lambda below
+		//
+		// static 
+		constexpr auto general_p1 = meta::make_static_string(meta::trim_terminator(
+			std::span{"Parameter value must be "}));
+		// static 
+		constexpr auto unsigned_spec = meta::make_static_string(meta::trim_terminator(
+			std::span{"unsigned "}));
+		constexpr auto general_p2 = meta::make_static_string(meta::trim_terminator(
+			std::span{"integer, specified in base "}));
+		constexpr auto general_p3 = meta::make_static_string(meta::trim_terminator(
+			std::span{", within range ["}));
+		constexpr auto separator = meta::make_static_string(meta::trim_terminator(
+			std::span{", "}));
+		constexpr auto general_p4 = meta::make_static_string(meta::trim_terminator(
+			std::span{"]. "}));
 
 		constexpr auto base_desc = meta::to_static_string<std::integral_constant<int, base>>();
 		constexpr auto min_desc = meta::to_static_string<std::integral_constant<T, min>>();
 		constexpr auto max_desc = meta::to_static_string<std::integral_constant<T, max>>();
 
+		// TODO: PATCHME: constexpr variables should be readable without capturing, see above
+		//
 		// better be std::invoke, but doesn't compile for some reason under msvc
-		constexpr size_t prefix_count = []() consteval {
+		constexpr size_t prefix_count = [=]() consteval {
 			size_t result = general_p1.size() - 1;
 			if (std::is_unsigned_v<T>) {
 				result += unsigned_spec.size();
@@ -68,9 +83,9 @@ private:
 		}();
 
 		return meta::materialize<
-			(span_wrapper(general_p1) + span_wrapper(unsigned_spec)).first<prefix_count>() +
-			span_wrapper(general_p2) + base_desc + span_wrapper(general_p3) + 
-			min_desc + span_wrapper(separator) + max_desc + span_wrapper(general_p4)>();
+			(general_p1 + unsigned_spec).template first<prefix_count>() +
+			general_p2 + base_desc + general_p3 + 
+			min_desc + separator + max_desc + general_p4>();
 	}
 
 	static consteval std::string_view generate_placeholder() {
