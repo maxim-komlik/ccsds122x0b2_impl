@@ -79,25 +79,27 @@ namespace restore {
 
 namespace {
 
-	params::src_type;
-	// {
-	// 	file
-	// };
-
-	params::segment_protocol_type;
-	// {
-	// 	detect,
-	// 	standard,
-	// 	file,
-	// 	memory
-	// };
-
-	params::dst_type;
-	// {
-	// 	memory
-	// };
-
-	params::image_protocol_type;	// raw
+	// TODO: refactor mapping/parsing
+	//
+	// params::src_type;
+	// // {
+	// // 	file
+	// // };
+	// 
+	// params::segment_protocol_type;
+	// // {
+	// // 	detect,
+	// // 	standard,
+	// // 	file,
+	// // 	memory
+	// // };
+	// 
+	// params::dst_type;
+	// // {
+	// // 	memory
+	// // };
+	// 
+	// params::image_protocol_type;	// raw
 
 	storage_type parse_storage_type(params::src_type);
 

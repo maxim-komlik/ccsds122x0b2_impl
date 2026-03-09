@@ -63,10 +63,18 @@ private:
 		// under msvc
 		// TODO: PATCHME: static is not needed here per the standard.
 		// but it doesn't compile otherwise on clang (due to lambda capture handling)
-		static constexpr auto separator = meta::make_static_string(meta::trim_terminator(std::span{ ", " }));
+		//
+		// But then it doesn't compile under msvc, because per the standard static variable
+		// declarations are not allowed in constexpr functions (clang compiled it with no errors
+		// as C++23 extension)
+		// So capture default is added to lambda below
+		// 
+		// static 
+		constexpr auto separator = meta::make_static_string(meta::trim_terminator(std::span{ ", " }));
 
+		// TODO: PATCHME: constexpr variables should be readable without capturing, see above
 		constexpr auto enumerators_generator = 
-			[]<size_t first, size_t... args>(std::index_sequence<first, args...>) consteval {
+			[=]<size_t first, size_t... args>(std::index_sequence<first, args...>) consteval {
 				constexpr auto sv_wrapper = []<size_t index>() consteval {
 					constexpr std::string_view target = get_mapping<index>().second;
 					return meta::make_static_string<target.size()>(target);

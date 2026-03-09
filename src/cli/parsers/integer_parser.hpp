@@ -49,9 +49,14 @@ private:
 		// But then it doesn't compile under msvc, because per the standard static variable
 		// declarations are not allowed in constexpr functions (clang compiled it with no errors
 		// as C++23 extension)
-		static constexpr auto general_p1 = meta::make_static_string(meta::trim_terminator(
+		// 
+		// So capture default is added to lambda below
+		//
+		// static 
+		constexpr auto general_p1 = meta::make_static_string(meta::trim_terminator(
 			std::span{"Parameter value must be "}));
-		static constexpr auto unsigned_spec = meta::make_static_string(meta::trim_terminator(
+		// static 
+		constexpr auto unsigned_spec = meta::make_static_string(meta::trim_terminator(
 			std::span{"unsigned "}));
 		constexpr auto general_p2 = meta::make_static_string(meta::trim_terminator(
 			std::span{"integer, specified in base "}));
@@ -66,8 +71,10 @@ private:
 		constexpr auto min_desc = meta::to_static_string<std::integral_constant<T, min>>();
 		constexpr auto max_desc = meta::to_static_string<std::integral_constant<T, max>>();
 
+		// TODO: PATCHME: constexpr variables should be readable without capturing, see above
+		//
 		// better be std::invoke, but doesn't compile for some reason under msvc
-		constexpr size_t prefix_count = []() consteval {
+		constexpr size_t prefix_count = [=]() consteval {
 			size_t result = general_p1.size() - 1;
 			if (std::is_unsigned_v<T>) {
 				result += unsigned_spec.size();
