@@ -43,6 +43,27 @@
     <Filter Include="Source Files\parameters\restore">
       <UniqueIdentifier>{adffe626-115f-4bd5-b538-91b2584d9687}</UniqueIdentifier>
     </Filter>
+    <Filter Include="Header Files\exception\bmp">
+      <UniqueIdentifier>{2d059f11-8e38-4710-9390-cc12320cb735}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="Source Files\io">
+      <UniqueIdentifier>{9ca6df80-4e26-439e-8582-569e8fe3456c}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="Source Files\io\generate">
+      <UniqueIdentifier>{a1d2fa41-cc51-4dc2-be62-0f5f27f47157}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="Source Files\io\bmp">
+      <UniqueIdentifier>{03cfeb0e-c822-42da-88f2-74cfda512123}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="Header Files\io">
+      <UniqueIdentifier>{98c5185f-d7eb-4c79-a4e3-cd2de068c498}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="Header Files\io\bmp">
+      <UniqueIdentifier>{fbab00a6-b19a-4da5-9b48-8ff4857bbfbc}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="Header Files\io\generate">
+      <UniqueIdentifier>{f73f8783-5bc8-416c-81e4-a674a1450607}</UniqueIdentifier>
+    </Filter>
   </ItemGroup>
   <ItemGroup>
     <ClCompile Include="..\..\..\src\cli\cli.cpp">
@@ -68,6 +89,18 @@
     </ClCompile>
     <ClCompile Include="..\..\..\src\cli\parameters\restore\validation.cpp">
       <Filter>Source Files\parameters\restore</Filter>
+    </ClCompile>
+    <ClCompile Include="..\..\..\src\cli\io\image.cpp">
+      <Filter>Source Files\io</Filter>
+    </ClCompile>
+    <ClCompile Include="..\..\..\src\cli\io\file_cache.cpp">
+      <Filter>Source Files\io</Filter>
+    </ClCompile>
+    <ClCompile Include="..\..\..\src\cli\io\generate\params.cpp">
+      <Filter>Source Files\io\generate</Filter>
+    </ClCompile>
+    <ClCompile Include="..\..\..\src\cli\io\bmp\params.cpp">
+      <Filter>Source Files\io\bmp</Filter>
     </ClCompile>
   </ItemGroup>
   <ItemGroup>
@@ -149,16 +182,40 @@
     <ClInclude Include="..\..\..\src\cli\parameters\parameters_context.hpp">
       <Filter>Header Files\parameters</Filter>
     </ClInclude>
+    <ClInclude Include="..\..\..\src\cli\exception\bmp\invalid_header.hpp">
+      <Filter>Header Files\exception\bmp</Filter>
+    </ClInclude>
+    <ClInclude Include="..\..\..\src\cli\io\file_cache.hpp">
+      <Filter>Header Files\io</Filter>
+    </ClInclude>
+    <ClInclude Include="..\..\..\src\cli\io\image.hpp">
+      <Filter>Header Files\io</Filter>
+    </ClInclude>
+    <ClInclude Include="..\..\..\src\cli\io\bmp\header_protocol.hpp">
+      <Filter>Header Files\io\bmp</Filter>
+    </ClInclude>
+    <ClInclude Include="..\..\..\src\cli\io\bmp\headers.hpp">
+      <Filter>Header Files\io\bmp</Filter>
+    </ClInclude>
+    <ClInclude Include="..\..\..\src\cli\io\bmp\params.hpp">
+      <Filter>Header Files\io\bmp</Filter>
+    </ClInclude>
+    <ClInclude Include="..\..\..\src\cli\io\generate\params.hpp">
+      <Filter>Header Files\io\generate</Filter>
+    </ClInclude>
   </ItemGroup>
   <ItemGroup>
-    <None Include="..\..\..\src\cli\commands\load_image.tpp">
-      <Filter>Source Files\commands</Filter>
-    </None>
     <None Include="..\..\..\src\cli\commands\core_environment.tpp">
       <Filter>Source Files\commands</Filter>
     </None>
     <None Include="..\..\..\src\cli\parameters\contextual_parser.tpp">
       <Filter>Source Files\parameters</Filter>
+    </None>
+    <None Include="..\..\..\src\cli\io\generate\load.tpp">
+      <Filter>Source Files\io\generate</Filter>
+    </None>
+    <None Include="..\..\..\src\cli\io\bmp\load.tpp">
+      <Filter>Source Files\io\bmp</Filter>
     </None>
   </ItemGroup>
   <ItemGroup>

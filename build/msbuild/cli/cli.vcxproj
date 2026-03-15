@@ -19,16 +19,24 @@
     <ClCompile Include="..\..\..\src\cli\commands\compress.cpp" />
     <ClCompile Include="..\..\..\src\cli\commands\core_environment.cpp" />
     <ClCompile Include="..\..\..\src\cli\file_utility.cpp" />
+    <ClCompile Include="..\..\..\src\cli\io\bmp\params.cpp">
+      <ObjectFileName Condition="'$(Configuration)|$(Platform)'=='Release|x64'">$(IntDir)io_bmp_%(Filename)</ObjectFileName>
+    </ClCompile>
+    <ClCompile Include="..\..\..\src\cli\io\file_cache.cpp" />
+    <ClCompile Include="..\..\..\src\cli\io\generate\params.cpp">
+      <ObjectFileName Condition="'$(Configuration)|$(Platform)'=='Release|x64'">$(IntDir)io_generate_%(Filename)</ObjectFileName>
+    </ClCompile>
+    <ClCompile Include="..\..\..\src\cli\io\image.cpp" />
     <ClCompile Include="..\..\..\src\cli\parameters\compress\validation.cpp">
       <ObjectFileName Condition="'$(Configuration)|$(Platform)'=='Non-Optimized|x64'">compress_%(Filename)</ObjectFileName>
       <ObjectFileName Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">compress_%(Filename)</ObjectFileName>
-      <ObjectFileName Condition="'$(Configuration)|$(Platform)'=='Release|x64'">compress_%(Filename)</ObjectFileName>
+      <ObjectFileName Condition="'$(Configuration)|$(Platform)'=='Release|x64'">$(IntDir)compress_%(Filename)</ObjectFileName>
     </ClCompile>
     <ClCompile Include="..\..\..\src\cli\parameters\parameters.cpp" />
     <ClCompile Include="..\..\..\src\cli\parameters\restore\validation.cpp">
       <ObjectFileName Condition="'$(Configuration)|$(Platform)'=='Non-Optimized|x64'">restore_%(Filename)</ObjectFileName>
       <ObjectFileName Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">restore_%(Filename)</ObjectFileName>
-      <ObjectFileName Condition="'$(Configuration)|$(Platform)'=='Release|x64'">restore_%(Filename)</ObjectFileName>
+      <ObjectFileName Condition="'$(Configuration)|$(Platform)'=='Release|x64'">$(IntDir)restore_%(Filename)</ObjectFileName>
     </ClCompile>
     <ClCompile Include="..\..\..\src\cli\parameters\root.cpp" />
   </ItemGroup>
@@ -37,10 +45,19 @@
     <ClInclude Include="..\..\..\src\cli\commands\compress.hpp" />
     <ClInclude Include="..\..\..\src\cli\commands\core_environment.hpp" />
     <ClInclude Include="..\..\..\src\cli\commands\restore.hpp" />
+    <ClInclude Include="..\..\..\src\cli\exception\bmp\invalid_header.hpp" />
     <ClInclude Include="..\..\..\src\cli\exception\exception.hpp" />
     <ClInclude Include="..\..\..\src\cli\expected.hpp" />
     <ClInclude Include="..\..\..\src\cli\file_utility.hpp" />
     <ClInclude Include="..\..\..\src\cli\help_context.hpp" />
+    <ClInclude Include="..\..\..\src\cli\io\bmp\headers.hpp" />
+    <ClInclude Include="..\..\..\src\cli\io\bmp\header_protocol.hpp" />
+    <ClInclude Include="..\..\..\src\cli\io\bmp\params.hpp" />
+    <ClInclude Include="..\..\..\src\cli\io\file_cache.hpp" />
+    <None Include="..\..\..\src\cli\io\bmp\load.tpp" />
+    <None Include="..\..\..\src\cli\io\generate\load.tpp" />
+    <ClInclude Include="..\..\..\src\cli\io\generate\params.hpp" />
+    <ClInclude Include="..\..\..\src\cli\io\image.hpp" />
     <ClInclude Include="..\..\..\src\cli\meta.hpp" />
     <ClInclude Include="..\..\..\src\cli\parameters\compress.hpp" />
     <ClInclude Include="..\..\..\src\cli\parameters\compress\parameters.hpp" />
@@ -62,7 +79,6 @@
   </ItemGroup>
   <ItemGroup>
     <None Include="..\..\..\src\cli\commands\core_environment.tpp" />
-    <None Include="..\..\..\src\cli\commands\load_image.tpp" />
     <None Include="..\..\..\src\cli\parameters\contextual_parser.tpp" />
   </ItemGroup>
   <ItemGroup>
