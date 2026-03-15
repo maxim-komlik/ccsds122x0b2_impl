@@ -35,7 +35,7 @@ struct HeaderPart_1A : private bitfield<HeaderPart_1A> {
 	// TODO: better implement composition with bitfield instead of inheritance
 public:
 	HeaderPart_1A() = default;
-	HeaderPart_1A(std::span<std::byte, bitfield::size> raw_data) : bitfield(raw_data) {
+	HeaderPart_1A(std::span<const std::byte, bitfield::size> raw_data) : bitfield(raw_data) {
 		bool valid = true;
 		if constexpr (dbg::protocol::if_disabled(dbg::protocol::mask_forward_compatibility)) {
 			valid &= (this->get_bitfield<name_to_index("reserved_001"sv)>() == 
@@ -137,7 +137,7 @@ struct HeaderPart_1B : bitfield<HeaderPart_1B> {
 	static_assert(bitfield<HeaderPart_1B>::size == 1);
 
 	HeaderPart_1B() = default;
-	HeaderPart_1B(std::span<std::byte, bitfield::size> raw_data) : bitfield(raw_data) {
+	HeaderPart_1B(std::span<const std::byte, bitfield::size> raw_data) : bitfield(raw_data) {
 		bool valid = true;
 		if constexpr (dbg::protocol::if_disabled(dbg::protocol::mask_forward_compatibility)) {
 			valid &= (this->get_bitfield<name_to_index("reserved_001"sv)>() == 
@@ -192,7 +192,7 @@ struct HeaderPart_2 : bitfield<HeaderPart_2> {
 	static_assert(bitfield<HeaderPart_2>::size == 5);
 
 	HeaderPart_2() = default;
-	HeaderPart_2(std::span<std::byte, bitfield::size> raw_data) : bitfield(raw_data) {
+	HeaderPart_2(std::span<const std::byte, bitfield::size> raw_data) : bitfield(raw_data) {
 		constexpr size_t min_segment_size_bytes = 9;
 
 		bool valid = true;
@@ -283,7 +283,7 @@ struct HeaderPart_3 : bitfield<HeaderPart_3> {
 	static_assert(bitfield<HeaderPart_3>::size == 3);
 
 	HeaderPart_3() = default;
-	HeaderPart_3(std::span<std::byte, bitfield::size> raw_data) : bitfield(raw_data) {
+	HeaderPart_3(std::span<const std::byte, bitfield::size> raw_data) : bitfield(raw_data) {
 		bool valid = true;
 		if constexpr (dbg::protocol::if_disabled(dbg::protocol::mask_forward_compatibility)) {
 			valid &= (this->get_bitfield<name_to_index("reserved_001"sv)>() == 
@@ -364,7 +364,7 @@ struct HeaderPart_4 : bitfield<HeaderPart_4> {
 	static_assert(bitfield<HeaderPart_4>::size == 8);
 
 	HeaderPart_4() = default;
-	HeaderPart_4(std::span<std::byte, bitfield::size> raw_data) : bitfield(raw_data) {
+	HeaderPart_4(std::span<const std::byte, bitfield::size> raw_data) : bitfield(raw_data) {
 		bool valid = true;
 		valid &= !(
 			(this->get_bitfield<name_to_index("CustomWtFlag"sv)>() == false) &

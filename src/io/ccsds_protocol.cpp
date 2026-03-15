@@ -2,7 +2,7 @@
 
 #include "utility.hpp"
 
-ccsds_protocol::ccsds_protocol(std::span<std::byte> raw_data) {
+ccsds_protocol::ccsds_protocol(std::span<const std::byte> raw_data) {
 	bool valid = true;
 	valid &= (raw_data.size() >= HeaderPart_1A::size());
 	if (!valid) {

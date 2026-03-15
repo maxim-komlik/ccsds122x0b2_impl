@@ -1,5 +1,7 @@
 #pragma once
 
+#include <cstddef>
+
 struct img_meta {	// per-element location
 	size_t stride = 0;
 	size_t offset = 0;
@@ -11,12 +13,12 @@ struct img_meta {	// per-element location
 
 
 struct img_pos { // step members should be signed. Maybe coordinate members should be signed also
-	size_t x = 0;
-	size_t x_step = 0;
-	size_t y = 0;
-	size_t y_step = 0;
-	size_t z = 0;
-	size_t z_step = 0;
+	ptrdiff_t x = 0;
+	ptrdiff_t x_step = 0;
+	ptrdiff_t y = 0;
+	ptrdiff_t y_step = 0;
+	ptrdiff_t z = 0;
+	ptrdiff_t z_step = 0;
 	size_t x_stride = 0;
 	size_t width = 0;
 	size_t y_stride = 0;

@@ -67,7 +67,6 @@ public:
 	bitmap& operator=(const bitmap& other);
 
 	bitmap(size_t offset = alignment);
-	bitmap(size_t width, size_t height, T* origin);
 	bitmap(size_t width, size_t height, size_t offset = 16);
 
 	template <typename D, size_t a = alignment, typename = std::enable_if_t<!std::is_same_v<T, D>>>

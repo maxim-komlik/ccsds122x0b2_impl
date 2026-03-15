@@ -25,6 +25,7 @@
 #include "restore.hpp"
 #include "core_environment.tpp"
 #include "file_utility.hpp"
+#include "io/image.hpp"
 
 namespace cli::command {
 
@@ -38,39 +39,6 @@ namespace {
 	std::pair<size_t, compression_settings> parse_compression_settings(const params::stream::parameters_set& value);
 	std::pair<size_t, segment_settings> parse_segment_settings(const params::segment::parameters_set& value);
 
-	// TODO: merge with validation implementation
-	struct image_description {
-		size_t width;
-		size_t height;
-		size_t channel_num;
-		size_t static_bdepth;
-		std::optional<bool> if_signed;
-	};
-
-	image_description get_image_description(const params::source& parameters) {
-		switch (parameters.type) {
-		case params::src_type::generate: {
-
-			const params::generate::generator& gen_params =
-				std::get<params::generate::generator>(parameters.parameters);
-
-			return image_description{
-				.width = gen_params.dims.width,
-				.height = gen_params.dims.height,
-				.channel_num = gen_params.dims.depth,
-				.static_bdepth = gen_params.bdepth,
-				.if_signed = gen_params.pixel_signed
-			};
-
-			break;
-		}
-		default: {
-
-		}
-		}
-
-		// TODO: C++23 std::unreachable?
-	}
 }
 
 }
@@ -137,16 +105,16 @@ void compress_command_handler(const params::compress_command& parameters) {
 
 	io_data_registry registry(parse_storage_type(parameters.dst_params.type));
 
-	image_description img_desc = get_image_description(parameters.src_params);
-	size_t height_padding = padded_image_dimensions(img_desc.width, img_desc.height).second - img_desc.height;
+	io::image_load_parameters img_desc = io::get_image_description(parameters.src_params);
+	size_t height_padding = padded_image_dimensions(img_desc.meta.width, img_desc.meta.height).second - img_desc.meta.height;
 
 	parameters.dwt_params.frame;	// TODO:
 
 	session_context cx(registry);
 	cx.settings_session = session_settings {
 		.dwt_type = parse_dwt_type(parameters.dwt_params.type),
-		.img_width = img_desc.width,
-		.pixel_bdepth = img_desc.static_bdepth, // TODO:
+		.img_width = img_desc.meta.width,
+		.pixel_bdepth = img_desc.meta.static_bdepth, // TODO:
 		.signed_pixel = parameters.img_signed,
 		.transpose = parameters.img_transpose,
 		.rows_pad_count = height_padding,
@@ -165,7 +133,7 @@ void compress_command_handler(const params::compress_command& parameters) {
 		cx.seg_settings.push_back(parse_segment_settings(item));
 	}
 
-	session_parameters_parser<flow_impl>::load_image(std::move(cx), img_desc.channel_num, parameters.src_params);
+	session_parameters_parser<flow_impl>::load_image(std::move(cx), img_desc.meta.channel_num, img_desc);
 
 	// TODO: handle output data somehow?
 }

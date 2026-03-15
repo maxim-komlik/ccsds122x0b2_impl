@@ -5,6 +5,7 @@
 #include <array>
 #include <optional>
 #include <variant>
+#include <filesystem>
 #include <cstddef>
 
 #include "parameters/parameters_context.hpp"
@@ -29,13 +30,20 @@ struct generator {
 
 }
 
+struct image_file {
+	std::filesystem::path path;
+};
+
 enum class src_type {
-	generate
+	generate, 
+	file
 };
 
 struct source {
 	src_type type;
-	std::variant<generate::generator> parameters;
+	std::variant<
+		generate::generator, 
+		image_file> parameters;
 };
 
 enum class dst_type {
@@ -138,7 +146,8 @@ namespace meta {
 		using src_type = cli::parameters::compress::src_type;
 
 		constexpr static enumerator_mapping_description_t description{
-			enumerator_mapping_item_t{ src_type::generate, "generate"sv }
+			enumerator_mapping_item_t{ src_type::generate, "generate"sv },
+			enumerator_mapping_item_t{ src_type::file, "file"sv }
 		};
 	};
 

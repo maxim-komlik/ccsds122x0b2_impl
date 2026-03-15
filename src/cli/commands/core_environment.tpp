@@ -17,7 +17,7 @@
 #include "core/samples/routines.tpp"
 
 #include "core_environment.hpp"
-#include "load_image.tpp"
+#include "io/image.hpp"
 
 namespace cli::command {
 
@@ -45,7 +45,7 @@ private:
 	struct load_image_context_parameters {
 		std::tuple<
 			session_context,
-			std::reference_wrapper<const parameters::compress::source>,
+			std::reference_wrapper<const io::image_load_parameters>,
 			size_t> values;
 
 		const session_context& get_session() const {
@@ -56,8 +56,8 @@ private:
 			return std::get<session_context>(this->values);
 		}
 
-		const parameters::compress::source& get_source_description() const {
-			return std::get<std::reference_wrapper<const parameters::compress::source>>(this->values);
+		const io::image_load_parameters& get_source_description() const {
+			return std::get<std::reference_wrapper<const io::image_load_parameters>>(this->values);
 		}
 
 		size_t get_channel_num() const {
@@ -94,7 +94,7 @@ private:
 
 public:
 	static void load_image(session_context&& cx, size_t channel_count, 
-			const parameters::compress::source& src_spec) {
+			const io::image_load_parameters& load_spec) {
 		using xbw_t = sufficient_integral<intptr_t>;
 		constexpr size_t xbw_size = sizeof(xbw_t) << 3;
 		if (cx.settings_session.codeword_size != xbw_size) {
@@ -109,7 +109,7 @@ public:
 		// skip unnecessary output stream related instantiations for encoding chain, always assume 
 		// machine word-size type
 		session_parameters_parser::template parse_dwt_type<xbw_t>(
-			load_image_context_parameters{ { std::move(cx), src_spec, channel_count } });
+			load_image_context_parameters{ { std::move(cx), load_spec, channel_count } });
 	}
 
 	static void restore(session_context&& cx, size_t channel_count, 
@@ -317,7 +317,7 @@ struct flow_impl {
 		env.pool.execute_flow();
 	}
 
-	static void load_image(std::shared_ptr<session_context> cx, const parameters::compress::source& src_spec) {
+	static void load_image(std::shared_ptr<session_context> cx, const io::image_load_parameters& load_spec) {
 		std::vector<img_meta> channel_stats;
 		std::vector<size_t> channel_bdepths;
 		std::vector<std::reference_wrapper<const data_descriptor>> descriptors;
@@ -328,7 +328,7 @@ struct flow_impl {
 
 		bool valid = true;
 		for (auto& channel_cx : cx->channel_contexts) {
-			auto channel_data = compress::load_image_channel<img_t>(src_spec, channel_cx.channel_index);
+			auto channel_data = io::load_image_channel<img_t>(load_spec, channel_cx.channel_index);
 			channel_stats.push_back(channel_data.get_meta()); 
 			valid &= (channel_stats.back().depth == 1);
 			// TODO: calculate dynamic bdepth?

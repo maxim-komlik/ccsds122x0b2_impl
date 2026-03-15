@@ -108,6 +108,12 @@ public:
 	storage_type get_type() const override { return storage_type::file; }
 	void restart() override {}
 
+	void seek(ptrdiff_t offset) {
+		this->file_stream.pubseekoff(offset, std::ios_base::beg, std::ios_base::in);
+		this->buffer_wrapper.reset_buffer();
+		this->binput.reset();
+	}
+
 private:
 	void init_resources() override;
 };
@@ -128,7 +134,7 @@ private:
 // 
 // class responsibilities:
 //	abstract sink: sink interface and basic invariant management constraints
-//	base protocol: maintains normatice ccsds header invariant
+//	base protocol: maintains normative ccsds header invariant
 //	sink: invariant management for sink device (and buffer)
 //  extended protocol: maintains extended protocol data invariant
 //		(thus should not make effort to modify base protocol state)
