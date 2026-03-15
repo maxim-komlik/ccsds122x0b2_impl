@@ -104,13 +104,13 @@ subbands_t<T> ForwardWaveletTransformer<T, alignment>::apply(const bitmap<iT>& s
 
 	std::array<frame_overlap_description, 2> frame_edge_overlap = { {
 		{
-			std::min(frames_decomposed[0].y, dwt::overlap_img_range),
-			std::min(frames_decomposed[0].x, dwt::overlap_img_range),
+			std::min<size_t>(frames_decomposed[0].y, dwt::overlap_img_range),
+			std::min<size_t>(frames_decomposed[0].x, dwt::overlap_img_range),
 			std::min(src_dims.width - (frames_decomposed[0].x + frames_decomposed[0].width), dwt::overlap_img_range),
 			std::min(src_dims.height - (frames_decomposed[0].y + frames_decomposed[0].height), dwt::overlap_img_range)
 		},
 		{
-			std::min(frames_decomposed[1].y, dwt::overlap_img_range),
+			std::min<size_t>(frames_decomposed[1].y, dwt::overlap_img_range),
 			0,
 			std::min(src_dims.width - (frames_decomposed[1].x + frames_decomposed[1].width), dwt::overlap_img_range),
 			std::min(src_dims.height - (frames_decomposed[1].y + frames_decomposed[1].height), dwt::overlap_img_range)

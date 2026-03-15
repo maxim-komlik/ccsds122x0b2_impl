@@ -82,7 +82,7 @@ private:
 protected:
 	~bitfield() = default;
 	bitfield() = default;
-	bitfield(std::span<std::byte, size> data) {
+	bitfield(std::span<const std::byte, size> data) {
 		std::copy_n(data.begin(), size, bitfield_buffer.begin());
 	}
 
@@ -181,7 +181,11 @@ private:
 		constexpr size_t bindex_mask = ~((-1) << 3);
 
 		bytes_view<uT> value_bv{ .compound = value };
-		bytes_view<uT> mask_bv{ .compound = (uT)(~((sT)(-1) << balloc.width)) };
+		// bytes_view<uT> mask_bv{ .compound = (uT)(~((sT)(-1) << balloc.width)) };
+
+		bytes_view<uT> mask_bv{ .compound = (uT)((uT)((sT)(-1)) << balloc.width) }; 	// those tricky casts are due to promotions
+		mask_bv.compound = zeropred(mask_bv.compound, balloc.width < (sizeof(uT) << 3));	// because UB if shift amount is equal to type bit size
+		mask_bv.compound = ~mask_bv.compound;
 
 		size_t balign_shift = (-(ptrdiff_t)(balloc.offset + balloc.width)) & bindex_mask;
 		uint16_t mask_msb = mask_bv.compound >> ((sizeof(uT) - 1) << 3);
@@ -310,7 +314,9 @@ private:
 
 		constexpr size_t bindex_mask = ~((-1) << 3);
 
-		bytes_view<uT> mask_bv{ .compound = (uT)(~((sT)(-1) << balloc.width)) };
+		bytes_view<uT> mask_bv{ .compound = (uT)((uT)((sT)(-1)) << balloc.width) }; 	// those tricky casts are due to promotions
+		mask_bv.compound = zeropred(mask_bv.compound, balloc.width < (sizeof(uT) << 3));	// because UB if shift amount is equal to type bit size
+		mask_bv.compound = ~mask_bv.compound;
 		bytes_view<uT> result_bv{ .compound = 0 };
 		size_t ballign_shift = (-(ptrdiff_t)(balloc.offset + balloc.width)) & bindex_mask;
 
@@ -350,7 +356,7 @@ private:
 
 		// as for now, there's no 2-complement or signed fields in the protocol.
 		// if constexpr (std::is_signed_v<T>) {
-		//	result_bv.compound = signext(result_bv.compound, balloc.width);
+		// 	result_bv.compound = signext(result_bv.compound, balloc.width);
 		// }
 		return result_bv.compound;
 	}

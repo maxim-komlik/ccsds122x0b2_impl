@@ -7,22 +7,14 @@
 #include "dwt/utility.hpp"
 
 #include "parameters/compress/validation.hpp"
+#include "io/image.hpp"
 #include "utility.hpp"
 
 namespace cli::validate::compress {
 
 namespace {
 
-	struct image_description {
-		size_t width;
-		size_t height;
-		size_t channel_num;
-		size_t static_bdepth;
-		std::optional<bool> if_signed;
-	};
-
 	validation_context validate_image_source(const params::source& parameters);
-	image_description get_image_description(const params::source& parameters);
 
 }
 
@@ -34,7 +26,12 @@ validation_context validate_parameters(const params::compress_command& parameter
 
 	result.nest_context(validate_image_source(parameters.src_params));
 
-	auto img_desc = get_image_description(parameters.src_params);
+	if (result.has_errors()) {
+		// other checks depend on input image specs, and input image parameters are invalid
+		return result;
+	}
+
+	auto img_desc = io::get_image_description(parameters.src_params).meta;
 
 	if (parameters.img_transpose) {
 		std::swap(img_desc.width, img_desc.height);
@@ -200,7 +197,7 @@ validation_context validate_parameters(const params::compress_command& parameter
 namespace {
 
 	validation_context validate_image_source(const params::source& parameters) {
-		validation_context result{ u8"generate"sv };
+		validation_context result{ u8"input_image"sv };
 
 		switch (parameters.type) {
 		case params::src_type::generate: {
@@ -225,37 +222,32 @@ namespace {
 
 			break;
 		}
+		case params::src_type::file: {
+			const auto& file_params = std::get<params::image_file>(parameters.parameters);
+			std::u8string extension = file_params.path.extension().u8string();
+			
+			constexpr std::array known_extensions = std::invoke([]() constexpr {
+					std::u8string_view values[] = {
+						{u8".bmp"sv}
+					};
+
+					return std::to_array(values);
+				});
+
+			auto it = std::find_if(known_extensions.cbegin(), known_extensions.cend(),
+				[&extension](auto item) -> bool { return item == extension; });
+
+			result.error(std::filesystem::exists(file_params.path), 
+				u8"Input image file is inaccessible. "s);
+			result.error(it != known_extensions.cend(),
+				u8"Input image format ["s + extension + u8"] is not supported. "s);
+		}
 		default: {
 
 		}
 		}
 
 		return result;
-	}
-
-	image_description get_image_description(const params::source& parameters) {
-		switch (parameters.type) {
-		case params::src_type::generate: {
-
-			const params::generate::generator& gen_params =
-				std::get<params::generate::generator>(parameters.parameters);
-
-			return image_description{
-				.width = gen_params.dims.width,
-				.height = gen_params.dims.height,
-				.channel_num = gen_params.dims.depth,
-				.static_bdepth = gen_params.bdepth,
-				.if_signed = gen_params.pixel_signed
-			};
-
-			break;
-		}
-		default: {
-
-		}
-		}
-
-		// TODO: C++23 std::unreachable?
 	}
 
 }

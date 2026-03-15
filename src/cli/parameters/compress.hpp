@@ -9,6 +9,7 @@
 #include "parsers/flag_parser.hpp"
 #include "parsers/integer_parser.hpp"
 #include "parsers/enum_parser.hpp"
+#include "parsers/path_parser.hpp"
 
 #include "compress/parameters.hpp"
 
@@ -22,6 +23,7 @@ namespace compress {
 		struct generator_parser;
 	}
 	
+	struct image_file_parser;
 	struct source_parser;
 	struct destination_parser;
 	struct shifts_parser;
@@ -107,6 +109,33 @@ struct parameter_context<compress::source> : public parameter_context_default {
 	};
 };
 
+
+template <>
+struct parameter_context<compress::image_file> : public parameter_context_default {
+	static constexpr immediate_parameters_description_t named{
+		parameter_description<path_parser<false>>{"--path"sv, {}, "Path to input image file; supported formats: bmp."sv}
+	};
+};
+
+struct compress::image_file_parser {
+	using value_t = image_file;
+
+	cli::expected<value_t> parse(std::vector<std::string_view>& tokens) {
+		using parser_t = contextual_parser<value_t>;
+		parser_t cx_parser;
+		cx_parser.parse(tokens);
+
+		return value_t{
+			cx_parser.get<parser_t::name_to_index("--path"sv)>(),
+		};
+	}
+
+public:
+	static constexpr std::string_view requirements = ""sv;
+	static constexpr std::string_view placeholder = "<file_params>"sv;
+};
+
+
 struct compress::source_parser {
 	using value_t = source;
 
@@ -127,6 +156,17 @@ struct compress::source_parser {
 			return value_t{
 				type_value,
 				generation_params.value()
+			};
+		}
+		case src_type::file: {
+			cli::expected<image_file> file_params = image_file_parser().parse(tokens);
+			if (!file_params) {
+				// TODO: error handling
+			}
+
+			return value_t{
+				type_value,
+				file_params.value()
 			};
 		}
 		default: {

@@ -12,18 +12,20 @@ template <typename buffer_t> class ibitwrapper {
 	typedef typename std::make_unsigned<buffer_t>::type ubuffer_t;
 	typedef typename std::make_signed<buffer_t>::type sbuffer_t;
 
+	static constexpr size_t ccsds_max_byte_limit = 1 << 27; // TODO: but should be capable of holding 2^27 - 1. See 4.2.3.2.1
+
 	buffer_t buffer = 0;
 	const size_t capacity = sizeof(buffer_t) << 3;
 	size_t rcount = capacity;
 
-	size_t byte_limit = ((1 << 27) - 1); // TODO: but should be capable of holding 2^27 - 1. See 4.2.3.2.1
+	size_t byte_limit = ccsds_max_byte_limit;
 	size_t byte_count = 0;
 
 	typedef std::function<buffer_t(void)> callback_t;
 	callback_t source;
 
 public:
-	ibitwrapper(const callback_t& callback, size_t src_byte_limit = ((1 << 27) - 1)) 
+	ibitwrapper(const callback_t& callback, size_t src_byte_limit = ccsds_max_byte_limit)
 			: source(callback)/*, byte_limit(src_byte_limit)*/ {};
 	~ibitwrapper() = default;
 
@@ -161,9 +163,8 @@ public:
 		}
 	}
 
-	size_t icount() {
-		// TODO
-		return this->rcount;
+	size_t get_buffer_bit_width() {
+		return this->capacity - this->rcount;
 	}
 
 	bool empty() const {
@@ -193,6 +194,12 @@ public:
 		}
 
 		this->byte_count = target_value;
+	}
+
+	void reset() {
+		this->byte_limit = ccsds_max_byte_limit;
+		this->byte_count = 0;
+		this->rcount = this->capacity;
 	}
 
 private:

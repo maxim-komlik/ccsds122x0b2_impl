@@ -16,7 +16,7 @@ class ccsds_protocol {
 public:
 	template <typename T>
 	ccsds_protocol(const segment<T>& data, size_t segment_index);
-	ccsds_protocol(std::span<std::byte> raw_header);
+	ccsds_protocol(std::span<const std::byte> raw_header);
 
 	void init_session(const session_settings& session_params, 
 			const segment_settings& segment_params, const compression_settings& compression_params);

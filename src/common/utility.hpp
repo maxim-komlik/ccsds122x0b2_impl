@@ -130,6 +130,9 @@ private:
 	~Finalizer() = default;
 };
 
+template<class... Ts>
+struct overloaded_callable : Ts... { using Ts::operator()...; };
+
 
 // general util functions
 
