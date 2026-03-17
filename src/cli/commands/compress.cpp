@@ -234,6 +234,8 @@ void restore_command_handler(const params::restore_command& parameters) {
 	auto handles = load_segments(parameters.src_params, registry);
 	size_t channel_num = collect_decompression_session_params(cx, handles);
 	session_parameters_parser<flow_impl>::restore(std::move(cx), channel_num, std::move(handles));
+
+	auto channels = std::move(registry).export_data();
 }
 
 namespace {

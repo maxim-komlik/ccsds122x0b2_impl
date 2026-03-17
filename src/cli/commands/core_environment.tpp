@@ -213,7 +213,7 @@ struct flow_impl {
 		std::vector<dwt_context> compress_input_contexts;
 
 		for (const auto& handle : handles) {
-			size_t z = handle.get().get_exported_data().channel_id.value();
+			size_t z = handle.get().get_exported_data().get_channel_id();
 
 			img_pos input_frame{};	// actual values will be deduced by routines from image data, 
 				// but for further fragment-aware processing some x and y values will be needed.
@@ -255,29 +255,18 @@ struct flow_impl {
 
 	static void decompress(std::shared_ptr<session_context> cx, 
 			std::vector<std::reference_wrapper<const data_descriptor>>&& handles) {
-		for (ptrdiff_t id = 0; id < handles.size(); ++id) {
-			size_t z = handles[id].get().get_exported_data().channel_id.value();
+		for (const auto& handle : handles) {
+			size_t channel_id = handle.get().get_exported_data().get_channel_id();
 			compression_context<typename routine_set::segment_type> context{
 				generate_compression_id(),
-				cx->channel_contexts[z],
+				cx->channel_contexts[channel_id],
 				std::make_unique<segment<typename routine_set::segment_type>>(),
-				handles[id]
+				handle
 			};
-			
-			// TODO: MAJOR: that makes implementation incompatible with multichannel images. Having set of 
-			// generalized segments (on unspecified media), it's not possible to guess where a subsequent 
-			// channel starts, until segment headers are parsed. As a result, segment id's are assigned 
-			// during segment header pre-parsing, and stored in type-erased descriptors. 
-			// But segment id is needed to get corresponding segmentation settings from session/channel 
-			// context during segment decoding. That code in routines.tpp does not obtain strong typed 
-			// segment descriptor, but uses type-erased source interface.
-			// 
-			// As it is implemented now, for any subseqent channel wrong segmentation settings are obtained, 
-			// because id assigned below is linear and does not wrap around the channel size in segments.
-			// 
-			context.segment_data->id = id; 
 
-			cx->channel_contexts[z].descriptors.register_operation(context);
+			context.segment_data->id = handle.get().get_exported_data().get_object_id();
+
+			cx->channel_contexts[channel_id].descriptors.register_operation(context);
 			env.pool.add_tasks(typename backward::decompress_task_t(std::move(context))); // TODO: this way to populate pool queue 
 				// is expensive...
 		}

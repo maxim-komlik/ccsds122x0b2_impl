@@ -66,7 +66,7 @@ bitmap<T> load_channel(const file_descriptor& descriptor, ptrdiff_t index, size_
 		cached.content_data = load_channels<T>(protocol, cached.src, row_offset);
 	}
 
-	auto& channels = std::any_cast<value_t>(cached.content_data);
+	auto& channels = std::any_cast<value_t&>(cached.content_data);
 
 	bool valid = true;
 	valid &= (index < channels.size());

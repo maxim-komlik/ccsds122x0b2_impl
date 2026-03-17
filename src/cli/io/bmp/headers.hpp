@@ -26,7 +26,7 @@ class bitmap_file_header;
 template<>
 struct bitfield_traits<bitmap_file_header> {
 	static constexpr fields_description_t fields{
-		bitfield_description{"Signature"sv,		{0, 16}, (uint16_t)(0x424b)},	// 'BM'
+		bitfield_description{"Signature"sv,		{0, 16}, byteswap((uint16_t)(0x424b))},	// 'BM'
 		bitfield_description{"Size"sv,			{16, 32}, (uint32_t)(0)},		// 
 		bitfield_description{"reserved_001"sv,	{48, 16}, (uint16_t)(0)},		// 16 bit reserved
 		bitfield_description{"reserved_002"sv,	{64, 16}, (uint16_t)(0)},		// 16 bit reserved
@@ -154,7 +154,7 @@ class bitmap_core_v1_header;
 template<>
 struct bitfield_traits<bitmap_core_v1_header> {
 	static constexpr fields_description_t fields{
-		bitfield_description{"HeaderSize"sv,	{0, 32}, (uint32_t)(0x12)},		// 
+		bitfield_description{"HeaderSize"sv,	{0, 32}, byteswap((uint32_t)(0x12))},		// 
 		bitfield_description{"ImageWidth"sv,	{32, 16}, (uint16_t)(0)},		// Image width
 		bitfield_description{"ImageHeight"sv,	{48, 16}, (uint16_t)(0)},		// Image height
 			// two fields above meant to be signed, but header fields are defined to be little-endian, 
@@ -303,7 +303,7 @@ class bitmap_core_v2_header;
 template<>
 struct bitfield_traits<bitmap_core_v2_header> {
 	static constexpr fields_description_t fields{
-		bitfield_description{"HeaderSize"sv,	{0, 32}, (uint32_t)(0x38)},		// 
+		bitfield_description{"HeaderSize"sv,	{0, 32}, byteswap(to_underlying(dib_header_type::bitmap_info_v3))},		// 
 		bitfield_description{"ImageWidth"sv,	{32, 32}, (uint32_t)(0)},		// Image width
 		bitfield_description{"ImageHeight"sv,	{64, 32}, (uint32_t)(0)},		// Image height
 			// two fields above meant to be signed, but header fields are defined to be little-endian, 
@@ -708,7 +708,7 @@ class bitmap_info_v4_header;
 template<>
 struct bitfield_traits<bitmap_info_v4_header> {
 	static constexpr fields_description_t fields{
-		bitfield_description{"ColorSpaceType"sv,			{0, 32}, (uint32_t)(0x42475273)}, 	// 'RGBs'
+		bitfield_description{"ColorSpaceType"sv,			{0, 32}, byteswap((uint32_t)(0x42475273))}, 	// 'RGBs'
 		bitfield_description{"ColorSpaceEndPoint_001"sv,	{32, 32}, (uint32_t)(0)}, 	// 
 		bitfield_description{"ColorSpaceEndPoint_002"sv,	{64, 32}, (uint32_t)(0)}, 	// 
 		bitfield_description{"ColorSpaceEndPoint_003"sv,	{96, 32}, (uint32_t)(0)}, 	// 

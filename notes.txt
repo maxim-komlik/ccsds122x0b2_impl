@@ -9,18 +9,16 @@ However, the pattern above is used for default parameters defititions for comman
 JPEG2000 does not use integer trasform 9/7, it uses 5/3 instead.
 Add references to open-source implementations
 
-Publish checklist:
-clean draft files that are not actually built/used
-
 TODOs:
 TODO: incapsulate memory allocation/alignment staff as allocator, get rid of template alignment parameter
 TODO: compile settings management (debug flags and other settings)
-TODO: Compatibility/port to cmake
 TODO: add std::assume_alligned to functions that get pointers to alligned memory (e.g. vectorized)
 TODO: port code with vectorization on pointers on C (because restrict keyword is needed)
 TODO: compute vector stride using sizeof(T)
 
 // DONE
+TODO: clean draft files that are not actually built/used
+TODO: Compatibility/port to cmake
 TODO: Encoding manager is necessary, it is a class that stores all possible template implementations of 
 		wavelet transform and bit plane coders
 TODO: session manager
@@ -222,7 +220,32 @@ Compression rate: 0.248262
 </assembly>
 
 <application>
-		<windowsSettings>
-			<activeCodePage xmlns="http://schemas.microsoft.com/SMI/2019/WindowsSettings">UTF-8</activeCodePage>
-		</windowsSettings>
-	</application>
+	<windowsSettings>
+		<activeCodePage xmlns="http://schemas.microsoft.com/SMI/2019/WindowsSettings">UTF-8</activeCodePage>
+	</windowsSettings>
+</application>
+
+
+1>LINK : warning LNK4098: defaultlib 'MSVCRTD' conflicts with use of other libs; use /NODEFAULTLIB:library
+
+
+set of related issues:
+on cli restore command handling, set of input segments is ordered based on filenames, no headers are checked.
+	heuristic non-robust segment ordering based on file names; segment id may be assigned incorrectly
+	no proper handling for image channels, all segments are interpreted as single channel sequence
+bit depth is property of a channel, not session
+	for session there should be dedicated static bit depth parameter, indicating largest static channel depth.
+	that value is related to image data type deduction
+compression and segmentation settings are managed by session context
+	settings should be managed on per-channel basis.
+	that prevents valid segment input from being handled properly.
+
+segments are sortable within 256-items chunks, counting from 0. 
+
+two kinds of usage scenarios:
+	for compression scenario, input is known a-priori to be bitmap  
+	for decompression scenario, input is known a-priori to be segment 
+
+segment is bound to {session, channel} and has own id
+bitmap is bound to {session} and has own id, that defines channel identification
+

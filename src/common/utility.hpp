@@ -152,7 +152,7 @@ constexpr std::underlying_type_t<T> to_underlying(T enum_value) noexcept {
 
 // TODO: unroll here if we take this implementation seriously
 template <typename T>
-T byteswap(T word) {
+constexpr T byteswap(T word) noexcept {
 	typedef typename std::make_unsigned<T>::type uT;
 	typedef typename std::make_signed<T>::type sT;
 	for (size_t i = 1; i < sizeof(T); i <<= 1) {
