@@ -159,11 +159,27 @@ struct image_selector {
 };
 
 
+struct io_data {
+	size_t session_id;
+	data_category origin;
+	data_content_type content_type;
+	std::any data;
+};
+
 struct data_descriptor {
 	// better be nested type, but forward declaration is needed
 public:
 	struct exported_descriptor_data {
-		std::optional<size_t> channel_id;
+	private:
+		const size_t& channel_id;
+		const size_t& object_id;
+
+	public:
+		exported_descriptor_data(const size_t& channel_id, const size_t& object_id) :
+			channel_id(channel_id), object_id(object_id) {}
+
+		size_t get_channel_id() const noexcept { return this->channel_id; }
+		size_t get_object_id() const noexcept { return this->object_id; }
 	};
 
 private:
@@ -173,36 +189,60 @@ private:
 	size_t session_id;
 	data_category origin;
 	data_content_type content_type;
-	struct exported_descriptor_data exported;
 	std::any data;
+	exported_descriptor_data exported;
+		// order is important
 
 public:
 	~data_descriptor() = default;
-	data_descriptor(data_descriptor&& other) noexcept = default;
-	data_descriptor& operator=(data_descriptor&& other) noexcept = default;
 
 	data_category get_category() const noexcept { return this->origin; }
 	data_content_type get_content_type() const noexcept { return this->content_type; }
 	size_t get_session_id() const noexcept { return this->session_id; }
 	const exported_descriptor_data& get_exported_data() const noexcept { return this->exported; }
 
+	operator io_data()&& {
+		return io_data{
+			session_id, 
+			origin, 
+			content_type, 
+			std::move(data)
+		};
+	}
+
 private:
 	// make special members private so that accessible only by friends
 	friend class io_data_registry;
 
-	data_descriptor(const data_descriptor& other) = default;
-	data_descriptor& operator=(const data_descriptor& other) = default;
+	data_descriptor(const data_descriptor& other) = delete;
+	data_descriptor& operator=(const data_descriptor& other) = delete;
 
 	template <typename T>
-	data_descriptor(size_t session_id, data_category category, data_content_type type, 
-			exported_descriptor_data&& exported_data, T&& value) :
+	data_descriptor(size_t session_id, data_category category, data_content_type type, T&& value) :
 		session_id(session_id), origin(category), content_type(type), 
-			exported(std::move(exported_data)), data(std::move(value)) {}
+		exported(make_exported_data(data.emplace<T>(std::move(value)))) {}
+
+private:
+	static exported_descriptor_data make_exported_data(const segment_descriptor_base& descriptor) {
+		return { descriptor.channel_id, descriptor.segment_id };
+	}
+
+	static exported_descriptor_data make_exported_data(const image_descriptor_base& descriptor) {
+		return { descriptor.channel_id, descriptor.channel_id };
+	}
 };
 
 class io_data_registry {
 private:
-	std::deque<data_descriptor> handles;
+	struct data_descriptor_wrapper : public data_descriptor {
+	public:
+		template <typename T>
+		data_descriptor_wrapper(size_t session_id, data_category category, data_content_type type, T&& value) :
+			data_descriptor(session_id, category, type, std::move(value)) { }
+	};
+
+private:
+	std::deque<data_descriptor_wrapper> handles;
 	std::mutex handles_mx;
 
 	const storage_type segment_storage_type;
@@ -212,6 +252,12 @@ public:
 
 	template <typename T>
 	static std::add_lvalue_reference_t<typename T::descriptor_type> get_data(const data_descriptor& data);
+
+	template <typename T>
+	static std::add_const_t<std::add_lvalue_reference_t<typename T::descriptor_type>> get_data(const io_data& data);
+
+	template <typename T>
+	static std::add_lvalue_reference_t<typename T::descriptor_type> get_data(io_data& data);
 
 	void free_descriptor(const data_descriptor& descriptor) noexcept;
 
@@ -231,14 +277,14 @@ public:
 	const data_descriptor& put_input(const session_context& cx, segment_memory_descriptor&& value);
 	const data_descriptor& put_input(const session_context& cx, segment_file_descriptor&& value);
 
-	std::vector<data_descriptor> export_data()&&;
+	std::vector<io_data> export_data()&&;
 
 	storage_type get_segment_storage_type() const noexcept { return this->segment_storage_type; }
 
 private:
 	template <typename T>
 	const data_descriptor& put_impl(size_t session_id, data_category category, data_content_type type, 
-		data_descriptor::exported_descriptor_data&& exported_data, T&& value);
+		T&& value);
 };
 
 
@@ -253,10 +299,24 @@ io_data_registry::get_data(const data_descriptor& data) {
 }
 
 template <typename T>
+std::add_const_t<std::add_lvalue_reference_t<typename T::descriptor_type>>
+io_data_registry::get_data(const io_data& data) {
+	using retT = std::add_const_t < std::add_lvalue_reference_t<typename T::descriptor_type>>;
+	return std::any_cast<retT>(data.data);
+}
+
+template <typename T>
+std::add_lvalue_reference_t<typename T::descriptor_type>
+io_data_registry::get_data(io_data& data) {
+	using retT = std::add_lvalue_reference_t<typename T::descriptor_type>;
+	return std::any_cast<retT>(data.data);
+}
+
+template <typename T>
 const data_descriptor& io_data_registry::put_impl(size_t session_id, data_category category, 
-		data_content_type type, data_descriptor::exported_descriptor_data&& exported_data, T&& value) {
+		data_content_type type, T&& value) {
 	std::lock_guard lock(this->handles_mx);
-	this->handles.push_back({ session_id, category, type, std::move(exported_data), std::move(value) });
+	this->handles.emplace_back(session_id, category, type, std::move(value));
 	return this->handles.back();
 }
 
@@ -265,23 +325,21 @@ template <typename T>
 const data_descriptor& io_data_registry::put_output(const session_context& cx, 
 		image_memory_descriptor<T>&& value) {
 	size_t channel_id = value.channel_id;
-	return this->put_impl(cx.id, data_category::output, data_content_type::image, 
-		{ channel_id }, std::move(value));
+	return this->put_impl(cx.id, data_category::output, data_content_type::image, std::move(value));
 }
 
 template <typename T>
 const data_descriptor& io_data_registry::put_input(image_memory_descriptor<T>&& value) {
 	size_t channel_id = value.channel_id;
 	return this->put_impl(data_descriptor::id_external, data_category::input, data_content_type::image, 
-		{ channel_id }, std::move(value));
+		std::move(value));
 }
 
 template <typename T>
 const data_descriptor& io_data_registry::put_input(const session_context& cx, 
 		image_memory_descriptor<T>&& value) {
 	size_t channel_id = value.channel_id;
-	return this->put_impl(cx.id, data_category::input, data_content_type::image, 
-		{ channel_id }, std::move(value));
+	return this->put_impl(cx.id, data_category::input, data_content_type::image, std::move(value));
 }
 
 // output types:

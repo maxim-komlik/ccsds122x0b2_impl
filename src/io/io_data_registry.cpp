@@ -1,14 +1,17 @@
 #include "io_data_registry.hpp"
 
-std::vector<data_descriptor> io_data_registry::export_data()&& {
-	std::vector<data_descriptor> result;
+std::vector<io_data> io_data_registry::export_data()&& {
+	std::vector<io_data> result;
 	result.reserve(this->handles.size());
 
-	auto it = std::remove_if(this->handles.begin(), this->handles.end(),
-		[](const data_descriptor& item) noexcept -> bool {
+	std::move(this->handles.begin(), this->handles.end(), std::back_inserter(result));
+
+	auto it = std::remove_if(result.begin(), result.end(),
+		[](const io_data& item) noexcept -> bool {
 			return !item.data.has_value();
 		});
-	std::move(this->handles.begin(), it, std::back_inserter(result));
+	result.erase(it, result.end());
+
 	return result;
 }
 
@@ -20,38 +23,34 @@ void io_data_registry::free_descriptor(const data_descriptor& descriptor) noexce
 const data_descriptor& io_data_registry::put_output(const session_context& cx,
 		segment_memory_descriptor&& value) {
 	size_t channel_id = value.channel_id;
-	return this->put_impl(cx.id, data_category::output, data_content_type::segment, 
-		{ channel_id }, std::move(value));
+	return this->put_impl(cx.id, data_category::output, data_content_type::segment, std::move(value));
 }
 
 const data_descriptor& io_data_registry::put_output(const session_context& cx,
 		segment_file_descriptor&& value) {
 	size_t channel_id = value.channel_id;
-	return this->put_impl(cx.id, data_category::output, data_content_type::segment, 
-		{ channel_id }, std::move(value));
+	return this->put_impl(cx.id, data_category::output, data_content_type::segment, std::move(value));
 }
 
 const data_descriptor& io_data_registry::put_input(segment_memory_descriptor&& value) {
 	size_t channel_id = value.channel_id;
 	return this->put_impl(data_descriptor::id_external, data_category::input, data_content_type::segment, 
-		{ channel_id }, std::move(value));
+		std::move(value));
 }
 
 const data_descriptor& io_data_registry::put_input(segment_file_descriptor&& value) {
 	size_t channel_id = value.channel_id;
 	return this->put_impl(data_descriptor::id_external, data_category::input, data_content_type::segment, 
-		{ channel_id }, std::move(value));
+		std::move(value));
 }
 
 const data_descriptor& io_data_registry::put_input(const session_context& cx,
 		segment_memory_descriptor&& value) {
 	size_t channel_id = value.channel_id;
-	return this->put_impl(cx.id, data_category::input, data_content_type::segment, 
-		{ channel_id }, std::move(value));
+	return this->put_impl(cx.id, data_category::input, data_content_type::segment, std::move(value));
 }
 const data_descriptor& io_data_registry::put_input(const session_context& cx,
 		segment_file_descriptor&& value) {
 	size_t channel_id = value.channel_id;
-	return this->put_impl(cx.id, data_category::input, data_content_type::segment, 
-		{ channel_id }, std::move(value));
+	return this->put_impl(cx.id, data_category::input, data_content_type::segment, std::move(value));
 }

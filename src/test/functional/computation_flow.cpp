@@ -214,14 +214,14 @@ struct decompression_type_params {
 		task_pool pool;
 		using decompress_task_t = task_pool::flow_graph::parse<decompress_tree>;
 		for (ptrdiff_t id = 0; id < handles.size(); ++id) {
-			size_t z = handles[id].get().get_exported_data().channel_id.value();
+			size_t z = handles[id].get().get_exported_data().get_channel_id();
 			compression_context<typename routine_set::segment_type> context{
 				generate_compression_id(),
 				cx->channel_contexts[z],
 				std::make_unique<segment<typename routine_set::segment_type>>(),
 				handles[id]
 			};
-			context.segment_data->id = id;
+			context.segment_data->id = handles[id].get().get_exported_data().get_object_id();;
 			cx->channel_contexts[z].descriptors.register_operation(context);
 			pool.add_tasks(decompress_task_t(std::move(context))); // TODO: this way to populate pool queue 
 				// is expensive...
