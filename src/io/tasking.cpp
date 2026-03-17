@@ -210,21 +210,28 @@ void task_pool::execute_flow(bool async) {
 			return (executor_ptr->get_state() != task_executor::state::init);
 		});
 
+	bool need_scheduling = this->schedule_epoch_counter.load() < 0;
+	if (need_scheduling) {
+		this->schedule_epoch_counter.store(0);
+		// we can always keep executor[0] for calling thread.
+		this->schedule(*(this->executors[0]));
+	} // otherwise running executors will eventually schedule tasks from global queue
+
 	if (initialized) {
-		// skip this->executors[0], reserved for calling thread
-		bool need_scheduling = std::all_of(std::next(this->executors.begin()), this->executors.end(),
-			[](const auto& executor_ptr) -> bool {
-				task_executor::state current_state = executor_ptr->get_state();
-				return (current_state == task_executor::state::halted) |
-					// for the purpose of makind decision on scheduling necessity 
-					// halted, pending_shutdown and shutdown are equivalent
-					(current_state == task_executor::state::pending_shutdown) |
-					(current_state == task_executor::state::shutdown);
-			});
-		if (need_scheduling) {
-			this->schedule_epoch_counter.store(0);
-			this->schedule(*(this->executors[0]));
-		} // otherwise running executors will eventually schedule tasks from global queue
+		// // skip this->executors[0], reserved for calling thread
+		// bool need_scheduling = std::all_of(std::next(this->executors.begin()), this->executors.end(),
+		// 	[](const auto& executor_ptr) -> bool {
+		// 		task_executor::state current_state = executor_ptr->get_state();
+		// 		return (current_state == task_executor::state::halted) |
+		// 			// for the purpose of making decision on scheduling necessity 
+		// 			// halted, pending_shutdown and shutdown are equivalent
+		// 			(current_state == task_executor::state::pending_shutdown) |
+		// 			(current_state == task_executor::state::shutdown);
+		// 	});
+		// if (need_scheduling) {
+		// 	this->schedule_epoch_counter.store(0);
+		// 	this->schedule(*(this->executors[0]));
+		// } // otherwise running executors will eventually schedule tasks from global queue
 
 		// TODO: should we restart executors explicitly?
 		// for (ptrdiff_t i = 1; i < this->executors.size(); ++i) {
@@ -241,8 +248,8 @@ void task_pool::execute_flow(bool async) {
 		// 	}
 		// }
 	} else {
-		// we can always keep executor[0] for calling thread.
-		this->schedule(*(this->executors[0]));
+		// // we can always keep executor[0] for calling thread.
+		// this->schedule(*(this->executors[0]));
 
 		for (ptrdiff_t i = 1; i < this->executors.size(); ++i) {
 			// TODO: check std::thread join/move preconditions
@@ -462,11 +469,14 @@ void task_pool::task_executor::start_synchronous_execution() {
 		ptrdiff_t epoch = parent_pool.schedule_epoch_counter.load();
 		state expected_halted = this->current_state.load();
 		// no need to wait for scheduling if executor is waken up since state was set to halted
-		if ((expected_halted == state::halted) & (epoch >= 0)) {
+		while ((expected_halted == state::halted) & (epoch >= 0)) {
 			// there's a chance that after scheduling is done we get some tasks, 
 			// or some neighbour gets tasks and we could try stealing
 			parent_pool.schedule_epoch_counter.wait(epoch);
 			epoch = parent_pool.schedule_epoch_counter.load();
+			// we could have not waken up because a new task was not put into our queue; so 
+			// continue waiting until epoch ends and executor is still halted
+			expected_halted = this->current_state.load();
 		}
 
 		if (epoch < 0) {

@@ -794,7 +794,7 @@ private:
 	mutable std::mutex scheduling_mx;	// TODO: prevent false sharing?
 
 	std::atomic<ptrdiff_t> state_subscription_counter = 0;
-	std::atomic<ptrdiff_t> schedule_epoch_counter = 0;
+	std::atomic<ptrdiff_t> schedule_epoch_counter = -1;
 };
 
 
