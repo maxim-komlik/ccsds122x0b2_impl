@@ -61,6 +61,8 @@ validation_context validate_parameters(const params::restore_command& parameters
 
 	std::for_each(stream_params.cbegin(), stream_params.cend(), validate_stream_params);
 
+	// TODO: validate source? validate destination?
+
 	return result;
 }
 

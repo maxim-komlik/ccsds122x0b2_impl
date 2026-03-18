@@ -110,32 +110,46 @@ void compress_command_handler(const params::compress_command& parameters) {
 
 	parameters.dwt_params.frame;	// TODO:
 
-	session_context cx(registry);
-	cx.settings_session = session_settings {
-		.dwt_type = parse_dwt_type(parameters.dwt_params.type),
-		.img_width = img_desc.meta.width,
-		.pixel_bdepth = img_desc.meta.static_bdepth, // TODO:
-		.signed_pixel = parameters.img_signed,
-		.transpose = parameters.img_transpose,
-		.rows_pad_count = height_padding,
-		.codeword_size = sizeof(uintptr_t) << 3,	// TODO: ?
-		.custom_shifts = parameters.dwt_params.shifts.has_value(),
-		.shifts = parse_shifts(parameters.dwt_params.shifts)
-	};
+	{
+		session_context cx(registry);
+		cx.settings_session = session_settings {
+			.dwt_type = parse_dwt_type(parameters.dwt_params.type),
+			.img_width = img_desc.meta.width,
+			.pixel_bdepth = img_desc.meta.static_bdepth, // TODO:
+			.signed_pixel = parameters.img_signed,
+			.transpose = parameters.img_transpose,
+			.rows_pad_count = height_padding,
+			.codeword_size = sizeof(uintptr_t) << 3,	// TODO: ?
+			.custom_shifts = parameters.dwt_params.shifts.has_value(),
+			.shifts = parse_shifts(parameters.dwt_params.shifts)
+		};
 
-	cx.compr_settings.push_back(parse_compression_settings(parameters.stream_params.first));
-	for (const auto& item : parameters.stream_params.subsequent) {
-		cx.compr_settings.push_back(parse_compression_settings(item));
+		decltype(channel_context::compr_settings) compression_params;
+		compression_params.push_back(parse_compression_settings(parameters.stream_params.first));
+		for (const auto& item : parameters.stream_params.subsequent) {
+			compression_params.push_back(parse_compression_settings(item));
+		}
+
+		decltype(channel_context::seg_settings) segment_params;
+		segment_params.push_back(parse_segment_settings(parameters.segment_params.first));
+		for (const auto& item : parameters.segment_params.subsequent) {
+			segment_params.push_back(parse_segment_settings(item));
+		}
+
+		cx.init_channel_contexts(img_desc.meta.channel_num);
+		for (ptrdiff_t i = 0; i < img_desc.meta.channel_num - 1; ++i) {
+			cx.channel_contexts[i].compr_settings = compression_params;
+			cx.channel_contexts[i].seg_settings = segment_params;
+		}
+		cx.channel_contexts.back().compr_settings = std::move(compression_params);
+		cx.channel_contexts.back().seg_settings = std::move(segment_params);
+
+		session_parameters_parser<flow_impl>::load_image(std::move(cx), img_desc);
 	}
-
-	cx.seg_settings.push_back(parse_segment_settings(parameters.segment_params.first));
-	for (const auto& item : parameters.segment_params.subsequent) {
-		cx.seg_settings.push_back(parse_segment_settings(item));
-	}
-
-	session_parameters_parser<flow_impl>::load_image(std::move(cx), img_desc.meta.channel_num, img_desc);
 
 	// TODO: handle output data somehow?
+	// TODO: but should close/finalize session somehow? context has reference to registry
+	auto segments = std::move(registry).export_data();
 }
 
 namespace {
@@ -229,11 +243,13 @@ void restore_command_handler(const params::restore_command& parameters) {
 
 	io_data_registry registry(parse_storage_type(parameters.src_params.type));
 	
-	session_context cx(registry);
+	{
+		session_context cx(registry);
 
-	auto handles = load_segments(parameters.src_params, registry);
-	size_t channel_num = collect_decompression_session_params(cx, handles);
-	session_parameters_parser<flow_impl>::restore(std::move(cx), channel_num, std::move(handles));
+		auto handles = load_segments(parameters.src_params, registry);
+		collect_decompression_session_params(cx, handles);
+		session_parameters_parser<flow_impl>::restore(std::move(cx), std::move(handles));
+	}
 
 	auto channels = std::move(registry).export_data();
 }

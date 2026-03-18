@@ -332,7 +332,12 @@ struct channel_context {
 	descriptor_registry descriptors;
 	std::pair<size_t, size_t> allocated_segment_id = { 0, 0 }; // first is lower bound, second is upper
 
+	// TODO: setters?
+	std::vector<std::pair<size_t, compression_settings>> compr_settings; // at least 1 item must be present. Sorted
+	std::vector<std::pair<size_t, segment_settings>> seg_settings; // at least 1 item must be present. Sorted
+
 	std::variant<
+			std::monostate, 
 			compression_data<int8_t>,
 			compression_data<int16_t>,
 			compression_data<int32_t>,
@@ -345,12 +350,20 @@ struct channel_context {
 	session_context& session_cx;
 	const size_t channel_index;
 
+	channel_context(session_context& cx, size_t z) : session_cx(cx), channel_index(z) { }
+
 	template <typename T>
-	channel_context(session_context& cx, size_t z, std::type_identity<T>) :
-			session_cx(cx), channel_index(z), data(std::in_place_type<compression_data<T>>)		// msvc implementation couldn't deduce variant(T&& t) for some reason
-	{
-		auto& compr_data = std::get<compression_data<T>>(this->data);
+	compression_data<T>& init_compression_data() {
+		bool valid = true;
+		valid &= std::holds_alternative<std::monostate>(this->data);
+
+		if (!valid) {
+			// TODO: error handling, throw?
+		}
+
+		auto& compr_data = this->data.emplace<compression_data<T>>();
 		compr_data.incomplete_segment = std::make_unique<segment<typename compression_data<T>::sT>>();
+		return compr_data;
 	}
 
 	void free_compressed_segment_data() {
@@ -362,23 +375,10 @@ struct channel_context {
 	}
 };
 
-// Input image may have arbitrary pixel depth, i.e. single pixel can be representable by 
-// types less than 64-bit per channel.
-// For the purpose of DWT, we'd like to make sure that image data is casted to signed type
-// (or first level handled with unsigned to signed casting internally, transformer buffers
-// have to be signed anyway) and static range of chosen transformer type is at least twice 
-// as big as image data dynamic range for positive or negative values, whichever is greater.
-// 
-// Potential benefits of using denser types in terms of memory performance should be tested.
-// 
-// So for unsigned input we at least must cast to wider signed alternative. And for signed 
-// input we sometimes need to cast to wider alternative.
-// 
-// Therefore it seems to be not so bad idea to cast image data to int64_t anyway.
-// 
 struct session_context {
 	// TODO: the following properties seem legitimate to vary across different channels of the same image:
 	//		dwt shifts 
+	//			[well not so sure about this, shifts are defined in Header 4 and thus are session parameters]
 	//		segmentation settings (segment sizes)
 	//			[overall, the limit on segment indexing of 256 segments processed simultaneously 
 	//				is applicable to every channel independently]
@@ -387,9 +387,6 @@ struct session_context {
 
 	size_t id; // TODO: uninitialized?
 	session_settings settings_session;
-
-	std::vector<std::pair<size_t, compression_settings>> compr_settings; // at least 1 item must be present. Sorted
-	std::vector<std::pair<size_t, segment_settings>> seg_settings; // at least 1 item must be present. Sorted
 
 	// std::vector would require value_type to be copy-constructible for emplace_back
 	std::deque<channel_context> channel_contexts;
@@ -400,10 +397,9 @@ struct session_context {
 	session_context(io_data_registry& registry) : data_registry(registry) {}
 
 
-	template <typename dwtT>
 	void init_channel_contexts(size_t channel_num = 1) {
 		for (size_t i = 0; i < channel_num; ++i) {
-			this->channel_contexts.emplace_back(*this, i, std::type_identity<dwtT>{});
+			this->channel_contexts.emplace_back(*this, i);
 		}
 
 		// TODO: if the data decoded sequentially, compression and segment settings will be
@@ -426,23 +422,26 @@ struct session_context {
 #include <type_traits>
 #include <iterator>
 
-inline std::pair<compression_settings, bool> get_compression_settings(const session_context& context, size_t id) {
+inline std::pair<compression_settings, bool> get_compression_settings(const channel_context& context, size_t id) {
 	const auto& compr_settings = context.compr_settings;
 	using value_t = std::remove_reference_t<decltype(compr_settings)>::value_type;
 	auto result_iter = std::upper_bound(compr_settings.cbegin(), compr_settings.cend(), id, [](size_t target, const value_t& val) -> bool {
 			return (target < val.first);
 		});
-	return {std::prev(result_iter)->second, (std::prev(result_iter)->first == id)};
+
+	bool strict_match = (std::prev(result_iter)->first == id);
+	return {std::prev(result_iter)->second, strict_match};
 }
 
-inline std::pair<segment_settings, bool> get_segment_settings(const session_context& context, size_t id) {
+inline std::pair<segment_settings, bool> get_segment_settings(const channel_context& context, size_t id) {
 	const auto& seg_settings = context.seg_settings;
 	using value_t = std::remove_reference_t<decltype(seg_settings)>::value_type;
 	auto result_iter = std::upper_bound(seg_settings.cbegin(), seg_settings.cend(), id, [](size_t target, const value_t& val) -> bool {
 			return (target < val.first);
 		});
+
 	bool strict_match = (std::prev(result_iter)->first == id);
-	return {std::prev(result_iter)->second, (std::prev(result_iter)->first == id)};
+	return {std::prev(result_iter)->second, strict_match};
 }
 
 inline size_t generate_session_id() {

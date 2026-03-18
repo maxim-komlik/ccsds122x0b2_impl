@@ -40,6 +40,9 @@ validation_context validate_parameters(const params::compress_command& parameter
 	result.warning(img_desc.if_signed.value_or(parameters.img_signed) <= parameters.img_signed, 
 		u8"Input image is signed, but DWT input configured as unsigned; this may result in unexpected dynamic bdepth values."s);
 
+	result.error(img_desc.channel_num > 0,
+		u8"Input image width must have at least 1 channel (value "s + to_u8string(img_desc.channel_num) + u8" provided). "s);
+
 	result.error(img_desc.width >= constants::img::min_width,
 		u8"Input image width must be not less than 17 (value "s + to_u8string(img_desc.width) + u8" provided). "s);
 	result.error(img_desc.width <= constants::img::max_width,
