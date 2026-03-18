@@ -126,7 +126,7 @@ private:
 	static std::vector<compression_context<segment_type>> dispatch_segments(channel_context& context, std::vector<std::unique_ptr<segment<segment_type>>>&& segments);
 };
 
-inline size_t collect_decompression_session_params(session_context& cx, std::vector<std::reference_wrapper<const data_descriptor>>& handles);
+inline void collect_decompression_session_params(session_context& cx, std::vector<std::reference_wrapper<const data_descriptor>>& handles);
 
 
 const data_descriptor& make_output_segment_descriptor(session_context& cx, size_t segment_id, size_t channel_id) {
@@ -173,11 +173,11 @@ std::vector<dwt_context> compression_routines<T>::preprocess_image(dwt_context c
 	size_t largest_segment_size = 0;
 
 	// TODO: here we should defend against concurrent collection access
-	auto largest_segment = std::max_element(cx.channel_cx.session_cx.seg_settings.cbegin(), cx.channel_cx.session_cx.seg_settings.cend(),
+	auto largest_segment = std::max_element(cx.channel_cx.seg_settings.cbegin(), cx.channel_cx.seg_settings.cend(),
 		[](const std::pair<size_t, segment_settings>& lhs, const std::pair<size_t, segment_settings>& rhs) -> bool {
 			return lhs.second.size < rhs.second.size;
 		});
-	if (largest_segment != cx.channel_cx.session_cx.seg_settings.cend()) {
+	if (largest_segment != cx.channel_cx.seg_settings.cend()) {
 		largest_segment_size = largest_segment->second.size;
 	} else {
 		largest_segment_size = max_frame_width;
@@ -662,7 +662,7 @@ std::vector<compression_context<typename compression_routines<T>::segment_type>>
 	// TODO: add apply(subbands_t&, size_t count) interface to segment assembler to support 
 	// variadic segment sizes
 
-	auto [settings, strict_match] = get_segment_settings(cx.channel_cx.session_cx, cx.incomplete_segment_data->id); // TODO: segmend id
+	auto [settings, strict_match] = get_segment_settings(cx.channel_cx, cx.incomplete_segment_data->id); // TODO: segmend id
 	assembler.set_shifts(dwt_shifts);
 	assembler.set_segment_size(settings.size);
 	// TODO: here we should split assembler.apply calls according to consecutive segment_settings's
@@ -769,8 +769,8 @@ template <typename T>
 void compression_routines<T>::compress_segment(compression_context<typename compression_routines<T>::segment_type> cx) {
 	auto op_state_token = cx.channel_cx.descriptors.start_operation(cx);
 	auto& encoder = per_thread::compressors<T>::get_encoder(cx.channel_cx.session_cx);
-	auto [param_compr, flag_compr] = get_compression_settings(cx.channel_cx.session_cx, cx.segment_data->id);
-	auto [param_seg, flag_seg] = get_segment_settings(cx.channel_cx.session_cx, cx.segment_data->id);
+	auto [param_compr, flag_compr] = get_compression_settings(cx.channel_cx, cx.segment_data->id);
+	auto [param_seg, flag_seg] = get_segment_settings(cx.channel_cx, cx.segment_data->id);
 
 	encoder.set_use_heuristic_DC(param_seg.heuristic_quant_DC);
 	encoder.set_use_heuristic_bdepthAc(param_seg.heuristic_bdepth_AC);
@@ -848,8 +848,8 @@ void compression_routines<T>::decode_segment(compression_context<segment_type> c
 	auto op_state_token = cx.channel_cx.descriptors.start_operation(cx);
 	auto& decoder = per_thread::decompressors<T>::get_decoder(cx.channel_cx.session_cx);
 
-	auto [param_compr, flag_compr] = get_compression_settings(cx.channel_cx.session_cx, cx.segment_data->id);
-	auto [param_seg, flag_seg] = get_segment_settings(cx.channel_cx.session_cx, cx.segment_data->id);
+	auto [param_compr, flag_compr] = get_compression_settings(cx.channel_cx, cx.segment_data->id);
+	auto [param_seg, flag_seg] = get_segment_settings(cx.channel_cx, cx.segment_data->id);
 
 	cx.segment_data->size = param_seg.size;
 	cx.segment_data->bit_shifts = cx.channel_cx.session_cx.settings_session.shifts;
@@ -889,7 +889,7 @@ void compression_routines<T>::decode_segment(compression_context<segment_type> c
 			size_t image_width = cx.channel_cx.session_cx.settings_session.img_width;
 			uintmax_t blocks_total = 0;
 
-			const auto& segmentation_settings = cx.channel_cx.session_cx.seg_settings;
+			const auto& segmentation_settings = cx.channel_cx.seg_settings;
 			size_t next_setting_segment_id = cx.segment_data->id;
 
 			std::for_each(segmentation_settings.crbegin(), segmentation_settings.crend(),
@@ -1145,21 +1145,19 @@ void compression_routines<T>::postprocess_image(segmentation_context<subband_typ
 	return;
 }
 
-// using decompression_parameters = std::tuple<
-// 	std::vector<std::reference_wrapper<const data_descriptor>>, 
-// 	size_t>;
-
 #include <optional> // really need optional?
-// decompression_parameters 
-size_t collect_decompression_session_params(session_context& cx, std::vector<std::reference_wrapper<const data_descriptor>>& handles) {
+void collect_decompression_session_params(session_context& cx, std::vector<std::reference_wrapper<const data_descriptor>>& handles) {
 	// handles are expected to be sorted by channel_id <| segment id
+	// 
+	// TODO: is it reasonable to pass handle set in 256-item batches? so that segments in every 
+	// batch could be sorted, and therefore requirements would be weakened
 	using word_t = size_t;
 	bool valid = true;
 
 	std::optional<session_settings> session_params;
 	std::optional<size_t> img_pad_row_count;
-	decltype(session_context::compr_settings) compression_params;
-	decltype(session_context::seg_settings) segment_params;
+	std::vector<decltype(channel_context::compr_settings)> compression_params;
+	std::vector<decltype(channel_context::seg_settings)> segment_params;
 
 	size_t channel_start_count = 0;
 	size_t channel_end_count = 0;
@@ -1167,7 +1165,7 @@ size_t collect_decompression_session_params(session_context& cx, std::vector<std
 	constexpr size_t segment_count_mask = 0x0100 - 1;	// TODO: magic, make interface constant
 	for (auto item : handles) {
 		auto segment_descriptor_parser = 
-			[](const io_data_registry& registry, const data_descriptor& handle) -> segment_descriptor_base& {
+			[](const io_data_registry& registry, const data_descriptor& handle) -> external_segment_descriptor& {
 				switch (registry.get_segment_storage_type()) {
 				case storage_type::file: {
 					return io_data_registry::get_data<segment_selector<storage_type::file>>(handle);
@@ -1183,7 +1181,6 @@ size_t collect_decompression_session_params(session_context& cx, std::vector<std
 				throw ccsds::exception{};
 			};
 
-		segment_descriptor_base& descriptor = segment_descriptor_parser(cx.data_registry, item);
 		auto source = make_source<word_t>(cx, item);	// TODO: need to pass context as parameter? 
 		source->setup_session();
 		// But legitimate use case is to check headers prior to context creation
@@ -1191,7 +1188,7 @@ size_t collect_decompression_session_params(session_context& cx, std::vector<std
 		auto proto = ccsds_header_parser<ccsds_file_protocol>::parse_header(source->get_bitwrapper());
 		if (proto.if_first()) {
 			if (proto.if_contains_session_params()) {
-				valid &= (descriptor.segment_id == 0);
+				valid &= (item.get().get_exported_data().get_object_id() == 0);		// TODO: get rid of this check when non-sorted batch-based handle set is implemented
 				valid &= !session_params.has_value();
 				if (!valid) {
 					// TODO: error handling
@@ -1200,6 +1197,9 @@ size_t collect_decompression_session_params(session_context& cx, std::vector<std
 			} // otherwise this is just another image channel of the same image session
 			++channel_start_count;
 			next_segment_id = 0;
+
+			compression_params.emplace_back();
+			segment_params.emplace_back();
 		}
 		if (proto.if_last()) {
 			if (!img_pad_row_count.has_value()) {
@@ -1209,81 +1209,62 @@ size_t collect_decompression_session_params(session_context& cx, std::vector<std
 		}
 
 		valid &= (proto.get_segment_count() == (next_segment_id & segment_count_mask));
-		descriptor.segment_id = next_segment_id;
-		descriptor.channel_id = channel_start_count - (channel_start_count > 0);	// TODO: really should bother about UB here?
+		segment_descriptor_parser(cx.data_registry, item).reset_identification(
+			channel_start_count - (channel_start_count > 0),	// TODO: really should bother about UB here?
+			next_segment_id);
 
 		if (proto.if_contains_compression_params()) {
-			// TODO: valid compressor *could* apply different settings set for different channels.
-			// Major refactor would be needed to support this scenario.
-			// Note applies to the corresponding logic below throughout the function, apply 
-			// changes there as well when this issue being fixed.
-			compression_params.push_back({ descriptor.segment_id, proto.get_compression_params() });
+			// valid compressor *could* apply different settings set for different channels.
+			compression_params[item.get().get_exported_data().get_channel_id()].push_back(
+				{item.get().get_exported_data().get_object_id(), proto.get_compression_params()});
 		}
 		if (proto.if_contains_segment_params()) {
-			segment_params.push_back({ descriptor.segment_id, proto.get_segment_params() });
+			segment_params[item.get().get_exported_data().get_channel_id()].push_back(
+				{item.get().get_exported_data().get_object_id(), proto.get_segment_params()});
 		}
 
 		++next_segment_id;
 	}
 
+	auto validate_params_collection = [](auto& collection) -> bool {
+		std::sort(collection.begin(), collection.end(),
+			[](const auto& lhs, const auto& rhs) -> bool {
+				return lhs.first < rhs.first;
+			});
+
+		auto adjacent_eq_it = std::adjacent_find(collection.cbegin(), collection.cend(),
+			[](const auto& lhs, const auto& rhs) -> bool {
+				return lhs.first == rhs.first;
+			});
+
+		return adjacent_eq_it == collection.cend();
+	};
+
 	valid &= session_params.has_value();
 	valid &= (img_pad_row_count.has_value() && (img_pad_row_count.value() < 8)); // TODO: magic numbers; pad_rows is guaranteed to be less than 8 by bitfield implementation
 	valid &= !compression_params.empty();
 	valid &= !segment_params.empty();
+
+	for (ptrdiff_t i = 0; i < channel_start_count; ++i) {
+		valid &= validate_params_collection(compression_params[i]);
+		valid &= validate_params_collection(segment_params[i]);
+	}
+
 	valid &= (channel_start_count == channel_end_count);
 	if (!valid) {
 		// TODO: handle
 	}
 
 	size_t channel_count = channel_start_count;
+
 	(*session_params).rows_pad_count = img_pad_row_count.value();
-
-	auto validate_params_collection = [channel_count](auto& collection) -> void {
-		std::sort(collection.begin(), collection.end(),
-			[](const auto& lhs, const auto& rhs) -> bool {
-				return lhs.first < rhs.first;
-			});
-
-		const auto* prev_item = &(collection.front());
-		size_t same_count = 0;
-		for (const auto& item : collection) {
-			bool same_index = (item.first == prev_item->first);
-			if (!same_index) {
-				bool valid = true;
-				valid &= (same_count == channel_count);
-				if (!valid) {
-					// TODO: handle error, throw
-				}
-
-				prev_item = &item;
-				same_count = 0;
-			}
-			++same_count;
-		}
-		if (same_count != channel_count) {
-			// TODO: handle error, throw
-		}
-
-		auto new_end_it = std::unique(collection.begin(), collection.end());
-		collection.erase(new_end_it, collection.end());
-	};
-
-	validate_params_collection(compression_params);
-	validate_params_collection(segment_params);
-
 	cx.settings_session = *std::move(session_params);
-	cx.compr_settings = std::move(compression_params);
-	cx.seg_settings = std::move(segment_params);
 
-	// std::move(handles);
-	// return {
-	// 	*std::move(session_params), 
-	// 	std::move(compression_params), 
-	// 	std::move(segment_params), 
-	// 	channel_count
-	// };
-	// return { std::move(handles) , channel_count };
-	return channel_count;
+	cx.init_channel_contexts(channel_count);
+	for (ptrdiff_t i = 0; i < channel_count; ++i) {
+		cx.channel_contexts[i].compr_settings = std::move(compression_params[i]);
+		cx.channel_contexts[i].seg_settings = std::move(segment_params[i]);
+	}
 }
 
 template <typename Derived>

@@ -16,20 +16,8 @@
 struct segment_descriptor_base {
 	static constexpr size_t id_unknown = (size_t)(ptrdiff_t)(-1);
 	
-	// TODO: there's no reliable way to find out how many channels are encoded into segment 
-	// sequence (for generalized segment data input) without looking into the segment data 
-	// header itself. Segment data header lookup is done on descriptor, therefore channel_id 
-	// and segment_id must be modifiable so that actual values are set after segment header is 
-	// decoded. 
-	// But after that these values should be treated as unmodifiable. 
-	// Maybe it's a good idea to add finalization flag and wrap access to data member into 
-	// public getters/setters, + add finalize() interface member function to kind-of make the 
-	// descriptor content const.
-	// 
-	// The fields below were const before cli was implemented.
-	//
-	size_t channel_id;
-	size_t segment_id;
+	const size_t channel_id;
+	const size_t segment_id;
 
 protected:
 	~segment_descriptor_base() = default;
@@ -39,8 +27,19 @@ protected:
 	segment_descriptor_base(const segment_descriptor_base& other) noexcept = default;
 	segment_descriptor_base& operator=(const segment_descriptor_base& other) noexcept = default;
 
-	segment_descriptor_base(size_t channel_id, size_t segment_id):
-		segment_id(segment_id), channel_id(channel_id) {}
+	segment_descriptor_base(size_t channel_id, size_t segment_id) noexcept:
+		channel_id(channel_id), segment_id(segment_id) {}
+};
+
+struct external_segment_descriptor : public segment_descriptor_base {
+	external_segment_descriptor(size_t channel_id, size_t segment_id) noexcept :
+		segment_descriptor_base(channel_id, segment_id) { }
+
+	void reset_identification(size_t channel_id, size_t segment_id) noexcept {
+		// tricky but well-defined
+		this->~external_segment_descriptor();
+		new (this) external_segment_descriptor(channel_id, segment_id);
+	}
 };
 
 
@@ -75,25 +74,25 @@ protected:
 };
 
 
-struct segment_file_descriptor : public segment_descriptor_base, public file_descriptor {
+struct segment_file_descriptor : public external_segment_descriptor, public file_descriptor {
 	segment_file_descriptor(std::filesystem::path&& path, size_t channel_id, size_t segment_id) :
-		segment_descriptor_base(channel_id, segment_id), file_descriptor(std::move(path)) {}
+		external_segment_descriptor(channel_id, segment_id), file_descriptor(std::move(path)) {}
 
 	segment_file_descriptor(const std::filesystem::path& path, size_t channel_id, size_t segment_id) :
-		segment_descriptor_base(channel_id, segment_id), file_descriptor(path) {
+		external_segment_descriptor(channel_id, segment_id), file_descriptor(path) {
 	}
 
 	segment_file_descriptor(size_t channel_id, size_t segment_id) :
-		segment_descriptor_base(channel_id, segment_id), file_descriptor({}) {
+		external_segment_descriptor(channel_id, segment_id), file_descriptor({}) {
 	}
 };
 
-struct segment_memory_descriptor : public segment_descriptor_base, public memory_descriptor {
+struct segment_memory_descriptor : public external_segment_descriptor, public memory_descriptor {
 	segment_memory_descriptor(std::vector<std::byte>&& segment, size_t channel_id, size_t segment_id) :
-		segment_descriptor_base(channel_id, segment_id), memory_descriptor(std::move(segment)) {}
+		external_segment_descriptor(channel_id, segment_id), memory_descriptor(std::move(segment)) {}
 	
 	segment_memory_descriptor(size_t channel_id, size_t segment_id) :
-		segment_descriptor_base(channel_id, segment_id), memory_descriptor({}) {}
+		external_segment_descriptor(channel_id, segment_id), memory_descriptor({}) {}
 };
 
 

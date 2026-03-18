@@ -45,8 +45,7 @@ private:
 	struct load_image_context_parameters {
 		std::tuple<
 			session_context,
-			std::reference_wrapper<const io::image_load_parameters>,
-			size_t> values;
+			std::reference_wrapper<const io::image_load_parameters>> values;
 
 		const session_context& get_session() const {
 			return std::get<session_context>(this->values);
@@ -59,17 +58,12 @@ private:
 		const io::image_load_parameters& get_source_description() const {
 			return std::get<std::reference_wrapper<const io::image_load_parameters>>(this->values);
 		}
-
-		size_t get_channel_num() const {
-			return std::get<size_t>(this->values);
-		}
 	};
 
 	struct restore_context_parameters {
 		std::tuple<
 			session_context,
-			std::vector<std::reference_wrapper<const data_descriptor>>,
-			size_t> values;
+			std::vector<std::reference_wrapper<const data_descriptor>>> values;
 
 		const session_context& get_session() const {
 			return std::get<session_context>(this->values);
@@ -86,15 +80,10 @@ private:
 		std::vector<std::reference_wrapper<const data_descriptor>>& get_data_handles() {
 			return std::get<std::vector<std::reference_wrapper<const data_descriptor>>>(this->values);
 		}
-
-		size_t get_channel_num() const {
-			return std::get<size_t>(this->values);
-		}
 	};
 
 public:
-	static void load_image(session_context&& cx, size_t channel_count, 
-			const io::image_load_parameters& load_spec) {
+	static void load_image(session_context&& cx, const io::image_load_parameters& load_spec) {
 		using xbw_t = sufficient_integral<intptr_t>;
 		constexpr size_t xbw_size = sizeof(xbw_t) << 3;
 		if (cx.settings_session.codeword_size != xbw_size) {
@@ -109,21 +98,24 @@ public:
 		// skip unnecessary output stream related instantiations for encoding chain, always assume 
 		// machine word-size type
 		session_parameters_parser::template parse_dwt_type<xbw_t>(
-			load_image_context_parameters{ { std::move(cx), load_spec, channel_count } });
+			load_image_context_parameters{ { std::move(cx), load_spec } });
 	}
 
-	static void restore(session_context&& cx, size_t channel_count, 
+	static void restore(session_context&& cx, 
 			std::vector<std::reference_wrapper<const data_descriptor>>&& handles) {
 		session_parameters_parser::parse_codeword_size(
-			restore_context_parameters{ { std::move(cx), std::move(handles), channel_count } });
+			restore_context_parameters{ { std::move(cx), std::move(handles) } });
 	}
 
 private:
 	template <typename dwtT>
-	static std::shared_ptr<session_context> make_shared_session(session_context&& cx, size_t channel_num) {
+	static std::shared_ptr<session_context> make_shared_session(session_context&& cx) {
 		auto result = std::make_shared<session_context>(std::move(cx));
 		result->id = generate_session_id();
-		result->init_channel_contexts<dwtT>(channel_num);
+
+		for (auto& channel_cx : result->channel_contexts) {
+			channel_cx.init_compression_data<dwtT>();
+		}
 
 		return result;
 	}
@@ -134,14 +126,14 @@ public:
 	template <typename xbwT, typename imgT, typename dwtT>
 	static void invoke_by_argument_type(restore_context_parameters&& params) {
 		Implementation<xbwT, imgT, dwtT>::decompress(
-			make_shared_session<dwtT>(std::move(params.get_session()), params.get_channel_num()),
+			make_shared_session<dwtT>(std::move(params.get_session())),
 			std::move(params.get_data_handles()));
 	}
 
 	template <typename xbwT, typename imgT, typename dwtT>
 	static void invoke_by_argument_type(load_image_context_parameters&& params) {
 		Implementation<xbwT, imgT, dwtT>::load_image(
-			make_shared_session<dwtT>(std::move(params.get_session()), params.get_channel_num()),
+			make_shared_session<dwtT>(std::move(params.get_session())), 
 			params.get_source_description());
 	}
 };

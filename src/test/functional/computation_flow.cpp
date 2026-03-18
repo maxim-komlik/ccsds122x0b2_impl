@@ -74,8 +74,6 @@ size_t compress_image(std::vector<bitmap<int32_t>>&& img) {
 	auto cx_session = std::make_shared<session_context>(registry);
 	cx_session->id = generate_session_id();
 	cx_session->settings_session = ssettings;
-	cx_session->compr_settings.push_back(std::make_pair(0, csettings));
-	cx_session->seg_settings.push_back(std::make_pair(0, segsettings));
 
 	using routine_set = compression_routines<int32_t>;
 	static_assert(sizeof(routine_set::types::block_type) == sizeof(routine_set::types::dwt_type));
@@ -105,7 +103,13 @@ size_t compress_image(std::vector<bitmap<int32_t>>&& img) {
 	std::vector<dwt_context> compress_input_contexts;
 
 	img_pos input_frame = first_channel.single_frame_params();
-	cx_session->init_channel_contexts<routine_set::types::dwt_type>(channel_num);
+	cx_session->init_channel_contexts(channel_num);
+	for (auto& channel_cx : cx_session->channel_contexts) {
+		channel_cx.init_compression_data<routine_set::types::dwt_type>();
+		channel_cx.compr_settings.push_back(std::make_pair(0, csettings));
+		channel_cx.seg_settings.push_back(std::make_pair(0, segsettings));
+	}
+
 	for (ptrdiff_t z = 0; z < channel_num; ++z) {
 		input_frame.z = z;
 		const data_descriptor& descriptor = registry.put_input(
@@ -296,7 +300,10 @@ namespace {
 		static std::shared_ptr<session_context> make_shared_session(session_context&& cx, size_t channel_num) {
 			auto result = std::make_shared<session_context>(std::move(cx));
 			result->id = generate_session_id();
-			result->init_channel_contexts<dwtT>(channel_num);
+
+			for (auto& channel_cx : result->channel_contexts) {
+				channel_cx.init_compression_data<dwtT>();
+			}
 
 			return result;
 		}
@@ -377,9 +384,8 @@ std::vector<bitmap<int32_t>> restore_image(size_t session_id, size_t channel_id)
 	// make the call below return shared_ptr<session_context>
 
 	session_context cx(io_registry);
-	size_t channel_num = collect_decompression_session_params(cx, handles);
-	// decompression_parameter_parser<decompression_type_params>::apply(std::move(cx), channel_num, std::move(handles));
-	session_parameters_parser<decompression_type_params>::restore(std::move(cx), channel_num, std::move(handles));
+	collect_decompression_session_params(cx, handles);
+	session_parameters_parser<decompression_type_params>::restore(std::move(cx), 0, std::move(handles));
 
 	std::vector<bitmap<int32_t>> result;
 	auto output_handles = std::move(io_registry).export_data();
