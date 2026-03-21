@@ -13,8 +13,16 @@
 
 namespace cli::validate::restore {
 
+namespace {
+
+	validation_context validate_image_destomation(const params::destination& parameters);
+
+}
+
 validation_context validate_parameters(const params::restore_command& parameters) {
 	validation_context result{ u8"restore"sv };
+
+	result.nest_context(validate_image_destomation(parameters.dst_params));
 
 	auto validate_stream_params = [&](const params::stream::parameters_set& item) {
 		std::u8string id_str = to_u8string(item.id);
@@ -64,6 +72,43 @@ validation_context validate_parameters(const params::restore_command& parameters
 	// TODO: validate source? validate destination?
 
 	return result;
+}
+
+
+namespace {
+
+	validation_context validate_image_destomation(const params::destination& parameters) {
+		validation_context result{ u8"output_image"sv };
+
+		switch (parameters.type) {
+		case params::dst_type::file: {
+			const auto& file_params = std::get<params::image_file>(parameters.parameters);
+			std::u8string extension = file_params.path.extension().u8string();
+			
+			constexpr std::array known_extensions = std::invoke([]() constexpr {
+					std::u8string_view values[] = {
+						{u8".bmp"sv}
+					};
+
+					return std::to_array(values);
+				});
+
+			auto it = std::find_if(known_extensions.cbegin(), known_extensions.cend(),
+				[&extension](auto item) -> bool { return item == extension; });
+
+			result.error(!std::filesystem::exists(file_params.path), 
+				u8"Output image file already exists. "s);
+			result.error(it != known_extensions.cend(),
+				u8"Output image format ["s + extension + u8"] is not supported. "s);
+		}
+		default: {
+
+		}
+		}
+
+		return result;
+	}
+
 }
 
 }

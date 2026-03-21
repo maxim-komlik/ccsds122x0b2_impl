@@ -12,7 +12,7 @@ namespace ccsds {
 		exception& operator=(const exception& other) noexcept = default;
 
 		// TODO: refactor return type, some kind of noexcept string_view
-		virtual const char* what() noexcept;
+		virtual const char* what() const noexcept;
 	};
 
 	namespace bpe {
@@ -25,7 +25,7 @@ namespace ccsds {
 			byte_limit_exception& operator=(const byte_limit_exception& other) noexcept = default;
 
 			// TODO: refactor return type, some kind of noexcept string_view
-			const char* what() noexcept override;
+			const char* what() const noexcept override;
 		};
 	};
 
@@ -34,7 +34,7 @@ namespace ccsds {
 			inline static const char description[] = "Segment header format violated. ";
 		public:
 			// TODO: refactor return type, some kind of noexcept string_view
-			const char* what() noexcept override;
+			const char* what() const noexcept override;
 		};
 
 		class truncated_header_exception : public ccsds::exception {
@@ -44,7 +44,7 @@ namespace ccsds {
 			truncated_header_exception(size_t size_hint) : expected_size(size_hint) {}
 
 			// TODO: refactor return type, some kind of noexcept string_view
-			const char* what() noexcept override;
+			const char* what() const noexcept override;
 
 			size_t get_expected_size() const noexcept { return this->expected_size; }
 		};
@@ -54,7 +54,7 @@ namespace ccsds {
 				"requested header format. ";
 		public:
 			// TODO: refactor return type, some kind of noexcept string_view
-			const char* what() noexcept override;
+			const char* what() const noexcept override;
 		};
 	}
 };

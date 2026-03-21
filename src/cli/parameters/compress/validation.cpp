@@ -37,11 +37,11 @@ validation_context validate_parameters(const params::compress_command& parameter
 		std::swap(img_desc.width, img_desc.height);
 	}
 
-	result.warning(img_desc.if_signed.value_or(parameters.img_signed) <= parameters.img_signed, 
+	result.warning(img_desc.if_signed <= parameters.img_signed, 
 		u8"Input image is signed, but DWT input configured as unsigned; this may result in unexpected dynamic bdepth values."s);
 
-	result.error(img_desc.channel_num > 0,
-		u8"Input image width must have at least 1 channel (value "s + to_u8string(img_desc.channel_num) + u8" provided). "s);
+	result.error(img_desc.depth > 0,
+		u8"Input image width must have at least 1 channel (value "s + to_u8string(img_desc.depth) + u8" provided). "s);
 
 	result.error(img_desc.width >= constants::img::min_width,
 		u8"Input image width must be not less than 17 (value "s + to_u8string(img_desc.width) + u8" provided). "s);
@@ -54,13 +54,13 @@ validation_context validate_parameters(const params::compress_command& parameter
 	// generate warning on violation
 	switch (parameters.dwt_params.type) {
 	case params::dwt_type::integer: {
-		result.warning(img_desc.static_bdepth <= constants::dwt::max_image_bdepth_int,
+		result.warning(img_desc.bdepth_static <= constants::dwt::max_image_bdepth_int,
 			u8"Input image bit depth exceeds the limit for integer DWT for standard conformant implementation (25); "s + 
 			u8"this may lead to unexpected results. "s);
 		break;
 	}
 	case params::dwt_type::fp: {
-		result.warning(img_desc.static_bdepth <= constants::dwt::max_image_bdepth_fp_unsigned + parameters.img_signed, 
+		result.warning(img_desc.bdepth_static <= constants::dwt::max_image_bdepth_fp_unsigned + parameters.img_signed, 
 			u8"Input image bit depth exceeds the limit for floating point DWT for standard conformant implementation "s +
 			u8"(27 [28 if signed pixel]); this may lead to unexpected results. "s);
 		break;
@@ -164,7 +164,7 @@ validation_context validate_parameters(const params::compress_command& parameter
 			u8"Output stream truncation stage index must be not less than 0 "s + index_spec + u8". "s);
 
 		// generate warning on violation
-		result.warning(item.bplane_stop < img_desc.static_bdepth,
+		result.warning(item.bplane_stop < img_desc.bdepth_static,
 			u8"Output stream truncation bitplane index exceeds input image static bit depth "s + index_spec + u8". ");
 	};
 

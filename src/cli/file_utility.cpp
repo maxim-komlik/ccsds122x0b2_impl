@@ -63,17 +63,24 @@ std::vector<std::filesystem::path> expand_pattern(const std::filesystem::path& p
 		// TODO: throw
 	}
 
-	std::vector<std::filesystem::path> heads;
+	struct traverse_info {
+		std::filesystem::path path;
+		ptrdiff_t parent_branch_depth;
+	};
+
+	std::vector<traverse_info> heads;
 	std::vector<std::filesystem::directory_iterator> dir_iters;
+	std::vector<ptrdiff_t> reenter_depths;
 
 	{
 		// good approximation for non-multiglob patterns
 		size_t pattern_depth = std::distance(pattern.begin(), pattern.end());
 		heads.reserve(pattern_depth);
 		dir_iters.reserve(pattern_depth);
+		reenter_depths.reserve(pattern_depth);
 	}
-		
-	heads.push_back(pattern.root_path());
+	
+	heads.push_back({ pattern.root_path(), 0 });
 
 	std::vector<std::filesystem::path> result;
 	size_t known_glob_depth = 1;
@@ -89,13 +96,13 @@ std::vector<std::filesystem::path> expand_pattern(const std::filesystem::path& p
 				break;
 			}
 
-			heads.back() /= *current_token;
+			heads.back().path /= *current_token;
 			new_entry = true;
 		}
 
 		if (current_token != pattern.end()) {
 			// must be token containing glob token
-			if (!std::filesystem::exists(heads.back())) {
+			if (!std::filesystem::exists(heads.back().path)) {
 				// glob must substitute into existing path, hence parent path must exist
 				known_glob_depth = std::max(known_glob_depth, heads.size());
 
@@ -117,7 +124,7 @@ std::vector<std::filesystem::path> expand_pattern(const std::filesystem::path& p
 					// access-denied-like errors are to be handled properly by processing implementaion, 
 					// no reasonable handling is possible due to lack of usage scenarios knowledge
 					dir_iters.push_back(std::filesystem::directory_iterator(
-						heads.back(), std::filesystem::directory_options::skip_permission_denied));
+						heads.back().path, std::filesystem::directory_options::skip_permission_denied));
 				}
 			}
 
@@ -168,7 +175,9 @@ std::vector<std::filesystem::path> expand_pattern(const std::filesystem::path& p
 				}
 
 				if (pattern_matched) {
-					heads.push_back(dir_iters.back()->path());
+					auto reenter_branch_depth = 
+						std::distance(heads.back().path.begin(), heads.back().path.end());
+					heads.push_back({ dir_iters.back()->path(), reenter_branch_depth });
 					++(dir_iters.back());
 					++current_token;
 					break;
@@ -178,34 +187,32 @@ std::vector<std::filesystem::path> expand_pattern(const std::filesystem::path& p
 			}
 
 			if (!pattern_matched) {
-				auto current_depth = std::distance(heads.back().begin(), heads.back().end());
+				auto current_depth = std::distance(heads.back().path.begin(), heads.back().path.end());
+				auto target_branch_depth = heads.back().parent_branch_depth;
 				dir_iters.pop_back(); 
 				heads.pop_back();
 
-				auto reenter_branch_depth = std::distance(heads.back().begin(), heads.back().end());
-
-				std::advance(current_token, reenter_branch_depth - current_depth);
-				// while (reenter_branch_depth < current_depth) {
-				// 	--current_token;
-				// 	--current_depth;
-				// }
+				// std::advance(current_token, target_branch_depth - current_depth);
+				while (target_branch_depth < current_depth) {
+					--current_token;
+					--current_depth;
+				}
 			}
 		} 
 		
 		if (current_token == pattern.end()) {
-			result.push_back(heads.back());
+			result.push_back(heads.back().path);
 
-			auto current_depth = std::distance(heads.back().begin(), heads.back().end());
+			auto current_depth = std::distance(heads.back().path.begin(), heads.back().path.end());
+			auto target_branch_depth = heads.back().parent_branch_depth;
 			heads.pop_back();
-
-			auto reenter_branch_depth = std::distance(heads.back().begin(), heads.back().end());
 
 			// msvc standard lib implementation does not decrement end iterator with std::advance 
 			// for some reason, seems like library bug. std::filesystem::path::const_iterator is 
 			// required to meet LegacyBidirectionalIterator, and that definetly should work...
 			// 
-			// std::advance(current_token, reenter_branch_depth - current_depth);
-			while (reenter_branch_depth < current_depth) {
+			// std::advance(current_token, target_branch_depth - current_depth);
+			while (target_branch_depth < current_depth) {
 				--current_token;
 				--current_depth;
 			}

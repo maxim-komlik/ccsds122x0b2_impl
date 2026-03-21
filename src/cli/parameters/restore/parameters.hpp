@@ -25,7 +25,8 @@ enum class segment_protocol_type {
 };
 
 enum class dst_type {
-	memory
+	memory, 
+	file
 };
 
 enum class image_protocol_type {
@@ -45,9 +46,19 @@ struct source {
 	std::variant<file_sink_params, memory_sink_params> parameters;
 };
 
+
+struct image_file {
+	std::filesystem::path path;
+};
+
+struct image_memory {};
+
 struct destination {
 	dst_type type;
 	image_protocol_type protocol;
+	std::variant<
+		image_memory,
+		image_file> parameters;
 };
 
 struct stream {
@@ -94,7 +105,8 @@ namespace meta {
 		using dst_type = cli::parameters::restore::dst_type;
 
 		constexpr static enumerator_mapping_description_t description{
-			enumerator_mapping_item_t{ dst_type::memory, "memory"sv }
+			enumerator_mapping_item_t{ dst_type::memory, "memory"sv }, 
+			enumerator_mapping_item_t{ dst_type::file, "file"sv }
 		};
 	};
 
