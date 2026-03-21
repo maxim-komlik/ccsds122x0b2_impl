@@ -6,6 +6,7 @@
 #include <cstddef>
 
 #include "img_meta.hpp"
+#include "common/utility.hpp"
 
 template <typename T, size_t alignment = 16>
 class bitmap;
@@ -40,6 +41,10 @@ public:
 	T* const ptr() const; // TODO: what is the rationale to return *const? It can be casted to non-const pointer implicitly
 	size_t width() const;
 	T& operator[](size_t index) const;
+
+	void ensure_accurate_edge() const;
+	size_t bit_depth() const;
+	
 private:
 	friend class bitmap<T, alignment>;
 	friend class bitmap_slice<T, alignment>;
@@ -52,9 +57,19 @@ void swap(bitmap<T, alignment>& first, bitmap<T, alignment>& second) noexcept;
 
 template <typename T, size_t alignment>
 class bitmap {
+private:
+	struct layout_description {
+		size_t stride = 0;
+		size_t offset = 0;
+		size_t width = 0;
+		size_t height = 0;
+		size_t length = 0;
+	};
+
+private:
 	T* m_begin;
 	T* m_rawdata;
-	img_meta m_locator;
+	layout_description m_locator;
 	size_t m_rawdata_length;
 
 	static constexpr size_t palignment = alignment * sizeof(T);
@@ -100,8 +115,11 @@ private:
 };
 
 template <typename T, size_t alignment>
-void overlapBitmaps(const bitmap<T, alignment>& src, bitmap<T, alignment>& dst,
+inline void overlapBitmaps(const bitmap<T, alignment>& src, bitmap<T, alignment>& dst,
 	size_t overlap_height);
+
+template <typename T, size_t alignment>
+inline size_t bitmap_dynamic_bit_depth(const bitmap<T, alignment>& src);
 
 template <typename T, size_t alignment>
 class bitmap_slice {
@@ -150,6 +168,7 @@ private:
 	friend class bitmap<T, alignment>;
 	const_bitmap_slice(const bitmap<T, alignment>& src, img_pos pos);
 };
+
 
 // Implementations section
 // bitmap class template implementation
@@ -235,7 +254,6 @@ bitmap<T, alignment>::bitmap(size_t width, size_t height, size_t offset) {
 	this->m_locator.offset = offset;
 	this->m_locator.stride = width + 2 * this->m_locator.offset;
 	this->m_locator.height = height;
-	this->m_locator.depth = 1;
 	this->m_locator.length = this->m_locator.height * this->m_locator.stride;
 	this->m_rawdata_length = this->m_locator.length + this->m_locator.offset;
 
@@ -333,7 +351,6 @@ void bitmap<T, alignment>::resize(size_t width, size_t height) {
 	width = (width + alignment - 1) & (~(alignment - 1));
 	this->m_locator.stride = width + 2 * this->m_locator.offset;
 	this->m_locator.height = height;
-	this->m_locator.depth = 1;
 	this->m_locator.length = this->m_locator.height * this->m_locator.stride;
 
 	if (this->m_rawdata_length < (this->m_locator.length + this->m_locator.offset)) {
@@ -446,7 +463,7 @@ bitmap_slice<T, alignment> bitmap<T, alignment>::slice(img_pos pos) {
 	}
 
 	pos.x_stride = m_locator.stride; // TODO: set other positioning data?
-	pos.depth = m_locator.depth;
+	pos.depth = 1;
 	return bitmap_slice<T, alignment>(*this, pos);
 }
 
@@ -460,7 +477,7 @@ const_bitmap_slice<T, alignment> bitmap<T, alignment>::slice(img_pos pos) const 
 	}
 
 	pos.x_stride = m_locator.stride;
-	pos.depth = m_locator.depth;
+	pos.depth = 1;
 	return const_bitmap_slice<T, alignment>(*this, pos);
 }
 
@@ -507,7 +524,15 @@ bitmap<T, alignment>& bitmap<T, alignment>::operator>>=(size_t shift_amount) {
 
 template <typename T, size_t alignment>
 img_meta bitmap<T, alignment>::get_meta() const {
-	return this->m_locator;
+	return {
+		this->m_locator.width, 
+		this->m_locator.height, 
+		1, 
+		sizeof(T) << 3, 
+		this->m_locator.offset, 
+		palignment,
+		std::is_signed_v<T>
+	};
 }
 
 template <typename T, size_t alignment>
@@ -518,10 +543,10 @@ img_pos bitmap<T, alignment>::single_frame_params() const {
 		0, 0,
 		this->m_locator.stride,
 		this->m_locator.width,
-		this->m_locator.length, // because depth is assumed to equal 1
+		this->m_locator.length, // because depth equals 1
 		this->m_locator.height,
 		this->m_locator.length,
-		this->m_locator.depth
+		1
 	};
 }
 
@@ -643,6 +668,19 @@ T* const bitmap_row<T, alignment>::ptr() const {
 template <typename T, size_t alignment>
 size_t bitmap_row<T, alignment>::width() const {
 	return this->row_width;
+}
+
+template <typename T, size_t alignment>
+void bitmap_row<T, alignment>::ensure_accurate_edge() const {
+	ptrdiff_t tail_aligned_index = (this->row_width + (alignment - 1)) & (~(alignment - 1));
+	for (ptrdiff_t i = this->row_width; i < tail_aligned_index; ++i) {
+		this->row_start[i] = 0;
+	}
+}
+
+template <typename T, size_t alignment>
+size_t bitmap_row<T, alignment>::bit_depth() const {
+	return bdepthv<T, alignment>(this->row_start, this->row_width);
 }
 
 
@@ -767,7 +805,7 @@ template <typename T, size_t alignment>
 template <typename D, size_t a>
 bitmap<D, a> const_bitmap_slice<T, alignment>::transpose() const {
 	img_meta src_meta = src.get().get_meta();
-	bitmap<D, a> transposed(this->location.height, this->location.width, src_meta.offset);
+	bitmap<D, a> transposed(this->location.height, this->location.width, src_meta.offset_requirement);
 	img_meta dst_meta = transposed.get_meta();
 
 	const T* src = this->src.get()[this->location.y].ptr() + this->location.x;
@@ -821,4 +859,14 @@ void overlapBitmaps(const bitmap<T, alignment>& src, bitmap<T, alignment>& dst,
 	// for (ptrdiff_t i = 0; i < overlap_height; ++i) {
 	// 	dst[i].assign(src[src_offset_rownum + i]);
 	// }
+}
+
+template <typename T, size_t alignment>
+size_t bitmap_dynamic_bit_depth(const bitmap<T, alignment>& src) {
+	size_t result = 0;
+	for (ptrdiff_t i = 0; i < src.get_meta().height; ++i) {
+		src[i].ensure_accurate_edge();
+		result = std::max(result, src[i].bit_depth());
+	}
+	return result;
 }

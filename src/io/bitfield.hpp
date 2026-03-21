@@ -183,8 +183,15 @@ private:
 		bytes_view<uT> value_bv{ .compound = value };
 		// bytes_view<uT> mask_bv{ .compound = (uT)(~((sT)(-1) << balloc.width)) };
 
-		bytes_view<uT> mask_bv{ .compound = (uT)((uT)((sT)(-1)) << balloc.width) }; 	// those tricky casts are due to promotions
-		mask_bv.compound = zeropred(mask_bv.compound, balloc.width < (sizeof(uT) << 3));	// because UB if shift amount is equal to type bit size
+		// bytes_view<uT> mask_bv{ .compound = (uT)((uT)((sT)(-1)) << balloc.width) }; 	// those tricky casts are due to promotions
+		// mask_bv.compound = zeropred(mask_bv.compound, balloc.width < (sizeof(uT) << 3));	// because UB if shift amount is equal to type bit size
+		// mask_bv.compound = ~mask_bv.compound;
+
+		constexpr size_t max_shift = (sizeof(uT) << 3) - 1;
+		// tricky casts below are due to promotions
+		// shift tricks are because UB if shift amount is equal to type bit size
+		bytes_view<uT> mask_bv{ .compound = (uT)((uT)((sT)(-1)) << std::min(balloc.width, max_shift)) };
+		mask_bv.compound <<= (balloc.width > max_shift);
 		mask_bv.compound = ~mask_bv.compound;
 
 		size_t balign_shift = (-(ptrdiff_t)(balloc.offset + balloc.width)) & bindex_mask;
@@ -314,9 +321,17 @@ private:
 
 		constexpr size_t bindex_mask = ~((-1) << 3);
 
-		bytes_view<uT> mask_bv{ .compound = (uT)((uT)((sT)(-1)) << balloc.width) }; 	// those tricky casts are due to promotions
-		mask_bv.compound = zeropred(mask_bv.compound, balloc.width < (sizeof(uT) << 3));	// because UB if shift amount is equal to type bit size
+		// bytes_view<uT> mask_bv{ .compound = (uT)((uT)((sT)(-1)) << balloc.width) }; 	// those tricky casts are due to promotions
+		// mask_bv.compound = zeropred(mask_bv.compound, balloc.width < (sizeof(uT) << 3));	// because UB if shift amount is equal to type bit size
+		// mask_bv.compound = ~mask_bv.compound;
+
+		constexpr size_t max_shift = (sizeof(uT) << 3) - 1;
+		// tricky casts below are due to promotions
+		// shift tricks are because UB if shift amount is equal to type bit size
+		bytes_view<uT> mask_bv{ .compound = (uT)((uT)((sT)(-1)) << std::min(balloc.width, max_shift)) };
+		mask_bv.compound <<= (balloc.width > max_shift);
 		mask_bv.compound = ~mask_bv.compound;
+
 		bytes_view<uT> result_bv{ .compound = 0 };
 		size_t ballign_shift = (-(ptrdiff_t)(balloc.offset + balloc.width)) & bindex_mask;
 
@@ -358,6 +373,9 @@ private:
 		// if constexpr (std::is_signed_v<T>) {
 		// 	result_bv.compound = signext(result_bv.compound, balloc.width);
 		// }
+		// 
+		// bmp has 2-complement signed fields, but those are little-endian...
+
 		return result_bv.compound;
 	}
 

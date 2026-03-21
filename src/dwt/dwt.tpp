@@ -47,7 +47,7 @@ private:
 	void transform(const_bitmap_slice<iT> source, bitmap_slice<T> hdst, bitmap_slice<T> ldst,
 		ptrdiff_t hdst_drop_offset = 0, ptrdiff_t ldst_drop_offset = 0,
 		bool skip_extension = false);
-	std::array<img_pos, 2> decompose_frame(img_meta src_dims, img_pos target_frame);
+	std::array<img_pos, 2> decompose_frame(img_pos src_dims, img_pos target_frame);
 	void resize_buffers(size_t base_width, size_t base_height, std::array<frame_overlap_description, 2>& overlap);
 };
 

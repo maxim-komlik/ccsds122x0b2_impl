@@ -82,7 +82,7 @@ void ForwardWaveletTransformer<T, alignment>::preprocess_image(bitmap<iT>& src) 
 template <typename T, size_t alignment>
 template <typename iT>
 subbands_t<T> ForwardWaveletTransformer<T, alignment>::apply(const bitmap<iT>& source, const img_pos& frame) {
-	img_meta src_dims = source.get_meta();
+	img_pos src_dims = source.single_frame_params();
 	// image dimensions adjusted for padding
 	src_dims.width = (src_dims.width + (dwt::horizontal_padding_length - 1)) & (~dwt::horizontal_padding_mask);
 	src_dims.height = (src_dims.height + (dwt::vertical_padding_length - 1)) & (~dwt::vertical_padding_mask);
@@ -533,7 +533,7 @@ void ForwardWaveletTransformer<T, alignment>::set_target_frame_size(size_t frame
 }
 
 template <typename T, size_t alignment>
-std::array<img_pos, 2> ForwardWaveletTransformer<T, alignment>::decompose_frame(img_meta src_dims, img_pos target_frame) {
+std::array<img_pos, 2> ForwardWaveletTransformer<T, alignment>::decompose_frame(img_pos src_dims, img_pos target_frame) {
 	bool params_valid = true;
 	params_valid &= (target_frame.width & dwt::horizontal_padding_mask) == 0;
 	params_valid &= (target_frame.height & dwt::vertical_padding_mask) == 0;
@@ -547,7 +547,7 @@ std::array<img_pos, 2> ForwardWaveletTransformer<T, alignment>::decompose_frame(
 	params_valid &= target_frame.height <= src_dims.height;
 	params_valid &= target_frame.width != 0;
 	params_valid &= target_frame.height != 0;
-	params_valid &= target_frame.x_stride == src_dims.stride; // no support for non-rectangular 
+	params_valid &= target_frame.x_stride == src_dims.x_stride; // no support for non-rectangular 
 		// frames, due to the nature of image edge handling.
 	if (!params_valid) {
 		// TODO: validation error

@@ -376,26 +376,34 @@ struct channel_context {
 };
 
 struct session_context {
-	// TODO: the following properties seem legitimate to vary across different channels of the same image:
+	// the following properties seem legitimate to vary across different channels of the same image:
 	//		dwt shifts 
 	//			[well not so sure about this, shifts are defined in Header 4 and thus are session parameters]
-	//		segmentation settings (segment sizes)
-	//			[overall, the limit on segment indexing of 256 segments processed simultaneously 
-	//				is applicable to every channel independently]
+	//		segmentation settings 
 	//		compression settings
+	//			[the last two are implemented as channel properties already]
 	//
 
-	size_t id; // TODO: uninitialized?
+	static constexpr size_t uninitialized_context_id = (size_t)((ptrdiff_t)(-3));
+
+	size_t id = uninitialized_context_id;
 	session_settings settings_session;
 
 	// std::vector would require value_type to be copy-constructible for emplace_back
 	std::deque<channel_context> channel_contexts;
 
 	io_data_registry& data_registry;
-	// session_context is movable and copyable. Mind proper handling of reference member
 	
+public:
 	session_context(io_data_registry& registry) : data_registry(registry) {}
 
+	// TODO: session_context was meant to be movable and copyable (that would require proper handling 
+	// of reference members), but delayed initialization is implemented for channel contexts, and those 
+	// are non-movable (due to back referecence to parent session_context and compression data members), 
+	// and once child channel_contexts are initialized, there's no obvious way to handle it. So make 
+	// it non-copyable, subject to refactor and redisign when the interface is clear and stable.
+	session_context(const session_context& other) = delete;
+	session_context& operator=(const session_context& other) = delete;
 
 	void init_channel_contexts(size_t channel_num = 1) {
 		for (size_t i = 0; i < channel_num; ++i) {

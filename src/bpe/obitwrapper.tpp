@@ -4,6 +4,7 @@
 #include <type_traits>
 #include <span>
 #include <bit>
+#include <cstddef>
 
 #include "entropy_types.hpp"
 #include "exception.hpp"
@@ -17,15 +18,19 @@ class obitwrapper {
 	const size_t capacity = sizeof(buffer_t) << 3;
 	size_t wcount = capacity;
 
-	int_least32_t byte_limit; // should be capable of holding 2^27 - 1. See 4.2.3.2.1
-	int_least32_t byte_count = 0;
+	static constexpr size_t ccsds_max_byte_limit = 1 << 27; // TODO: but should be capable of holding 2^27 - 1. See 4.2.3.2.1
+
+	// byte_limit should be unsigned, but it is always used together with byte_count, and 
+	// byte_count may be negative, so all usage scenarios would require cast to signed
+	ptrdiff_t byte_limit = ccsds_max_byte_limit; // should be capable of holding 2^27 - 1. See 4.2.3.2.1
+	ptrdiff_t byte_count = 0;
 
 	typedef std::function<void(buffer_t)> callback_t;
 	callback_t dest;
 
 public:
 	using value_type = ubuffer_t;
-	obitwrapper(const callback_t& callback, int_least32_t dst_byte_limit = ((1 << 27) - 1)) 
+	obitwrapper(const callback_t& callback, size_t dst_byte_limit = ccsds_max_byte_limit)
 			: dest(callback), byte_limit(dst_byte_limit) {}
 
 	~obitwrapper() = default;
@@ -96,6 +101,10 @@ public:
 		return this->wcount;
 	}
 
+	size_t get_buffer_bit_width() const {
+		return this->capacity - this->wcount;
+	}
+
 	constexpr size_t bcapacity() const {
 		return (sizeof(buffer_t) << 3);
 	}
@@ -104,15 +113,14 @@ public:
 		return (this->wcount < this->capacity);
 	}
 
-	void set_byte_limit(int_least32_t limit, int_least32_t byte_count_init = 0) {
+	void set_byte_limit(size_t limit, ptrdiff_t byte_count_init = 0) {
 		// byte limit is multiple of sizeof(buffer_t), see 4.2.3.2.1
 		constexpr size_t word_mask = sizeof(buffer_t) - 1;
 		// constexpr size_t word_mask = (1 << std::bit_width(sizeof(buffer_t) - 1)) - 1;
 
 		bool valid = true;
-		valid &= (limit > 0);
 		valid &= (limit & word_mask) == 0; // TODO: implies buffer_t's size is pot, which may be not true
-		valid &= !((this->byte_count > 0) & (byte_count_init != 0));
+		valid &= (this->byte_count <= 0) | (byte_count_init == 0);
 		if (!valid) {
 			// TODO: error handling
 		}
@@ -120,9 +128,14 @@ public:
 		// byte_limit and byte_count values and compute difference when handling 
 		// early termination; negative byte count is also permitted.
 
+		if (limit == 0) {
+			limit = std::numeric_limits<decltype(this->byte_limit)>::max();
+		}
+
 		this->byte_limit = limit;
 		// this->byte_count += (-(this->byte_count <= 0)) & byte_count_init;
 		this->byte_count = (this->byte_count <= 0) ? byte_count_init : this->byte_count;
+		// TODO: above doesn't really work: if set byte_count negative, and want to reset it to 0, there is no way to do so
 
 		[[unlikely]]
 		if (this->byte_count >= this->byte_limit) {
@@ -131,7 +144,7 @@ public:
 	}
 
 	size_t get_byte_count() const {
-		return this->byte_count;
+		return relu(this->byte_count);
 	}
 
 	size_t get_byte_limit() const {
