@@ -18,6 +18,7 @@ namespace cli::parameters {
 namespace restore {
 
 	struct source_parser;
+	struct image_file_parser;
 	struct destination_parser;
 	struct stream_parser;
 	struct restore_parser;
@@ -73,13 +74,41 @@ public:
 
 
 template <>
+struct parameter_context<restore::image_file> : public parameter_context_default {
+	static constexpr named_parameters_description_t named{
+		parameter_description<path_parser<true>>{"--path"sv, {}, "File to store decompressed image to. Supported extensions: [.bmp]"sv}
+	};
+};
+
+struct restore::image_file_parser {
+	using value_t = image_file;
+
+	cli::expected<value_t> parse(std::vector<std::string_view>& tokens) {
+		using parser_t = contextual_parser<value_t>;
+		parser_t cx_parser;
+		cx_parser.parse(tokens);
+
+		return value_t{
+			cx_parser.get<parser_t::name_to_index("--path"sv)>(),
+		};
+	}
+
+public:
+	static constexpr std::string_view requirements = ""sv;
+	static constexpr std::string_view placeholder = "<file_params>"sv;
+};
+
+
+template <>
 struct parameter_context<restore::destination> : public parameter_context_default {
 	static constexpr immediate_parameters_description_t immediates{
 		parameter_description<enum_parser<restore::dst_type>>{{}, {restore::dst_type::memory}, "Restored image storage type"sv}
 	};
 
 	static constexpr named_parameters_description_t named{
-		parameter_description<enum_parser<restore::image_protocol_type>>{"--protocol"sv, {restore::image_protocol_type::raw}, "Format to use to store the image"sv}
+		parameter_description<enum_parser<restore::image_protocol_type>>{"--protocol"sv, {restore::image_protocol_type::raw}, "Format to use to store the image"sv}, 
+		// TODD: as is below breaks parsing for special tokens. move hint parameters to dedicated member?
+		dynamic_parameter{"Restored image storage type dependent parameters"sv}.expand()
 	};
 };
 
@@ -91,26 +120,39 @@ struct restore::destination_parser {
 		parser_t cx_parser;
 		cx_parser.parse(tokens);
 
-		return value_t{
-			cx_parser.get<0>(),
-			cx_parser.get<parser_t::name_to_index("--protocol"sv)>()
-		};
-	}
+		dst_type type = cx_parser.get<0>();
+		switch (type) {
+		case restore::dst_type::file: {
+			cli::expected<image_file> file_params = image_file_parser().parse(tokens);
+			if (!file_params) {
+				// TODO: error handling
+			}
 
-	static consteval value_t make_default() {
-		using parser_t = contextual_parser<value_t>;
+			return value_t{
+				type,
+				cx_parser.get<parser_t::name_to_index("--protocol"sv)>(),
+				file_params.value()
+			};
+			break;
+		}
+		case restore::dst_type::memory: {
+			return value_t{
+				type,
+				cx_parser.get<parser_t::name_to_index("--protocol"sv)>(), 
+				image_memory{}
+			};
+			break;
+		}
+		default: {
 
-		return value_t{
-			parser_t::get_default<0>(),
-			parser_t::get_default<parser_t::name_to_index("--protocol"sv)>()
-		};
+		}
+		}
+
 	}
 
 public:
 	static constexpr std::string_view requirements = ""sv;
 	static constexpr std::string_view placeholder = "<dst_params>"sv;
-
-	using default_representation_t = value_t;
 };
 
 
@@ -173,11 +215,10 @@ public:
 template <>
 struct parameter_context<restore::restore_command> : public parameter_context_default {
 	static constexpr restore::stream default_stream = restore::stream_parser::make_default();
-	static constexpr restore::destination default_dst = restore::destination_parser::make_default();
 
 	static constexpr named_parameters_description_t named{
 		parameter_description<restore::source_parser>{"--src"sv, {}, "Specifies input settings"sv},
-		parameter_description<restore::destination_parser>{"--dst"sv, {default_dst}, "Specifies output settings"sv},
+		parameter_description<restore::destination_parser>{"--dst"sv, {}, "Specifies output settings"sv},
 		parameter_description<restore::stream_parser>{"--stream"sv, {default_stream}, "Specifies stream bitrate settings, reducing restored image quality"sv},
 		parameter_description<flag_parser>{"--force-transpose"sv, {false}, "Transpose output image after processing"sv}
 	};

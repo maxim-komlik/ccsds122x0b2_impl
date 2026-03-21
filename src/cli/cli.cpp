@@ -4,6 +4,8 @@
 #include <iterator>
 #include <algorithm>
 
+#include "common/exception.hpp"
+
 #include "parameters/root.hpp"
 #include "parameters/validation.hpp"
 #include "exception/exception.hpp"
@@ -64,21 +66,26 @@ int main(int argc, char** argv) {
 		return 1;
 	} catch (const cli::envrironment_not_supported& e) {
 		std::cout << e.what() << std::endl;
-		return 5;
+		return 2;
 	} catch (const cli::exception& e) {
 		std::cout << "Unhandled cli exception: " << std::endl;
 		std::cout << '\t' << e.what() << std::endl;
 
-		return 2;
+		return 3;
+	} catch (const ccsds::exception& e) {
+		std::cout << "Unhandled ccsds exception: " << std::endl;
+		std::cout << '\t' << e.what() << std::endl;
+
+		return 4;
 	} catch (const std::exception& e) {
 		std::cout << "Unhandled std exception: " << std::endl;
 		std::cout << '\t' << e.what() << std::endl;
 
-		return 3;
+		return 5;
 	} catch (...) {
 		std::cout << "Unhandled exception of unknown type. " << std::endl;
 
-		return 4;
+		return 6;
 	}
 
 	return 0;
