@@ -5,9 +5,10 @@
 #include "utility.hpp"
 
 namespace {
-	constexpr size_t get_target_executors_count() noexcept {
-		// TODO: implement strategy
-		return 3;
+	size_t get_target_executors_count() noexcept {
+		size_t result = std::thread::hardware_concurrency();
+		result = std::max<size_t>(result, 2);
+		return result + 1;
 	}
 
 	ptrdiff_t round_wrap_index(ptrdiff_t index, size_t count) noexcept {
@@ -271,7 +272,11 @@ void task_pool::enqueue_scheduling_task(task_executor& executor) {
 		}
 	};
 
-	executor.enqueue(this->generator.create_task(schedule_task()));
+	constexpr size_t scheduling_mark = ((size_t)0x0c) << ((sizeof(size_t) << 3) - 4);
+
+	auto task = this->generator.create_task(schedule_task());
+	task.descriptor.id ^= scheduling_mark;
+	executor.enqueue(std::move(task));
 	// TODO: generator.create_task is potentially concurrent with generator.create_task 
 	// in public add tasks; the first executed by some executor during scheduling [under 
 	// mutex], the latter executed by external code owning task_pool instance.
@@ -538,9 +543,9 @@ bool task_pool::task_executor::execute_task(managed_task_item&& task_item) {
 			task_item.task->execute(*this);
 			result = true;
 		} catch (const std::exception& e) {
-
+			bool unsuccessful_task = true;
 		} catch (...) {
-
+			bool unsuccessful_task = true;
 		}
 
 		// Move members should be noexcept here. If exception is thrown for push_back, 
