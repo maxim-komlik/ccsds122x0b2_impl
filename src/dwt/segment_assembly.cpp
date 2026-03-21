@@ -476,13 +476,20 @@ SegmentDisassembler<T, alignment>::output_type SegmentDisassembler<T, alignment>
 
 	// TODO: needs proper image dimension checks to comply with requirements
 	// (but checks may be performed on a previous stage)
-	img_meta ll3_meta = std::invoke([](size_t _image_width) noexcept -> img_meta {
+
+	struct cached_dims {
+		size_t width;
+		size_t height;
+		size_t length;
+	};
+
+	cached_dims ll3_dims = std::invoke([](size_t _image_width) noexcept -> cached_dims {
 			// limits in target image dimensions, because target image height is not yet known. 
 			// Therefore it is necessary to split image into finite regions
 			constexpr size_t img_overlap_rows = overlap_rows << 3;
 			constexpr size_t height_limit = (0x01 << 11) + img_overlap_rows;
 			constexpr size_t length_limit = 0x01 << 28;
-			img_meta target{};
+			cached_dims target{};
 			target.width = _image_width;
 			if (_image_width < height_limit) {
 				target.height = _image_width + img_overlap_rows;
@@ -524,7 +531,7 @@ SegmentDisassembler<T, alignment>::output_type SegmentDisassembler<T, alignment>
 	// inherently requires bitmap image offset since segments are not alligned
 	// per image boundaries. But offset is applicable to the first buffer row 
 	// only and is (img.width - 1) at most.
-	ptrdiff_t base_row_i = ll3_meta.height; // that triggers allocation of buffers
+	ptrdiff_t base_row_i = ll3_dims.height; // that triggers allocation of buffers
 	ptrdiff_t base_col_i = 0;
 	for (ptrdiff_t i = 0; i < input.size(); ++i) {
 		ptrdiff_t j = 0;
@@ -534,8 +541,8 @@ SegmentDisassembler<T, alignment>::output_type SegmentDisassembler<T, alignment>
 			// so that data overlaps, permitting concurrent processing 
 			// of output buffers by several DWT simultaneously. This 
 			// allows to merge DWT output.
-			if (base_row_i == ll3_meta.height) {
-				buffers_collection.emplace_back(init_buffers_f(ll3_meta.width, ll3_meta.height));
+			if (base_row_i == ll3_dims.height) {
+				buffers_collection.emplace_back(init_buffers_f(ll3_dims.width, ll3_dims.height));
 
 				base_row_i = 0;
 				base_col_i = 0;
@@ -554,11 +561,11 @@ SegmentDisassembler<T, alignment>::output_type SegmentDisassembler<T, alignment>
 				}
 			}
 
-			size_t buffer_linear_index = base_row_i * ll3_meta.width + base_col_i;
+			size_t buffer_linear_index = base_row_i * ll3_dims.width + base_col_i;
 			// check if multiple segments fit one buffer (j is 0 on segment start 
 			// and buffers may not be empty)
 			ptrdiff_t segment_bound = j + 
-				std::min(ll3_meta.length - buffer_linear_index, input[i]->size - j);
+				std::min(ll3_dims.length - buffer_linear_index, input[i]->size - j);
 			for (; j < segment_bound; ++j) {
 				ptrdiff_t l = 0;
 				ptrdiff_t disp[3] = { 0 };
@@ -600,8 +607,8 @@ SegmentDisassembler<T, alignment>::output_type SegmentDisassembler<T, alignment>
 				}
 
 				++base_col_i;
-				base_row_i += (base_col_i >= ll3_meta.width);
-				base_col_i &= (base_col_i >= ll3_meta.width) - 1;
+				base_row_i += (base_col_i >= ll3_dims.width);
+				base_col_i &= (base_col_i >= ll3_dims.width) - 1;
 			}
 		}
 	}

@@ -13,13 +13,11 @@ TEST(dwti, framedTransform) {
 	props.height = (1 << 11) - 7;
 	bitmap<item_t> input = generateNoisyBitmap<item_t>(props.width, props.height, 64);
 
-	img_pos frame;
+	img_pos frame = input.single_frame_params();
 	frame.width = 624;
 	frame.height = 128;
-	frame.depth = 1;
 	frame.x_step = frame.width;
 	frame.y_step = frame.height;
-	frame.x_stride = input.get_meta().stride;
 	frame.x = 0;
 	frame.y = 0;
 
@@ -132,13 +130,11 @@ TEST(dwti, narrowFrameTransform) {
 	props.height = (1 << 9) - 7;
 	bitmap<item_t> input = generateNoisyBitmap<item_t>(props.width, props.height, 64);
 
-	img_pos frame;
+	img_pos frame = input.single_frame_params();
 	frame.width = 624;
 	frame.height = 8;
-	frame.depth = 1;
 	frame.x_step = frame.width;
 	frame.y_step = frame.height;
-	frame.x_stride = input.get_meta().stride;
 	frame.x = 0;
 	frame.y = 0;
 
@@ -253,13 +249,11 @@ TEST(segments, framedTransform) {
 	props.height = (1 << 11) - 7;
 	bitmap<item_t> input = generateNoisyBitmap<item_t>(props.width, props.height, 64);
 
-	img_pos frame;
+	img_pos frame = input.single_frame_params();
 	frame.width = 512;
 	frame.height = 128;
-	frame.depth = 1;
 	frame.x_step = frame.width;
 	frame.y_step = frame.height;
-	frame.x_stride = input.get_meta().stride;
 	frame.x = 0;
 	frame.y = 0;
 
@@ -393,13 +387,11 @@ TEST(bpe, framedTransform) {
 	props.height = (1 << 12) - 7;
 	bitmap<item_t> input = generateNoisyBitmap<item_t>(props.width, props.height, 64, 713);
 
-	img_pos frame;
+	img_pos frame = input.single_frame_params();
 	frame.width = 512;
 	frame.height = 128;
-	frame.depth = 1;
 	frame.x_step = frame.width;
 	frame.y_step = frame.height;
-	frame.x_stride = input.get_meta().stride;
 	frame.x = 0;
 	frame.y = 0;
 	
@@ -583,13 +575,11 @@ bitmap<T> image_round_transform(bitmap<T>& img, size_t frame_width, size_t segme
 
 	img_meta props = img.get_meta();
 
-	img_pos frame;
+	img_pos frame = input.single_frame_params();
 	frame.width = frame_width;
 	frame.height = 128;
-	frame.depth = 1;
 	frame.x_step = frame.width;
 	frame.y_step = frame.height;
-	frame.x_stride = input.get_meta().stride;
 	frame.x = 0;
 	frame.y = 0;
 

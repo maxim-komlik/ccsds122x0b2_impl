@@ -2,7 +2,9 @@
 
 #include <span>
 #include <bit>
+#include <limits>
 #include <type_traits>
+#include <cstddef>
 
 #include "utility.hpp"
 #include "entropy_types.hpp"
@@ -18,8 +20,10 @@ template <typename buffer_t> class ibitwrapper {
 	const size_t capacity = sizeof(buffer_t) << 3;
 	size_t rcount = capacity;
 
-	size_t byte_limit = ccsds_max_byte_limit;
-	size_t byte_count = 0;
+	// byte_limit should be unsigned, but it is always used together with byte_count, and 
+	// byte_count may be negative, so all usage scenarios would require cast to signed
+	ptrdiff_t byte_limit = ccsds_max_byte_limit;
+	ptrdiff_t byte_count = 0;
 
 	typedef std::function<buffer_t(void)> callback_t;
 	callback_t source;
@@ -179,16 +183,34 @@ public:
 	}
 
 	size_t get_byte_count() const {
-		return this->byte_count;
+		return relu(this->byte_count);
 	}
 
-	void set_byte_limit(int_least32_t limit, int_least32_t byte_count = 0) {
+	void set_byte_limit(size_t limit, ptrdiff_t byte_count_init = 0) {
+		constexpr size_t word_mask = sizeof(ubuffer_t) - 1;
 
-	}
-
-	void set_byte_count(int_least32_t target_value) {
 		bool valid = true;
-		valid &= (target_value > 0);
+		valid &= ((limit & word_mask) == 0);
+		valid &= (this->byte_count == 0) | (byte_count_init == 0);
+		if (!valid) {
+			// TODO: error handling?
+		}
+
+		if (limit == 0) {
+			limit = std::numeric_limits<decltype(this->byte_limit)>::max();
+		}
+
+		this->byte_limit = limit;
+		this->byte_count = byte_count_init == 0 ? this->byte_count : byte_count_init;
+
+		[[unlikely]]
+		if (this->byte_count >= this->byte_limit) {
+			throw ccsds::bpe::byte_limit_exception();
+		}
+	}
+
+	void set_byte_count(size_t target_value) {
+		bool valid = true;
 		if (!valid) {
 
 		}

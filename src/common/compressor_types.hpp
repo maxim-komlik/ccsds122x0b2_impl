@@ -5,6 +5,7 @@
 
 #include "utility.hpp"
 #include "constant.hpp"
+#include "dwt/bitmap_types.hpp"
 
 template <typename dwtT>
 struct compressor_type_params {
@@ -41,6 +42,11 @@ struct img_type_params;
 template <>
 struct img_type_params<dwt_type_t::idwt, 4> {
 	using bitmap_type = int8_t;
+
+	// primary template parameter names are not accessible inside specialization definition.
+	// Would be better if spelled: sufficient_depth_integral_t<bdepth, img_is_signed>
+	static_assert(std::is_same_v<bitmap_type, sufficient_depth_integral_t<4, true>>);
+
 	using dwt_param_type = int8_t;
 	using compressor_types = compressor_type_params<dwt_param_type>;
 };
@@ -48,6 +54,8 @@ struct img_type_params<dwt_type_t::idwt, 4> {
 template <>
 struct img_type_params<dwt_type_t::idwt, 7> {
 	using bitmap_type = int8_t;
+	static_assert(std::is_same_v<bitmap_type, sufficient_depth_integral_t<7, true>>);
+
 	using dwt_param_type = int16_t;
 	using compressor_types = compressor_type_params<dwt_param_type>;
 };
@@ -55,6 +63,8 @@ struct img_type_params<dwt_type_t::idwt, 7> {
 template <>
 struct img_type_params<dwt_type_t::idwt, 12> {
 	using bitmap_type = int16_t;
+	static_assert(std::is_same_v<bitmap_type, sufficient_depth_integral_t<12, true>>);
+
 	using dwt_param_type = int16_t;
 	using compressor_types = compressor_type_params<dwt_param_type>;
 };
@@ -62,6 +72,8 @@ struct img_type_params<dwt_type_t::idwt, 12> {
 template <>
 struct img_type_params<dwt_type_t::idwt, 15> {
 	using bitmap_type = int16_t;
+	static_assert(std::is_same_v<bitmap_type, sufficient_depth_integral_t<15, true>>);
+
 	using dwt_param_type = int32_t;
 	using compressor_types = compressor_type_params<dwt_param_type>;
 };
@@ -69,6 +81,8 @@ struct img_type_params<dwt_type_t::idwt, 15> {
 template <>
 struct img_type_params<dwt_type_t::idwt, 28> {
 	using bitmap_type = int32_t;
+	static_assert(std::is_same_v<bitmap_type, sufficient_depth_integral_t<28, true>>);
+
 	using dwt_param_type = int32_t;
 	using compressor_types = compressor_type_params<dwt_param_type>;
 };
@@ -76,6 +90,8 @@ struct img_type_params<dwt_type_t::idwt, 28> {
 template <>
 struct img_type_params<dwt_type_t::idwt, 31> {
 	using bitmap_type = int32_t;
+	static_assert(std::is_same_v<bitmap_type, sufficient_depth_integral_t<31, true>>);
+
 	using dwt_param_type = int64_t;
 	using compressor_types = compressor_type_params<dwt_param_type>;
 };
@@ -83,6 +99,8 @@ struct img_type_params<dwt_type_t::idwt, 31> {
 template <>
 struct img_type_params<dwt_type_t::idwt, 60> {
 	using bitmap_type = int64_t;
+	static_assert(std::is_same_v<bitmap_type, sufficient_depth_integral_t<60, true>>);
+
 	using dwt_param_type = int64_t;
 	using compressor_types = compressor_type_params<dwt_param_type>;
 };
@@ -94,6 +112,8 @@ struct img_type_params<dwt_type_t::idwt, 60> {
 template <>
 struct img_type_params<dwt_type_t::idwt, 4, false> {
 	using bitmap_type = uint8_t;
+	static_assert(std::is_same_v<bitmap_type, sufficient_depth_integral_t<4, false>>);
+
 	using dwt_param_type = int8_t;
 	using compressor_types = compressor_type_params<dwt_param_type>;
 };
@@ -101,6 +121,8 @@ struct img_type_params<dwt_type_t::idwt, 4, false> {
 template <>
 struct img_type_params<dwt_type_t::idwt, 8, false> {
 	using bitmap_type = uint8_t;
+	static_assert(std::is_same_v<bitmap_type, sufficient_depth_integral_t<8, false>>);
+
 	using dwt_param_type = int16_t;
 	using compressor_types = compressor_type_params<dwt_param_type>;
 };
@@ -108,6 +130,8 @@ struct img_type_params<dwt_type_t::idwt, 8, false> {
 template <>
 struct img_type_params<dwt_type_t::idwt, 12, false> {
 	using bitmap_type = uint16_t;
+	static_assert(std::is_same_v<bitmap_type, sufficient_depth_integral_t<12, false>>);
+
 	using dwt_param_type = int16_t;
 	using compressor_types = compressor_type_params<dwt_param_type>;
 };
@@ -115,6 +139,8 @@ struct img_type_params<dwt_type_t::idwt, 12, false> {
 template <>
 struct img_type_params<dwt_type_t::idwt, 16, false> {
 	using bitmap_type = uint16_t;
+	static_assert(std::is_same_v<bitmap_type, sufficient_depth_integral_t<16, false>>);
+
 	using dwt_param_type = int32_t;
 	using compressor_types = compressor_type_params<dwt_param_type>;
 };
@@ -122,6 +148,8 @@ struct img_type_params<dwt_type_t::idwt, 16, false> {
 template <>
 struct img_type_params<dwt_type_t::idwt, 28, false> {
 	using bitmap_type = uint32_t;
+	static_assert(std::is_same_v<bitmap_type, sufficient_depth_integral_t<28, false>>);
+
 	using dwt_param_type = int32_t;
 	using compressor_types = compressor_type_params<dwt_param_type>;
 };
@@ -129,6 +157,8 @@ struct img_type_params<dwt_type_t::idwt, 28, false> {
 template <>
 struct img_type_params<dwt_type_t::idwt, 32, false> {
 	using bitmap_type = uint32_t;
+	static_assert(std::is_same_v<bitmap_type, sufficient_depth_integral_t<32, false>>);
+
 	using dwt_param_type = int64_t;
 	using compressor_types = compressor_type_params<dwt_param_type>;
 };
@@ -136,6 +166,8 @@ struct img_type_params<dwt_type_t::idwt, 32, false> {
 template <>
 struct img_type_params<dwt_type_t::idwt, 60, false> {
 	using bitmap_type = uint64_t;
+	static_assert(std::is_same_v<bitmap_type, sufficient_depth_integral_t<60, false>>);
+
 	using dwt_param_type = int64_t;
 	using compressor_types = compressor_type_params<dwt_param_type>;
 };
@@ -150,6 +182,8 @@ struct img_type_params<dwt_type_t::idwt, 60, false> {
 template <>
 struct img_type_params<dwt_type_t::fdwt, 7> {
 	using bitmap_type = int8_t;
+	static_assert(std::is_same_v<bitmap_type, sufficient_depth_integral_t<7, true>>);
+
 	using dwt_param_type = float;
 	using compressor_types = compressor_type_params<dwt_param_type>;
 };
@@ -157,6 +191,8 @@ struct img_type_params<dwt_type_t::fdwt, 7> {
 template <>
 struct img_type_params<dwt_type_t::fdwt, 15> {
 	using bitmap_type = int16_t;
+	static_assert(std::is_same_v<bitmap_type, sufficient_depth_integral_t<15, true>>);
+
 	using dwt_param_type = float;
 	using compressor_types = compressor_type_params<dwt_param_type>;
 };
@@ -164,6 +200,8 @@ struct img_type_params<dwt_type_t::fdwt, 15> {
 template <>
 struct img_type_params<dwt_type_t::fdwt, 21> {
 	using bitmap_type = int32_t;
+	static_assert(std::is_same_v<bitmap_type, sufficient_depth_integral_t<21, true>>);
+
 	using dwt_param_type = float;
 	using compressor_types = compressor_type_params<dwt_param_type>;
 };
@@ -171,6 +209,8 @@ struct img_type_params<dwt_type_t::fdwt, 21> {
 template <>
 struct img_type_params<dwt_type_t::fdwt, 31> {
 	using bitmap_type = int32_t;
+	static_assert(std::is_same_v<bitmap_type, sufficient_depth_integral_t<31, true>>);
+
 	using dwt_param_type = double;
 	using compressor_types = compressor_type_params<dwt_param_type>;
 };
@@ -178,6 +218,8 @@ struct img_type_params<dwt_type_t::fdwt, 31> {
 template <>
 struct img_type_params<dwt_type_t::fdwt, 50> {
 	using bitmap_type = int64_t;
+	static_assert(std::is_same_v<bitmap_type, sufficient_depth_integral_t<50, true>>);
+
 	using dwt_param_type = double;
 	using compressor_types = compressor_type_params<dwt_param_type>;
 };
@@ -189,12 +231,16 @@ struct img_type_params<dwt_type_t::fdwt, 50> {
 template <>
 struct img_type_params<dwt_type_t::fdwt, 8, false> {
 	using bitmap_type = uint8_t;
+	static_assert(std::is_same_v<bitmap_type, sufficient_depth_integral_t<8, false>>);
+
 	using dwt_param_type = float;
 	using compressor_types = compressor_type_params<dwt_param_type>;
 };
 template <>
 struct img_type_params<dwt_type_t::fdwt, 16, false> {
 	using bitmap_type = uint16_t;
+	static_assert(std::is_same_v<bitmap_type, sufficient_depth_integral_t<16, false>>);
+
 	using dwt_param_type = float;
 	using compressor_types = compressor_type_params<dwt_param_type>;
 };
@@ -202,6 +248,8 @@ struct img_type_params<dwt_type_t::fdwt, 16, false> {
 template <>
 struct img_type_params<dwt_type_t::fdwt, 21, false> {
 	using bitmap_type = uint32_t;
+	static_assert(std::is_same_v<bitmap_type, sufficient_depth_integral_t<21, false>>);
+
 	using dwt_param_type = float;
 	using compressor_types = compressor_type_params<dwt_param_type>;
 };
@@ -209,6 +257,8 @@ struct img_type_params<dwt_type_t::fdwt, 21, false> {
 template <>
 struct img_type_params<dwt_type_t::fdwt, 32, false> {
 	using bitmap_type = uint32_t;
+	static_assert(std::is_same_v<bitmap_type, sufficient_depth_integral_t<32, false>>);
+
 	using dwt_param_type = double;
 	using compressor_types = compressor_type_params<dwt_param_type>;
 };
@@ -216,16 +266,10 @@ struct img_type_params<dwt_type_t::fdwt, 32, false> {
 template <>
 struct img_type_params<dwt_type_t::fdwt, 50, false> {
 	using bitmap_type = uint64_t;
+	static_assert(std::is_same_v<bitmap_type, sufficient_depth_integral_t<50, false>>);
+
 	using dwt_param_type = double;
 	using compressor_types = compressor_type_params<dwt_param_type>;
-};
-
-
-struct bdepth_edge_values {
-	static constexpr std::array<size_t, 7> idwt_signed_input = { 4, 7, 12, 15, 28, 31, 60 };
-	static constexpr std::array<size_t, 7> idwt_unsigned_input = { 4, 8, 12, 16, 28, 32, 60 };
-	static constexpr std::array<size_t, 5> fdwt_signed_input = { 7, 15, 21, 31, 50 };
-	static constexpr std::array<size_t, 5> fdwt_unsigned_input = { 8, 16, 21, 32, 50 };
 };
 
 

@@ -18,6 +18,7 @@
 
 #include "dwt/dwt.hpp"
 #include "dwt/segment_assembly.hpp"
+#include "dwt/utility.hpp"
 #include "bpe/bpe.hpp"
 
 // TODO: useful functions to export internal functionality of modules:
@@ -160,17 +161,14 @@ std::vector<dwt_context> compression_routines<T>::preprocess_image(dwt_context c
 		img = img.transpose();
 	}
 	transformer.preprocess_image(img);
+	auto [image_width, image_height] = padded_image_dimensions(img.get_meta().width, img.get_meta().height);
 
 	std::vector<dwt_context> frames;
 
 	size_t target_segment_size = 0;
-	size_t image_width = img.get_meta().width; // context.settings_session.img_width;
-	size_t max_frame_width = image_width;
-	constexpr size_t padding_requirement = 8;
-	max_frame_width = (max_frame_width + padding_requirement - 1) & (~(padding_requirement - 1));
-	size_t executors_count = 4; // TODO:
-	// size_t img_block_count = ((img.get_meta().width + 7) >> 3) * ((img.get_meta().height + 7) >> 3);
 	size_t largest_segment_size = 0;
+	size_t executors_count = 4; // TODO:
+	size_t max_frame_width = image_width;
 
 	// TODO: here we should defend against concurrent collection access
 	auto largest_segment = std::max_element(cx.channel_cx.seg_settings.cbegin(), cx.channel_cx.seg_settings.cend(),
@@ -184,14 +182,14 @@ std::vector<dwt_context> compression_routines<T>::preprocess_image(dwt_context c
 	}
 
 	ptrdiff_t frame_width = std::min(max_frame_width, largest_segment_size);
-	ptrdiff_t frame_height = img.get_meta().height / executors_count;
+	ptrdiff_t frame_height = image_height / executors_count;
 	constexpr ptrdiff_t height_granularity = 256;
 	constexpr ptrdiff_t height_ceiling_factor = 128;
 	frame_height = (frame_height < height_granularity) ? height_granularity : frame_height;
 	frame_height = (frame_height + height_ceiling_factor) & (~(height_granularity - 1));
 
 	ptrdiff_t x = 0, y = 0;
-	while (y < img.get_meta().height) {
+	while (y < image_height) {
 		img_pos frame_item;
 		frame_item.x = x;
 		frame_item.y = y;
@@ -211,9 +209,6 @@ std::vector<dwt_context> compression_routines<T>::preprocess_image(dwt_context c
 
 	img_pos& last_frame = frames.back().frame;
 	last_frame.width = image_width - last_frame.x;
-
-	size_t image_height = img.get_meta().height;
-	image_height = (image_height + padding_requirement - 1) & (~(padding_requirement - 1));
 
 	for (auto it = frames.rbegin(); it != frames.rend(); ++it) {
 		bool bottom_edge_overlapped = (it->frame.y + it->frame.height) > image_height;
@@ -253,8 +248,7 @@ segmentation_context<typename compression_routines<T>::subband_type, typename co
 compression_routines<T>::preprocess_fragments(dwt_context cx) {
 	auto op_state_token = cx.channel_cx.descriptors.start_operation(cx);
 	cx.channel_cx.session_cx.data_registry.free_descriptor(cx.data);
-	size_t image_width = cx.channel_cx.session_cx.settings_session.img_width;
-	image_width = ((image_width + 7) >> 3) << 3; // TODO: we should account for padding...
+	size_t image_width = padded_image_dimensions(cx.channel_cx.session_cx.settings_session.img_width, 0).first;
 
 	auto [merged, tail] = merge_subbands(image_width, collect_contiguous_fragments(cx));
 	img_pos merged_frame = merged[0].single_frame_params();
@@ -362,10 +356,7 @@ std::vector<subbands_t<typename compression_routines<T>::subband_type>> compress
 	// only whole image at once.
 	size_t next_x = cx.frame.x;
 	size_t next_y = cx.frame.y;
-	size_t img_width = cx.channel_cx.session_cx.settings_session.img_width;
-	// TODO: adjust for padding
-	constexpr size_t padding_requirement = 8;
-	img_width = (img_width + padding_requirement - 1) & (~(padding_requirement - 1));
+	size_t img_width = padded_image_dimensions(cx.channel_cx.session_cx.settings_session.img_width, 0).first;
 
 	typename decltype(fragments_view)::iterator view_it = std::partition_point(
 		sorted_begin, sorted_end,
@@ -1002,7 +993,7 @@ compression_routines<T>::disassemble_segments(segmentation_context<subband_type,
 	// move non-modifying transformations (transpose and copy-cast) there as well.
 	//
 
-	size_t image_width = cx.channel_cx.session_cx.settings_session.img_width;
+	size_t image_width = padded_image_dimensions(cx.channel_cx.session_cx.settings_session.img_width, 0).first;
 	disassembler.set_image_width(image_width);
 	// auto merged = merge_subbands(image_width, std::move(disassembler.apply(std::move(segments))));
 	// cx.subband_data = std::move(merged[0]);
@@ -1131,18 +1122,18 @@ void compression_routines<T>::postprocess_image(segmentation_context<subband_typ
 	bitmap<oT> result;
 	for (auto&& item : local_fragments) {
 		auto& fragment_data = io_data_registry::get_data<image_selector<oT>>(item.second);
-		result.append(fragment_data.image);
+		result.append(std::move(fragment_data.image));
 		cx.channel_cx.session_cx.data_registry.free_descriptor(item.second);
 	}
+
+	size_t image_width = cx.channel_cx.session_cx.settings_session.img_width;
+	size_t image_height = result.get_meta().height - cx.channel_cx.session_cx.settings_session.rows_pad_count;
+	result.resize(image_width, image_height);
 
 	image_memory_descriptor<oT> descriptor_data(std::move(result), cx.channel_cx.channel_index);
 
 	const data_descriptor& descriptor =
 		cx.channel_cx.session_cx.data_registry.put_output(cx.channel_cx.session_cx, std::move(descriptor_data));
-
-	// TODO: drop padded rows and columns
-
-	return;
 }
 
 #include <optional> // really need optional?

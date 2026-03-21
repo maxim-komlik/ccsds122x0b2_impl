@@ -2,17 +2,18 @@
 
 #include <cstddef>
 
-struct img_meta {	// per-element location
-	size_t stride = 0;
-	size_t offset = 0;
+struct img_meta {
 	size_t width = 0;
 	size_t height = 0;
 	size_t depth = 0;
-	size_t length = 0;
+	size_t bdepth_static = 0;
+	size_t offset_requirement = 0;
+	size_t alignment_requirement = 0;
+	bool if_signed = false;
 };
 
 
-struct img_pos { // step members should be signed. Maybe coordinate members should be signed also
+struct img_pos {
 	ptrdiff_t x = 0;
 	ptrdiff_t x_step = 0;
 	ptrdiff_t y = 0;
