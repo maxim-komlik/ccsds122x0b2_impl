@@ -19,6 +19,7 @@
     <ClCompile Include="..\..\..\src\cli\commands\compress.cpp" />
     <ClCompile Include="..\..\..\src\cli\commands\core_environment.cpp" />
     <ClCompile Include="..\..\..\src\cli\file_utility.cpp" />
+    <ClCompile Include="..\..\..\src\cli\io\bmp\header_protocol.cpp" />
     <ClCompile Include="..\..\..\src\cli\io\bmp\params.cpp">
       <ObjectFileName Condition="'$(Configuration)|$(Platform)'=='Release|x64'">$(IntDir)io_bmp_%(Filename)</ObjectFileName>
     </ClCompile>
@@ -28,14 +29,14 @@
     </ClCompile>
     <ClCompile Include="..\..\..\src\cli\io\image.cpp" />
     <ClCompile Include="..\..\..\src\cli\parameters\compress\validation.cpp">
-      <ObjectFileName Condition="'$(Configuration)|$(Platform)'=='Non-Optimized|x64'">compress_%(Filename)</ObjectFileName>
-      <ObjectFileName Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">compress_%(Filename)</ObjectFileName>
+      <ObjectFileName Condition="'$(Configuration)|$(Platform)'=='Non-Optimized|x64'">$(IntDir)compress_%(Filename)</ObjectFileName>
+      <ObjectFileName Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">$(IntDir)compress_%(Filename)</ObjectFileName>
       <ObjectFileName Condition="'$(Configuration)|$(Platform)'=='Release|x64'">$(IntDir)compress_%(Filename)</ObjectFileName>
     </ClCompile>
     <ClCompile Include="..\..\..\src\cli\parameters\parameters.cpp" />
     <ClCompile Include="..\..\..\src\cli\parameters\restore\validation.cpp">
-      <ObjectFileName Condition="'$(Configuration)|$(Platform)'=='Non-Optimized|x64'">restore_%(Filename)</ObjectFileName>
-      <ObjectFileName Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">restore_%(Filename)</ObjectFileName>
+      <ObjectFileName Condition="'$(Configuration)|$(Platform)'=='Non-Optimized|x64'">$(IntDir)restore_%(Filename)</ObjectFileName>
+      <ObjectFileName Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">$(IntDir)restore_%(Filename)</ObjectFileName>
       <ObjectFileName Condition="'$(Configuration)|$(Platform)'=='Release|x64'">$(IntDir)restore_%(Filename)</ObjectFileName>
     </ClCompile>
     <ClCompile Include="..\..\..\src\cli\parameters\root.cpp" />
@@ -55,6 +56,7 @@
     <ClInclude Include="..\..\..\src\cli\io\bmp\params.hpp" />
     <ClInclude Include="..\..\..\src\cli\io\file_cache.hpp" />
     <None Include="..\..\..\src\cli\io\bmp\load.tpp" />
+    <None Include="..\..\..\src\cli\io\bmp\store.tpp" />
     <None Include="..\..\..\src\cli\io\generate\load.tpp" />
     <ClInclude Include="..\..\..\src\cli\io\generate\params.hpp" />
     <ClInclude Include="..\..\..\src\cli\io\image.hpp" />
