@@ -5,6 +5,6 @@
 
 namespace cli::io::bmp {
 
-image_description get_description(const parameters::compress::image_file& parameters);
+img_meta get_description(const parameters::compress::image_file& parameters);
 
 }

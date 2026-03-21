@@ -249,3 +249,30 @@ two kinds of usage scenarios:
 segment is bound to {session, channel} and has own id
 bitmap is bound to {session} and has own id, that defines channel identification
 
+flow_impl implements concurrent data flow in terms of core library execution model.
+so it defines flow graphs for compression and decompression.
+it uses image type, dwt target type and bit stream type as static parameters.
+and uses session and handles (that is, generalized core types) as parameters; 
+	therefore interface can be exported.
+
+for image load and store operations, image type is needed as a static parameter.
+for runtime parameters, 
+		generalized handles 
+		IO description 
+	are used. 
+	or: 
+		IO description
+		io registry
+
+	IO description represents user input, it also contains image metadata!
+		so that static image parameters may be deduced from IO description
+	and implementation depends on frontend modules for image external formats import/export 
+
+so flow_impl interface is better divided into two parts
+
+image type depends on:
+	static bit depth
+	signed/unsigned
+	(and always integer)
+
+and image load 

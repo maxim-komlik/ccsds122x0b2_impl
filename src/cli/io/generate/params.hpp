@@ -5,12 +5,12 @@
 
 namespace cli::io::generate {
 
-image_description get_description(const parameters::compress::generate::generator& parameters) {
+img_meta get_description(const parameters::compress::generate::generator& parameters) {
 	return {
 		.width = parameters.dims.width,
 		.height = parameters.dims.height,
-		.channel_num = parameters.dims.depth,
-		.static_bdepth = parameters.bdepth,
+		.depth = parameters.dims.depth,
+		.bdepth_static = parameters.bdepth,
 		.if_signed = parameters.pixel_signed
 	};
 }

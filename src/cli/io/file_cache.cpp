@@ -29,7 +29,7 @@ file_cache file_cache_instance;
 size_t std::hash<cli::io::file_cache_key>::operator()(const cli::io::file_cache_key& key) const noexcept {
 	auto combine = [](size_t lhs, size_t rhs) noexcept -> size_t {
 		constexpr size_t salt = std::invoke([]() constexpr {
-			// they say below is hex representation of floating point representation of pi approximation
+			// they say below is hex encoding of floating point representation of pi approximation
 			// 
 			// size_t salt = 0xc90fdff22168c234c4c66280dc1cd1u; // this causes ill-formed
 			constexpr std::array salt_bytes = { 

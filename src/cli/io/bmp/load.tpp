@@ -32,6 +32,7 @@ std::vector<bitmap<T>> load_channels(const bmp_header_protocol& header_protocol,
 	}
 
 	auto& input = src.get_bitwrapper();
+	input.set_byte_limit(header_protocol.file_size());
 
 	size_t bits_per_pixel = header_protocol.get_pixel_bit_size();
 	auto channel_masks = header_protocol.get_channel_masks();
@@ -47,7 +48,7 @@ std::vector<bitmap<T>> load_channels(const bmp_header_protocol& header_protocol,
 		// bmp alignes every row on 4-byte boundary, counting from the image array beginning
 		constexpr size_t alignment_requirement = 4;
 		size_t bits_extracted = (input.get_byte_count() << 3) - input.get_buffer_bit_width();
-		size_t aligned_offset = ((bits_extracted + ((1 << 3) - 1) >> 3) + (alignment_requirement - 1)) & 
+		size_t aligned_offset = (((bits_extracted + ((1 << 3) - 1)) >> 3) + (alignment_requirement - 1)) & 
 			(~(alignment_requirement - 1));
 
 		input.extract((aligned_offset << 3) - bits_extracted);
