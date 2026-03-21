@@ -42,35 +42,47 @@ struct session_parameters_parser: protected session_parameters_parser_base<sessi
 private:
 	// make CRTP-caused public part of the interface unusable externally by wrapping the tuples
 
-	struct load_image_context_parameters {
+	struct compress_context_parameters {
 		std::tuple<
-			session_context,
-			std::reference_wrapper<const io::image_load_parameters>> values;
+			std::shared_ptr<session_context>,
+			std::vector<std::reference_wrapper<const data_descriptor>>> values;
 
 		const session_context& get_session() const {
-			return std::get<session_context>(this->values);
+			return *std::get<std::shared_ptr<session_context>>(this->values);
 		}
 
 		session_context& get_session() {
-			return std::get<session_context>(this->values);
+			return *std::get<std::shared_ptr<session_context>>(this->values);
 		}
 
-		const io::image_load_parameters& get_source_description() const {
-			return std::get<std::reference_wrapper<const io::image_load_parameters>>(this->values);
+		std::shared_ptr<session_context>& get_session_ptr() {
+			return std::get<std::shared_ptr<session_context>>(this->values);
+		}
+
+		const std::vector<std::reference_wrapper<const data_descriptor>>& get_data_handles() const {
+			return std::get<std::vector<std::reference_wrapper<const data_descriptor>>>(this->values);
+		}
+
+		std::vector<std::reference_wrapper<const data_descriptor>>& get_data_handles() {
+			return std::get<std::vector<std::reference_wrapper<const data_descriptor>>>(this->values);
 		}
 	};
 
 	struct restore_context_parameters {
 		std::tuple<
-			session_context,
+			std::shared_ptr<session_context>,
 			std::vector<std::reference_wrapper<const data_descriptor>>> values;
 
 		const session_context& get_session() const {
-			return std::get<session_context>(this->values);
+			return *std::get<std::shared_ptr<session_context>>(this->values);
 		}
 
 		session_context& get_session() {
-			return std::get<session_context>(this->values);
+			return *std::get<std::shared_ptr<session_context>>(this->values);
+		}
+
+		std::shared_ptr<session_context>& get_session_ptr() {
+			return std::get<std::shared_ptr<session_context>>(this->values);
 		}
 
 		const std::vector<std::reference_wrapper<const data_descriptor>>& get_data_handles() const {
@@ -83,12 +95,13 @@ private:
 	};
 
 public:
-	static void load_image(session_context&& cx, const io::image_load_parameters& load_spec) {
+	static void compress(std::shared_ptr<session_context> cx,
+			std::vector<std::reference_wrapper<const data_descriptor>>&& handles) {
 		using xbw_t = sufficient_integral<intptr_t>;
 		constexpr size_t xbw_size = sizeof(xbw_t) << 3;
-		if (cx.settings_session.codeword_size != xbw_size) {
+		if (cx->settings_session.codeword_size != xbw_size) {
 			// TODO: log?
-			cx.settings_session.codeword_size = xbw_size;
+			cx->settings_session.codeword_size = xbw_size;
 		}
 
 		if (xbw_size > 64) { // TODO: magic?
@@ -98,10 +111,10 @@ public:
 		// skip unnecessary output stream related instantiations for encoding chain, always assume 
 		// machine word-size type
 		session_parameters_parser::template parse_dwt_type<xbw_t>(
-			load_image_context_parameters{ { std::move(cx), load_spec } });
+			compress_context_parameters{ { std::move(cx), std::move(handles) } });
 	}
 
-	static void restore(session_context&& cx, 
+	static void restore(std::shared_ptr<session_context> cx,
 			std::vector<std::reference_wrapper<const data_descriptor>>&& handles) {
 		session_parameters_parser::parse_codeword_size(
 			restore_context_parameters{ { std::move(cx), std::move(handles) } });
@@ -109,15 +122,12 @@ public:
 
 private:
 	template <typename dwtT>
-	static std::shared_ptr<session_context> make_shared_session(session_context&& cx) {
-		auto result = std::make_shared<session_context>(std::move(cx));
-		result->id = generate_session_id();
+	static void finish_session_initialization(session_context& cx) {
+		cx.id = generate_session_id();
 
-		for (auto& channel_cx : result->channel_contexts) {
+		for (auto& channel_cx : cx.channel_contexts) {
 			channel_cx.init_compression_data<dwtT>();
 		}
-
-		return result;
 	}
 
 public:
@@ -125,16 +135,18 @@ public:
 
 	template <typename xbwT, typename imgT, typename dwtT>
 	static void invoke_by_argument_type(restore_context_parameters&& params) {
+		finish_session_initialization<dwtT>(params.get_session());
 		Implementation<xbwT, imgT, dwtT>::decompress(
-			make_shared_session<dwtT>(std::move(params.get_session())),
+			std::move(params.get_session_ptr()),
 			std::move(params.get_data_handles()));
 	}
 
 	template <typename xbwT, typename imgT, typename dwtT>
-	static void invoke_by_argument_type(load_image_context_parameters&& params) {
-		Implementation<xbwT, imgT, dwtT>::load_image(
-			make_shared_session<dwtT>(std::move(params.get_session())), 
-			params.get_source_description());
+	static void invoke_by_argument_type(compress_context_parameters&& params) {
+		finish_session_initialization<dwtT>(params.get_session());
+		Implementation<xbwT, imgT, dwtT>::compress(
+			std::move(params.get_session_ptr()),
+			std::move(params.get_data_handles()));
 	}
 };
 
@@ -296,61 +308,6 @@ struct flow_impl {
 			env.pool.add_tasks(typename backward::postprocess_task_t(std::move(context)));
 		}
 		env.pool.execute_flow();
-	}
-
-	static void load_image(std::shared_ptr<session_context> cx, const io::image_load_parameters& load_spec) {
-		std::vector<img_meta> channel_stats;
-		std::vector<size_t> channel_bdepths;
-		std::vector<std::reference_wrapper<const data_descriptor>> descriptors;
-
-		channel_stats.reserve(cx->channel_contexts.size());
-		channel_bdepths.reserve(cx->channel_contexts.size());
-		descriptors.reserve(cx->channel_contexts.size());
-
-		bool valid = true;
-		for (auto& channel_cx : cx->channel_contexts) {
-			auto channel_data = io::load_image_channel<img_t>(load_spec, channel_cx.channel_index);
-			channel_stats.push_back(channel_data.get_meta()); 
-			valid &= (channel_stats.back().depth == 1);
-			// TODO: calculate dynamic bdepth?
-			channel_bdepths.push_back(compute_image_bdepth(channel_data));
-			// TODO: it appears bdepth should be property of channel, not session
-
-			if (cx->settings_session.transpose) {
-				channel_data = channel_data.transpose();
-			}
-
-			const data_descriptor& descriptor = cx->data_registry.put_input(
-				image_memory_descriptor<img_t>(std::move(channel_data), channel_cx.channel_index));
-			descriptors.push_back(descriptor);
-		}
-
-		auto it = std::adjacent_find(channel_stats.cbegin(), channel_stats.cend(),
-			[](const img_meta& lhs, const img_meta& rhs) -> bool {
-				return (lhs.width != rhs.width) | (lhs.height != rhs.height);
-			});
-
-		valid &= !channel_stats.empty();
-		valid &= (it == channel_stats.cend());
-		if (!valid) {
-			// TODO: throw, invalid image
-		}
-
-		auto padded_dims = padded_image_dimensions(channel_stats.back().width, channel_stats.back().height);
-
-		valid &= (cx->settings_session.img_width == channel_stats.back().width);
-		valid &= (cx->settings_session.rows_pad_count == (padded_dims.second - channel_stats.back().height));
-		for (auto item : channel_bdepths) {
-			valid &= (cx->settings_session.pixel_bdepth == item);
-		}
-
-		if (!valid) {
-			// so what? we can just override properly and let it go
-			// log?
-			cx->settings_session.pixel_bdepth = channel_bdepths.back();
-		}
-
-		compress(std::move(cx), std::move(descriptors));
 	}
 };
 

@@ -26,7 +26,7 @@ class bitmap_file_header;
 template<>
 struct bitfield_traits<bitmap_file_header> {
 	static constexpr fields_description_t fields{
-		bitfield_description{"Signature"sv,		{0, 16}, byteswap((uint16_t)(0x424b))},	// 'BM'
+		bitfield_description{"Signature"sv,		{0, 16}, (uint16_t)(0x424d)},	// 'BM', text mark, big-endian
 		bitfield_description{"Size"sv,			{16, 32}, (uint32_t)(0)},		// 
 		bitfield_description{"reserved_001"sv,	{48, 16}, (uint16_t)(0)},		// 16 bit reserved
 		bitfield_description{"reserved_002"sv,	{64, 16}, (uint16_t)(0)},		// 16 bit reserved
@@ -98,18 +98,12 @@ public:
 	}
 
 	void set_Size(size_t value) {
-		// or return uintmax_t?
-		return this->set_unsigned<name_to_index("Size"sv)>(value);
-		// constexpr size_t field_index = name_to_index("Size"sv);
-		// using value_t = std::invoke_result_t<decltype(&bitfield::get_bitfield<field_index>), const bitfield>;
-		// return this->set_bitfield<field_index>(byteswap((value_t)(value)));
+		// or take uintmax_t?
+		this->set_unsigned<name_to_index("Size"sv)>(value);
 	}
 
 	void set_ImageOffset(ptrdiff_t value) {
-		return this->set_unsigned<name_to_index("ImageOffset"sv)>(value);
-		// constexpr size_t field_index = name_to_index("ImageOffset"sv);
-		// using value_t = std::invoke_result_t<decltype(&bitfield::get_bitfield<field_index>), const bitfield>;
-		// return this->set_bitfield<field_index>(byteswap((value_t)(value)));
+		this->set_unsigned<name_to_index("ImageOffset"sv)>(value);
 	}
 
 	const std::array<std::byte, bitfield::size>& commit() {
@@ -154,7 +148,7 @@ class bitmap_core_v1_header;
 template<>
 struct bitfield_traits<bitmap_core_v1_header> {
 	static constexpr fields_description_t fields{
-		bitfield_description{"HeaderSize"sv,	{0, 32}, byteswap((uint32_t)(0x12))},		// 
+		bitfield_description{"HeaderSize"sv,	{0, 32}, byteswap(to_underlying(dib_header_type::bitmap_core_v1))},		// 
 		bitfield_description{"ImageWidth"sv,	{32, 16}, (uint16_t)(0)},		// Image width
 		bitfield_description{"ImageHeight"sv,	{48, 16}, (uint16_t)(0)},		// Image height
 			// two fields above meant to be signed, but header fields are defined to be little-endian, 
@@ -162,8 +156,8 @@ struct bitfield_traits<bitmap_core_v1_header> {
 			// fields, and there's no straitforward way to parse it simply enough on big-endian 
 			// architectures. So the definitions above are mapped to unsigned integers, and necessary 
 			// conversions are done in the access interface implementation
-		bitfield_description{"PlaneCount"sv,	{64, 16}, (uint16_t)(0)},		// 
-		bitfield_description{"BitsPerPixel"sv,	{80, 16}, (uint32_t)(0)},		// 
+		bitfield_description{"PlaneCount"sv,	{64, 16}, byteswap((uint16_t)(1))},		// 
+		bitfield_description{"BitsPerPixel"sv,	{80, 16}, (uint16_t)(0)},		// 
 	};	// 12 bytes
 };
 
@@ -196,7 +190,7 @@ private:
 		using value_t = std::invoke_result_t<decltype(&bitfield::get_bitfield<field_index>), const bitfield>;
 		using s_value_t = std::make_signed_t<value_t>;
 
-		return this->set_bitfield<field_index>(byteswap(static_cast<value_t>((s_value_t)(value))));
+		this->set_bitfield<field_index>(byteswap(static_cast<value_t>((s_value_t)(value))));
 	}
 
 public:
@@ -222,22 +216,10 @@ public:
 
 	ptrdiff_t get_ImageWidth() const {
 		return this->get_signed<name_to_index("ImageWidth"sv)>();
-
-		// constexpr size_t field_index = name_to_index("ImageWidth"sv);
-		// using value_t = std::invoke_result_t<decltype(&bitfield::get_bitfield<field_index>), const bitfield>;
-		// using s_value_t = std::make_signed_t<value_t>;
-		// 
-		// return static_cast<s_value_t>(byteswap(this->get_bitfield<field_index>()));
 	}
 
 	ptrdiff_t get_ImageHeight() const {
 		return this->get_signed<name_to_index("ImageHeight"sv)>();
-
-		// constexpr size_t field_index = name_to_index("ImageHeight"sv);
-		// using value_t = std::invoke_result_t<decltype(&bitfield::get_bitfield<field_index>), const bitfield>;
-		// using s_value_t = std::make_signed_t<value_t>;
-		// 
-		// return static_cast<s_value_t>(byteswap(this->get_bitfield<field_index>()));
 	}
 
 	size_t get_PlaneCount() const {
@@ -249,42 +231,23 @@ public:
 	}
 
 	void set_HeaderSize(size_t value) {
-		return this->set_unsigned<name_to_index("HeaderSize"sv)>(value);
-		// constexpr size_t field_index = name_to_index("HeaderSize"sv);
-		// using value_t = std::invoke_result_t<decltype(&bitfield::get_bitfield<field_index>), const bitfield>;
-		// return this->set_bitfield<field_index>(byteswap((value_t)(value)));
+		this->set_unsigned<name_to_index("HeaderSize"sv)>(value);
 	}
 
 	void set_ImageWidth(ptrdiff_t value) {
-		return this->set_signed<name_to_index("ImageWidth"sv)>(value);
-		// constexpr size_t field_index = name_to_index("ImageWidth"sv);
-		// using value_t = std::invoke_result_t<decltype(&bitfield::get_bitfield<field_index>), const bitfield>;
-		// using s_value_t = std::make_signed_t<value_t>;
-		// 
-		// return this->set_bitfield<field_index>(byteswap(static_cast<value_t>((s_value_t)(value))));
+		this->set_signed<name_to_index("ImageWidth"sv)>(value);
 	}
 
 	void set_ImageHeight(ptrdiff_t value) {
-		return this->set_signed<name_to_index("ImageHeight"sv)>(value);
-		// constexpr size_t field_index = name_to_index("ImageHeight"sv);
-		// using value_t = std::invoke_result_t<decltype(&bitfield::get_bitfield<field_index>), const bitfield>;
-		// using s_value_t = std::make_signed_t<value_t>;
-		// 
-		// return this->set_bitfield<field_index>(byteswap(static_cast<value_t>((s_value_t)(value))));
+		this->set_signed<name_to_index("ImageHeight"sv)>(value);
 	}
 
 	void set_PlaneCount(size_t value) {
-		return this->set_unsigned<name_to_index("PlaneCount"sv)>(value);
-		// constexpr size_t field_index = name_to_index("PlaneCount"sv);
-		// using value_t = std::invoke_result_t<decltype(&bitfield::get_bitfield<field_index>), const bitfield>;
-		// return this->set_bitfield<field_index>(byteswap((value_t)(value)));
+		this->set_unsigned<name_to_index("PlaneCount"sv)>(value);
 	}
 
 	void set_BitsPerPixel(size_t value) {
-		return this->set_unsigned<name_to_index("BitsPerPixel"sv)>(value);
-		// constexpr size_t field_index = name_to_index("BitsPerPixel"sv);
-		// using value_t = std::invoke_result_t<decltype(&bitfield::get_bitfield<field_index>), const bitfield>;
-		// return this->set_bitfield<field_index>(byteswap((value_t)(value)));
+		this->set_unsigned<name_to_index("BitsPerPixel"sv)>(value);
 	}
 
 	const std::array<std::byte, bitfield::size>& commit() {
@@ -311,7 +274,7 @@ struct bitfield_traits<bitmap_core_v2_header> {
 			// fields, and there's no straitforward way to parse it simply enough on big-endian 
 			// architectures. So the definitions above are mapped to unsigned integers, and necessary 
 			// conversions are done in the access interface implementation
-		bitfield_description{"PlaneCount"sv,	{96, 16}, (uint16_t)(0)},		// 
+		bitfield_description{"PlaneCount"sv,	{96, 16}, byteswap((uint16_t)(1))},		// 
 		bitfield_description{"BitsPerPixel"sv,	{112, 16}, (uint16_t)(0)},		// 
 	};	// 16 bytes
 };
@@ -344,7 +307,7 @@ private:
 		using value_t = std::invoke_result_t<decltype(&bitfield::get_bitfield<field_index>), const bitfield>;
 		using s_value_t = std::make_signed_t<value_t>;
 
-		return this->set_bitfield<field_index>(byteswap(static_cast<value_t>((s_value_t)(value))));
+		this->set_bitfield<field_index>(byteswap(static_cast<value_t>((s_value_t)(value))));
 	}
 
 public:
@@ -385,20 +348,10 @@ public:
 
 	ptrdiff_t get_ImageWidth() const {
 		return this->get_signed<name_to_index("ImageWidth"sv)>();
-		// constexpr size_t field_index = name_to_index("ImageWidth"sv);
-		// using value_t = std::invoke_result_t<decltype(&bitfield::get_bitfield<field_index>), const bitfield>;
-		// using s_value_t = std::make_signed_t<value_t>;
-		// 
-		// return static_cast<s_value_t>(byteswap(this->get_bitfield<field_index>()));
 	}
 
 	ptrdiff_t get_ImageHeight() const {
 		return this->get_signed<name_to_index("ImageHeight"sv)>();
-		// constexpr size_t field_index = name_to_index("ImageHeight"sv);
-		// using value_t = std::invoke_result_t<decltype(&bitfield::get_bitfield<field_index>), const bitfield>;
-		// using s_value_t = std::make_signed_t<value_t>;
-		// 
-		// return static_cast<s_value_t>(byteswap(this->get_bitfield<field_index>()));
 	}
 
 	size_t get_PlaneCount() const {
@@ -410,42 +363,27 @@ public:
 	}
 
 	void set_HeaderSize(size_t value) {
-		return this->set_unsigned<name_to_index("HeaderSize"sv)>(value);
-		// constexpr size_t field_index = name_to_index("HeaderSize"sv);
-		// using value_t = std::invoke_result_t<decltype(&bitfield::get_bitfield<field_index>), const bitfield>;
-		// return this->set_bitfield<field_index>(byteswap((value_t)(value)));
+		this->set_unsigned<name_to_index("HeaderSize"sv)>(value);
+	}
+
+	void set_HeaderSize(dib_header_type value) {
+		this->set_HeaderSize(to_underlying(value));
 	}
 
 	void set_ImageWidth(ptrdiff_t value) {
-		return this->set_signed<name_to_index("ImageWidth"sv)>(value);
-		// constexpr size_t field_index = name_to_index("ImageWidth"sv);
-		// using value_t = std::invoke_result_t<decltype(&bitfield::get_bitfield<field_index>), const bitfield>;
-		// using s_value_t = std::make_signed_t<value_t>;
-		// 
-		// return this->set_bitfield<field_index>(byteswap(static_cast<value_t>((s_value_t)(value))));
+		this->set_signed<name_to_index("ImageWidth"sv)>(value);
 	}
 
 	void set_ImageHeight(ptrdiff_t value) {
-		return this->set_signed<name_to_index("ImageHeight"sv)>(value);
-		// constexpr size_t field_index = name_to_index("ImageHeight"sv);
-		// using value_t = std::invoke_result_t<decltype(&bitfield::get_bitfield<field_index>), const bitfield>;
-		// using s_value_t = std::make_signed_t<value_t>;
-		// 
-		// return this->set_bitfield<field_index>(byteswap(static_cast<value_t>((s_value_t)(value))));
+		this->set_signed<name_to_index("ImageHeight"sv)>(value);
 	}
 
 	void set_PlaneCount(size_t value) {
-		return this->set_unsigned<name_to_index("PlaneCount"sv)>(value);
-		// constexpr size_t field_index = name_to_index("PlaneCount"sv);
-		// using value_t = std::invoke_result_t<decltype(&bitfield::get_bitfield<field_index>), const bitfield>;
-		// return this->set_bitfield<field_index>(byteswap((value_t)(value)));
+		this->set_unsigned<name_to_index("PlaneCount"sv)>(value);
 	}
 
 	void set_BitsPerPixel(size_t value) {
-		return this->set_unsigned<name_to_index("BitsPerPixel"sv)>(value);
-		// constexpr size_t field_index = name_to_index("BitsPerPixel"sv);
-		// using value_t = std::invoke_result_t<decltype(&bitfield::get_bitfield<field_index>), const bitfield>;
-		// return this->set_bitfield<field_index>(byteswap((value_t)(value)));
+		this->set_unsigned<name_to_index("BitsPerPixel"sv)>(value);
 	}
 
 	const std::array<std::byte, bitfield::size>& commit() {
@@ -535,45 +473,27 @@ public:
 	}
 
 	void set_Compression(compression_type value) {
-		return this->set_unsigned<name_to_index("Compression"sv)>(to_underlying(value));
-		// constexpr size_t field_index = name_to_index("Compression"sv);
-		// using value_t = std::invoke_result_t<decltype(&bitfield::get_bitfield<field_index>), const bitfield>;
-		// return this->set_bitfield<field_index>(byteswap((value_t)(to_underlying(value))));
+		this->set_unsigned<name_to_index("Compression"sv)>(to_underlying(value));
 	}
 
 	void set_ImageSize(size_t value) {
-		return this->set_unsigned<name_to_index("ImageSize"sv)>(value);
-		// constexpr size_t field_index = name_to_index("ImageSize"sv);
-		// using value_t = std::invoke_result_t<decltype(&bitfield::get_bitfield<field_index>), const bitfield>;
-		// return this->set_bitfield<field_index>(byteswap((value_t)(value)));
+		this->set_unsigned<name_to_index("ImageSize"sv)>(value);
 	}
 
 	void set_XPixelsPerMeter(size_t value) {
-		return this->set_unsigned<name_to_index("XPixelsPerMeter"sv)>(value);
-		// constexpr size_t field_index = name_to_index("XPixelsPerMeter"sv);
-		// using value_t = std::invoke_result_t<decltype(&bitfield::get_bitfield<field_index>), const bitfield>;
-		// return this->set_bitfield<field_index>(byteswap((value_t)(value)));
+		this->set_unsigned<name_to_index("XPixelsPerMeter"sv)>(value);
 	}
 
 	void set_YPixelsPerMeter(size_t value) {
-		return this->set_unsigned<name_to_index("YPixelsPerMeter"sv)>(value);
-		// constexpr size_t field_index = name_to_index("YPixelsPerMeter"sv);
-		// using value_t = std::invoke_result_t<decltype(&bitfield::get_bitfield<field_index>), const bitfield>;
-		// return this->set_bitfield<field_index>(byteswap((value_t)(value)));
+		this->set_unsigned<name_to_index("YPixelsPerMeter"sv)>(value);
 	}
 
 	void set_ColorTableItemCount(size_t value) {
-		return this->set_unsigned<name_to_index("ColorTableItemCount"sv)>(value);
-		// constexpr size_t field_index = name_to_index("ColorTableItemCount"sv);
-		// using value_t = std::invoke_result_t<decltype(&bitfield::get_bitfield<field_index>), const bitfield>;
-		// return this->set_bitfield<field_index>(byteswap((value_t)(value)));
+		this->set_unsigned<name_to_index("ColorTableItemCount"sv)>(value);
 	}
 
 	void set_ImportantColorCount(size_t value) {
-		return this->set_unsigned<name_to_index("ImportantColorCount"sv)>(value);
-		// constexpr size_t field_index = name_to_index("ImportantColorCount"sv);
-		// using value_t = std::invoke_result_t<decltype(&bitfield::get_bitfield<field_index>), const bitfield>;
-		// return this->set_bitfield<field_index>(byteswap((value_t)(value)));
+		this->set_unsigned<name_to_index("ImportantColorCount"sv)>(value);
 	}
 
 	const std::array<std::byte, bitfield::size>& commit() {
@@ -592,8 +512,8 @@ template<>
 struct bitfield_traits<bitmap_info_v2_header> {
 	static constexpr fields_description_t fields{
 		bitfield_description{"MaskChannel1"sv,		{0, 32}, (uint32_t)(0x0)}, 	// R channel pixel mask
-		bitfield_description{"MaskChannel2"sv,		{32, 32}, (uint32_t)(0)}, 	// G channel pixel mask
-		bitfield_description{"MaskChannel3"sv,		{64, 32}, (uint32_t)(0)}, 	// B channel pixel mask
+		bitfield_description{"MaskChannel2"sv,		{32, 32}, (uint32_t)(0x0)}, 	// G channel pixel mask
+		bitfield_description{"MaskChannel3"sv,		{64, 32}, (uint32_t)(0x0)}, 	// B channel pixel mask
 	};	// 12 bytes
 };
 
@@ -617,33 +537,27 @@ public:
 	bitmap_info_v2_header(std::span<const std::byte, bitfield::size> raw_data) : bitfield(raw_data) { }
 
 	uint32_t get_MaskChannel1() const {
-		// return byteswap(this->get_bitfield<name_to_index("MaskChannel1"sv)>());
 		return this->get_unsigned<name_to_index("MaskChannel1"sv)>();
 	}
 
 	uint32_t get_MaskChannel2() const {
-		// return byteswap(this->get_bitfield<name_to_index("MaskChannel2"sv)>());
 		return this->get_unsigned<name_to_index("MaskChannel2"sv)>();
 	}
 
 	uint32_t get_MaskChannel3() const {
-		// return byteswap(this->get_bitfield<name_to_index("MaskChannel3"sv)>());
 		return this->get_unsigned<name_to_index("MaskChannel3"sv)>();
 	}
 
 	void set_MaskChannel1(uint32_t value) {
-		// return this->set_bitfield<name_to_index("MaskChannel1"sv)>(value);
-		return this->set_unsigned<name_to_index("MaskChannel1"sv)>(value);
+		this->set_unsigned<name_to_index("MaskChannel1"sv)>(value);
 	}
 
 	void set_MaskChannel2(uint32_t value) {
-		// return this->set_bitfield<name_to_index("MaskChannel2"sv)>(value);
-		return this->set_unsigned<name_to_index("MaskChannel2"sv)>(value);
+		this->set_unsigned<name_to_index("MaskChannel2"sv)>(value);
 	}
 
 	void set_MaskChannel3(uint32_t value) {
-		// return this->set_bitfield<name_to_index("MaskChannel3"sv)>(value);
-		return this->set_unsigned<name_to_index("MaskChannel3"sv)>(value);
+		this->set_unsigned<name_to_index("MaskChannel3"sv)>(value);
 	}
 
 	const std::array<std::byte, bitfield::size>& commit() {
@@ -690,7 +604,7 @@ public:
 	}
 
 	void set_MaskChannel4(uint32_t value) {
-		return this->set_unsigned<name_to_index("MaskChannel4"sv)>(value);
+		this->set_unsigned<name_to_index("MaskChannel4"sv)>(value);
 	}
 
 	const std::array<std::byte, bitfield::size>& commit() {
@@ -708,7 +622,7 @@ class bitmap_info_v4_header;
 template<>
 struct bitfield_traits<bitmap_info_v4_header> {
 	static constexpr fields_description_t fields{
-		bitfield_description{"ColorSpaceType"sv,			{0, 32}, byteswap((uint32_t)(0x42475273))}, 	// 'RGBs'
+		bitfield_description{"ColorSpaceType"sv,			{0, 32}, (uint32_t)(0x42475273)}, 	// 'sRGB' reversed, is NOT text mark (?), little-endian
 		bitfield_description{"ColorSpaceEndPoint_001"sv,	{32, 32}, (uint32_t)(0)}, 	// 
 		bitfield_description{"ColorSpaceEndPoint_002"sv,	{64, 32}, (uint32_t)(0)}, 	// 
 		bitfield_description{"ColorSpaceEndPoint_003"sv,	{96, 32}, (uint32_t)(0)}, 	// 
@@ -731,8 +645,10 @@ class bitmap_info_v4_header : private bitfield<bitmap_info_v4_header> {
 public:
 	enum class color_space : uint32_t {
 		calibrated_rgb = 0x0, 
-		sRGB = 0x73524742, 
+ 		sRGB = 0x73524742, 
 		windows = 0x57696E20, 
+		linked = 0x4c494e4b,
+		embedded = 0x4d424544, 
 		unknown = 0xffffffff
 	};
 
@@ -818,19 +734,19 @@ public:
 	}
 
 	void set_ColorSpaceType(color_space value) {
-		return this->set_unsigned<name_to_index("ColorSpaceType"sv)>(to_underlying(value));
+		this->set_unsigned<name_to_index("ColorSpaceType"sv)>(to_underlying(value));
 	}
 
 	void set_GammaChannel1(uint32_t value) {
-		return this->set_unsigned<name_to_index("GammaChannel1"sv)>(value);
+		this->set_unsigned<name_to_index("GammaChannel1"sv)>(value);
 	}
 
 	void set_GammaChannel2(uint32_t value) {
-		return this->set_unsigned<name_to_index("GammaChannel2"sv)>(value);
+		this->set_unsigned<name_to_index("GammaChannel2"sv)>(value);
 	}
 
 	void set_GammaChannel3(uint32_t value) {
-		return this->set_unsigned<name_to_index("GammaChannel3"sv)>(value);
+		this->set_unsigned<name_to_index("GammaChannel3"sv)>(value);
 	}
 
 	void set_ChannelGammas(const std::array<uint32_t, 3>& values) {
@@ -896,7 +812,7 @@ public:
 	}
 
 	void set_Intent(uint32_t value) {
-		return this->set_unsigned<name_to_index("Intent"sv)>(value);
+		this->set_unsigned<name_to_index("Intent"sv)>(value);
 	}
 
 	// no need for setting ICC info is obvious as for now, therefore no interface provided

@@ -34,7 +34,7 @@ namespace {
 	}
 }
 
-image_description get_description(const parameters::compress::image_file& parameters) {
+img_meta get_description(const parameters::compress::image_file& parameters) {
 	auto& descriptor = file_cache_instance.get_descriptor(parameters.path);
 	file_cache_value& data = file_cache_instance.get_data(descriptor);
 	
@@ -44,21 +44,7 @@ image_description get_description(const parameters::compress::image_file& parame
 	}
 
 	bmp_header_protocol& protocol = std::get<bmp_header_protocol>(data.file_protocol);
-	img_meta dimensions = protocol.get_image_dimensions();
-
-	auto masks = protocol.get_channel_masks();
-	std::span significant_masks = std::span(masks).first<std::tuple_size_v<decltype(masks)> - 1>();
-	auto max_it = std::max_element(significant_masks.begin(), significant_masks.end(),
-		[](uint32_t lhs, uint32_t rhs) -> bool { return std::popcount(lhs) < std::popcount(rhs); });
-	size_t largest_channel_bdepth = std::popcount(*max_it);
-
-	return image_description{
-		.width = dimensions.width,
-		.height = dimensions.height,
-		.channel_num = dimensions.depth,
-		.static_bdepth = largest_channel_bdepth,
-		.if_signed = false	// bmp pixels are never signed
-	};
+	return protocol.get_image_description();
 }
 
 }

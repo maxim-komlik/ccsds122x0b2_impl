@@ -17,6 +17,7 @@
 #include "dwt/constant.hpp"
 #include "bpe/constant.hpp"
 #include "dwt/utility.hpp"
+#include "dwt/bitmap_types.hpp"
 
 #include "io/io_settings.hpp"
 #include "io/session_context.hpp"
@@ -108,14 +109,18 @@ void compress_command_handler(const params::compress_command& parameters) {
 	io::image_load_parameters img_desc = io::get_image_description(parameters.src_params);
 	size_t height_padding = padded_image_dimensions(img_desc.meta.width, img_desc.meta.height).second - img_desc.meta.height;
 
+	auto img_handles = io::import_image(registry, img_desc);
+
 	parameters.dwt_params.frame;	// TODO:
 
 	{
-		session_context cx(registry);
-		cx.settings_session = session_settings {
+		// session_context cx(registry);
+		auto cx = std::make_shared<session_context>(registry);
+
+		cx->settings_session = session_settings {
 			.dwt_type = parse_dwt_type(parameters.dwt_params.type),
 			.img_width = img_desc.meta.width,
-			.pixel_bdepth = img_desc.meta.static_bdepth, // TODO:
+			.pixel_bdepth = img_desc.meta.bdepth_static, // TODO:
 			.signed_pixel = parameters.img_signed,
 			.transpose = parameters.img_transpose,
 			.rows_pad_count = height_padding,
@@ -136,15 +141,15 @@ void compress_command_handler(const params::compress_command& parameters) {
 			segment_params.push_back(parse_segment_settings(item));
 		}
 
-		cx.init_channel_contexts(img_desc.meta.channel_num);
-		for (ptrdiff_t i = 0; i < img_desc.meta.channel_num - 1; ++i) {
-			cx.channel_contexts[i].compr_settings = compression_params;
-			cx.channel_contexts[i].seg_settings = segment_params;
+		cx->init_channel_contexts(img_desc.meta.depth);
+		for (ptrdiff_t i = 0; i < img_desc.meta.depth - 1; ++i) {
+			cx->channel_contexts[i].compr_settings = compression_params;
+			cx->channel_contexts[i].seg_settings = segment_params;
 		}
-		cx.channel_contexts.back().compr_settings = std::move(compression_params);
-		cx.channel_contexts.back().seg_settings = std::move(segment_params);
+		cx->channel_contexts.back().compr_settings = std::move(compression_params);
+		cx->channel_contexts.back().seg_settings = std::move(segment_params);
 
-		session_parameters_parser<flow_impl>::load_image(std::move(cx), img_desc);
+		session_parameters_parser<flow_impl>::compress(cx, std::move(img_handles));
 	}
 
 	// TODO: handle output data somehow?
@@ -243,15 +248,23 @@ void restore_command_handler(const params::restore_command& parameters) {
 
 	io_data_registry registry(parse_storage_type(parameters.src_params.type));
 	
+	io::image_store_parameters export_params{ parameters.dst_params };
+
 	{
-		session_context cx(registry);
+		// session_context cx(registry);
+		auto cx = std::make_shared<session_context>(registry);
 
 		auto handles = load_segments(parameters.src_params, registry);
-		collect_decompression_session_params(cx, handles);
-		session_parameters_parser<flow_impl>::restore(std::move(cx), std::move(handles));
+		collect_decompression_session_params(*cx, handles);
+
+		export_params.meta.width = cx->settings_session.img_width;
+		export_params.meta.if_signed = cx->settings_session.signed_pixel;
+		export_params.meta.bdepth_static = cx->settings_session.pixel_bdepth;
+
+		session_parameters_parser<flow_impl>::restore(cx, std::move(handles));
 	}
 
-	auto channels = std::move(registry).export_data();
+	io::export_image(std::move(registry), export_params);
 }
 
 namespace {
