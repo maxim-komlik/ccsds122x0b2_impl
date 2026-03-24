@@ -159,6 +159,7 @@ std::vector<dwt_context> compression_routines<T>::preprocess_image(dwt_context c
 
 	if (cx.channel_cx.session_cx.settings_session.transpose) {
 		img = img.transpose();
+		cx.channel_cx.session_cx.settings_session.img_width = img.get_meta().width;
 	}
 	transformer.preprocess_image(img);
 	auto [image_width, image_height] = padded_image_dimensions(img.get_meta().width, img.get_meta().height);
@@ -1075,6 +1076,7 @@ void compression_routines<T>::restore_image(segmentation_context<subband_type, s
 	if (cx.channel_cx.session_cx.settings_session.custom_shifts) {
 		transformer.get_scale().set_shifts(cx.channel_cx.session_cx.settings_session.shifts);
 	}
+	transformer.set_transpose_output(cx.channel_cx.session_cx.settings_session.transpose);
 
 	auto& data = std::get<compression_data<T>>(cx.channel_cx.data);
 
@@ -1114,20 +1116,43 @@ void compression_routines<T>::postprocess_image(segmentation_context<subband_typ
 		data.fragments.swap(local_fragments);
 	}
 
+	// up to this moment the image fragments themselves may be transposed, but fragment descriptions 
+	// do not reflect transpose settings. Therefore sorting by frame.y is valid (because image 
+	// transformed by whole rows only)
 	std::sort(local_fragments.begin(), local_fragments.end(),
 		[](const auto& lhs_pair, const auto& rhs_pair) -> bool {
 			return lhs_pair.first.y < rhs_pair.first.y;
 		});
 
-	bitmap<oT> result;
+	size_t image_width = cx.channel_cx.session_cx.settings_session.img_width;
+	size_t image_height = 0;
+	// must have been case for std::reduce, but couldn't make functor associative
+	std::for_each(local_fragments.cbegin(), local_fragments.cend(),
+		[&image_height](const auto& item_pair) -> void {
+			image_height += item_pair.first.height;
+		});
+	auto padded_dims = padded_image_dimensions(image_width, image_height);
+	// TODO: and padded_dims.second should be equal to image_height
+
+	image_height -= cx.channel_cx.session_cx.settings_session.rows_pad_count; // TODO: validate?
+	
+	if (cx.channel_cx.session_cx.settings_session.transpose) {
+		std::swap(image_width, image_height);
+		std::swap(padded_dims.first, padded_dims.second);
+	}
+
+	bitmap<oT> result(padded_dims.first, padded_dims.second);
 	for (auto&& item : local_fragments) {
 		auto& fragment_data = io_data_registry::get_data<image_selector<oT>>(item.second);
-		result.append(std::move(fragment_data.image));
+		
+		if (cx.channel_cx.session_cx.settings_session.transpose) {
+			item.first = item.first.transpose();
+		}
+
+		result.slice(item.first).assign(std::move(fragment_data.image));	// TODO: but move has no effect here
 		cx.channel_cx.session_cx.data_registry.free_descriptor(item.second);
 	}
 
-	size_t image_width = cx.channel_cx.session_cx.settings_session.img_width;
-	size_t image_height = result.get_meta().height - cx.channel_cx.session_cx.settings_session.rows_pad_count;
 	result.resize(image_width, image_height);
 
 	image_memory_descriptor<oT> descriptor_data(std::move(result), cx.channel_cx.channel_index);

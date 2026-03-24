@@ -37,6 +37,10 @@ struct img_pos {
 		result.height ^= result.width;
 		result.width ^= result.height;
 
+		result.x_stride ^= result.y_stride;
+		result.y_stride ^= result.x_stride;
+		result.x_stride ^= result.y_stride;
+
 		// TODO: stride values?
 		return result;
 	}
