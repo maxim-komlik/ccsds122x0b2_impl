@@ -1,5 +1,3 @@
-#pragma once
-
 #include "header_protocol.hpp"
 
 #include <functional>
