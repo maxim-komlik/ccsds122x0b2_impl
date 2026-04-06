@@ -276,3 +276,7 @@ image type depends on:
 	(and always integer)
 
 and image load 
+
+
+collect perf logs with userspace stack tracking
+compile with intel compiler for perf profiling

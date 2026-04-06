@@ -5,6 +5,7 @@ add_library(common STATIC)
 target_sources(common
 	PRIVATE
 		"${REPO_SOURCE_DIR}common/exception.cpp"
+
 	PUBLIC
 		"${REPO_SOURCE_DIR}common/exception.hpp"
 		"${REPO_SOURCE_DIR}common/utility.hpp"
