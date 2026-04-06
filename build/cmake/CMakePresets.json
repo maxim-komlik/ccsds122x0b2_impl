@@ -1,0 +1,29 @@
+{
+	"version": 3,
+	"cmakeMinimumRequired": {
+		"major": 3,
+		"minor": 21,
+		"patch": 0
+	},
+	"configurePresets": [
+		{
+			"name": "basic",
+			"hidden": true,
+			"displayName": "Basic Preset",
+			"description": "Base preset to inherit by child presets",
+			"binaryDir": "${sourceDir}/../out/cmake/"
+		},
+		{
+			"name": "complete",
+			"inherits": "basic",
+			"displayName": "Complete build",
+			"description": "Build core library, tests and interfaces",
+
+			"cacheVariables": {
+				"BUILD_FRONTEND": "ON",
+				"BUILD_TESTS": "ON"
+			}
+		}
+	]
+	// TODO: testPresets and installPresets
+}
