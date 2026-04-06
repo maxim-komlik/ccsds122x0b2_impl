@@ -82,7 +82,7 @@ public:
 		while (length > 0) {
 			size_t step_len = std::min(length, this->capacity - 1);
 			size_t step_result = this->extract(step_len);
-			result << step_len;
+			result <<= step_len;
 			result |= step_result;
 			length -= step_len;
 		}

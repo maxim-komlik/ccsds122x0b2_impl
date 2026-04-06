@@ -73,7 +73,7 @@ public:
 	bool if_started() const override { return this->boutput.get_byte_count() > 0; }
 	bool if_completed() const override { return this->completed; }
 
-	storage_type get_type() const { return storage_type::file; }
+	storage_type get_type() const override { return storage_type::file; }
 	bool if_supports_header_override() const override { return true; }
 	bool if_supports_delayed_truncation() const override { return true; }
 

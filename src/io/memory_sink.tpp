@@ -42,7 +42,7 @@ public:
 	bool if_started() const override { return this->boutput.get_byte_count() > 0; }
 	bool if_completed() const override { return this->completed; }
 
-	storage_type get_type() const { return storage_type::memory; }
+	storage_type get_type() const override { return storage_type::memory; }
 	bool if_supports_header_override() const override { return false; }
 	bool if_supports_delayed_truncation() const override { return false; }
 

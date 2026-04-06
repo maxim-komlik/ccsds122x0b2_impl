@@ -55,7 +55,7 @@ public:
 private:
 	void init_from_image_specs(img_meta& target_specs, std::array<size_t, channel_num + 1>& channel_bdepths);
 
-	size_t get_image_depth() const;;
+	size_t get_image_depth() const;
 	size_t dib_header_size() const;
 
 private:
